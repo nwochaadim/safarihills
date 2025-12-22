@@ -41,10 +41,33 @@ const buildAvailability = (offsets: number[]) => {
   return availability;
 };
 
-const buildGallery = (label: string, colors: string[]) =>
-  colors.map(
-    (color) => `https://placehold.co/1200x900/${color}/ffffff?text=${encodeURIComponent(label)}`
-  );
+const APARTMENT_IMAGES = [
+  'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1505691723518-36a5ac3be353?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1502005097973-6a7082348e28?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1523217582562-09d0def993a6?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1549187774-b4e9b0445b41?auto=format&fit=crop&w=1200&q=80',
+];
+
+const buildGallery = (label: string, colors: string[]) => {
+  if (!APARTMENT_IMAGES.length) return [];
+  let hash = 0;
+  for (let i = 0; i < label.length; i += 1) {
+    hash = (hash + label.charCodeAt(i)) % APARTMENT_IMAGES.length;
+  }
+  const count = Math.max(colors.length, 1);
+  return Array.from({ length: count }, (_, index) => {
+    const imageIndex = (hash + index) % APARTMENT_IMAGES.length;
+    return APARTMENT_IMAGES[imageIndex];
+  });
+};
 
 export const LISTINGS: ListingDetail[] = [
   {
