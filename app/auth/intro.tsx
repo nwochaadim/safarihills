@@ -1,3 +1,5 @@
+import { Feather } from '@expo/vector-icons';
+import { Stack, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   Dimensions,
@@ -9,7 +11,6 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 
@@ -130,6 +131,21 @@ export default function IntroScreen() {
           className="items-center justify-center rounded-full border border-blue-100 bg-blue-50 py-4"
           onPress={() => router.push('/auth/sign-up')}>
           <Text className="text-base font-semibold text-blue-700">Create account</Text>
+        </Pressable>
+
+        <View className="mt-6 flex-row items-center gap-3">
+          <View className="h-px flex-1 bg-slate-200" />
+          <Text className="text-[10px] font-semibold uppercase tracking-[0.4em] text-slate-400">
+            Or
+          </Text>
+          <View className="h-px flex-1 bg-slate-200" />
+        </View>
+
+        <Pressable
+          className="mt-4 flex-row items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-3"
+          onPress={() => router.replace('/(tabs)/explore')}>
+          <Text className="text-sm font-semibold text-slate-700">Continue as a guest</Text>
+          <Feather name="arrow-right" size={16} color="#475569" />
         </Pressable>
       </View>
     </SafeAreaView>
