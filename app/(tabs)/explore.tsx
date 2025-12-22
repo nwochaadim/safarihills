@@ -1,112 +1,831 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 
-export default function TabTwoScreen() {
+const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
+
+const AMENITIES = [
+  'wifi',
+  'swimming pool',
+  'ac',
+  'dining area',
+  'fans',
+  'smart tv',
+  'cinema',
+  'balcony',
+  'gym',
+];
+
+const GUEST_OPTIONS = ['1', '2', '3', '4', '5', '6+'];
+const PAGE_SIZE = 10;
+
+type FilterState = {
+  minBudget: string;
+  maxBudget: string;
+  type: string;
+  guests: string;
+  amenities: string[];
+  checkIn: Date | null;
+  checkOut: Date | null;
+};
+
+type Listing = {
+  id: string;
+  name: string;
+  apartmentType: string;
+  coverPhoto: string;
+  description: string;
+  minimumPrice: number;
+  rating: number;
+  area: string;
+  pointsToWin: number;
+  maxNumberOfGuestsAllowed: number;
+  amenities: string[];
+};
+
+type CalendarDay = {
+  date: Date;
+  isCurrentMonth: boolean;
+  isPast: boolean;
+  isStart: boolean;
+  isEnd: boolean;
+  isBetween: boolean;
+};
+
+const DUMMY_LISTINGS: Listing[] = [
+  {
+    id: 'saf-001',
+    name: 'Azure Bay Studio',
+    apartmentType: 'Studio',
+    coverPhoto: 'https://placehold.co/800x600/1d4ed8/ffffff?text=Azure+Bay+Studio',
+    description: 'A calm, sunlit studio with a city skyline view and a cozy lounge corner.',
+    minimumPrice: 65000,
+    rating: 4.7,
+    area: 'Lekki Phase 1',
+    pointsToWin: 80,
+    maxNumberOfGuestsAllowed: 2,
+    amenities: ['wifi', 'ac', 'smart tv', 'balcony'],
+  },
+  {
+    id: 'saf-002',
+    name: 'Ikoyi Skyline Suite',
+    apartmentType: '1 bed',
+    coverPhoto: 'https://placehold.co/800x600/0f172a/ffffff?text=Ikoyi+Skyline+Suite',
+    description: 'Elegant one-bedroom suite with panoramic views and premium finishes.',
+    minimumPrice: 120000,
+    rating: 4.9,
+    area: 'Ikoyi',
+    pointsToWin: 140,
+    maxNumberOfGuestsAllowed: 3,
+    amenities: ['wifi', 'ac', 'dining area', 'gym'],
+  },
+  {
+    id: 'saf-003',
+    name: 'Eko Pearl Penthouse',
+    apartmentType: '3 bed',
+    coverPhoto: 'https://placehold.co/800x600/1e3a8a/ffffff?text=Eko+Pearl+Penthouse',
+    description: 'Spacious penthouse with a private cinema lounge and chef-ready kitchen.',
+    minimumPrice: 280000,
+    rating: 4.8,
+    area: 'Victoria Island',
+    pointsToWin: 260,
+    maxNumberOfGuestsAllowed: 6,
+    amenities: ['wifi', 'cinema', 'dining area', 'balcony'],
+  },
+  {
+    id: 'saf-004',
+    name: 'Coastal Retreat',
+    apartmentType: '2 bed',
+    coverPhoto: 'https://placehold.co/800x600/0ea5e9/ffffff?text=Coastal+Retreat',
+    description: 'Ocean-kissed two-bedroom escape with airy interiors and soft lighting.',
+    minimumPrice: 145000,
+    rating: 4.6,
+    area: 'Oniru',
+    pointsToWin: 160,
+    maxNumberOfGuestsAllowed: 4,
+    amenities: ['wifi', 'swimming pool', 'ac', 'balcony'],
+  },
+  {
+    id: 'saf-005',
+    name: 'Banana Island Loft',
+    apartmentType: 'Studio',
+    coverPhoto: 'https://placehold.co/800x600/0284c7/ffffff?text=Banana+Island+Loft',
+    description: 'Modern loft with high ceilings, smart lighting, and designer details.',
+    minimumPrice: 98000,
+    rating: 4.5,
+    area: 'Banana Island',
+    pointsToWin: 110,
+    maxNumberOfGuestsAllowed: 2,
+    amenities: ['wifi', 'ac', 'smart tv', 'gym'],
+  },
+  {
+    id: 'saf-006',
+    name: 'Lekki Grande Residence',
+    apartmentType: '4 bed',
+    coverPhoto: 'https://placehold.co/800x600/0f172a/ffffff?text=Lekki+Grande+Residence',
+    description: 'Luxury four-bedroom residence with a private garden lounge.',
+    minimumPrice: 320000,
+    rating: 4.9,
+    area: 'Lekki',
+    pointsToWin: 310,
+    maxNumberOfGuestsAllowed: 8,
+    amenities: ['wifi', 'swimming pool', 'dining area', 'gym'],
+  },
+  {
+    id: 'saf-007',
+    name: 'Marina Executive Stay',
+    apartmentType: '2 bed',
+    coverPhoto: 'https://placehold.co/800x600/1d4ed8/ffffff?text=Marina+Executive+Stay',
+    description: 'Business-ready two-bedroom with a focused workspace and fast Wi-Fi.',
+    minimumPrice: 150000,
+    rating: 4.4,
+    area: 'Marina',
+    pointsToWin: 170,
+    maxNumberOfGuestsAllowed: 4,
+    amenities: ['wifi', 'ac', 'dining area', 'smart tv'],
+  },
+  {
+    id: 'saf-008',
+    name: 'Yaba City Smart Flat',
+    apartmentType: '1 bed',
+    coverPhoto: 'https://placehold.co/800x600/38bdf8/0f172a?text=Yaba+City+Smart+Flat',
+    description: 'Bright one-bedroom with a tech-friendly setup and breezy balcony.',
+    minimumPrice: 78000,
+    rating: 4.3,
+    area: 'Yaba',
+    pointsToWin: 90,
+    maxNumberOfGuestsAllowed: 2,
+    amenities: ['wifi', 'fans', 'balcony', 'smart tv'],
+  },
+  {
+    id: 'saf-009',
+    name: 'Parkview Signature Home',
+    apartmentType: '5 bed',
+    coverPhoto: 'https://placehold.co/800x600/0f172a/ffffff?text=Parkview+Signature+Home',
+    description: 'Prestige five-bedroom villa with an entertainment-ready dining hall.',
+    minimumPrice: 480000,
+    rating: 4.9,
+    area: 'Parkview',
+    pointsToWin: 420,
+    maxNumberOfGuestsAllowed: 10,
+    amenities: ['wifi', 'swimming pool', 'cinema', 'gym'],
+  },
+  {
+    id: 'saf-010',
+    name: 'Ajah Horizon Suites',
+    apartmentType: '3 bed',
+    coverPhoto: 'https://placehold.co/800x600/1e40af/ffffff?text=Ajah+Horizon+Suites',
+    description: 'Relaxed three-bedroom retreat with a breezy dining space.',
+    minimumPrice: 195000,
+    rating: 4.5,
+    area: 'Ajah',
+    pointsToWin: 200,
+    maxNumberOfGuestsAllowed: 6,
+    amenities: ['wifi', 'dining area', 'ac', 'balcony'],
+  },
+  {
+    id: 'saf-011',
+    name: 'Lekki Garden Terrace',
+    apartmentType: '1 bed',
+    coverPhoto: 'https://placehold.co/800x600/2563eb/ffffff?text=Lekki+Garden+Terrace',
+    description: 'Chic one-bedroom with leafy views and a warm dining nook.',
+    minimumPrice: 88000,
+    rating: 4.6,
+    area: 'Lekki Phase 2',
+    pointsToWin: 95,
+    maxNumberOfGuestsAllowed: 2,
+    amenities: ['wifi', 'dining area', 'fans', 'balcony'],
+  },
+  {
+    id: 'saf-012',
+    name: 'Oniru Poolside Escape',
+    apartmentType: '2 bed',
+    coverPhoto: 'https://placehold.co/800x600/0ea5e9/0f172a?text=Oniru+Poolside+Escape',
+    description: 'Two-bedroom escape with serene interiors and pool access.',
+    minimumPrice: 168000,
+    rating: 4.7,
+    area: 'Oniru',
+    pointsToWin: 185,
+    maxNumberOfGuestsAllowed: 4,
+    amenities: ['wifi', 'swimming pool', 'ac', 'smart tv'],
+  },
+];
+
+const createInitialFilters = (): FilterState => ({
+  minBudget: '',
+  maxBudget: '',
+  type: '',
+  guests: '',
+  amenities: [],
+  checkIn: null,
+  checkOut: null,
+});
+
+const formatCurrencyInput = (value: string) => {
+  const digitsOnly = value.replace(/[^\d]/g, '');
+  if (!digitsOnly) return '';
+  return Number(digitsOnly).toLocaleString();
+};
+
+const parseCurrencyInput = (value: string) => {
+  const digitsOnly = value.replace(/[^\d]/g, '');
+  if (!digitsOnly) return null;
+  return Number(digitsOnly);
+};
+
+const startOfDay = (date: Date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const formatDateDisplay = (date: Date) =>
+  date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+const startOfMonth = (date: Date) => {
+  const next = new Date(date);
+  next.setDate(1);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const buildCalendarDays = (
+  calendarMonth: Date,
+  checkIn: Date | null,
+  checkOut: Date | null
+): CalendarDay[] => {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  const gridStart = new Date(start);
+  gridStart.setDate(start.getDate() - start.getDay());
+  const gridEnd = new Date(end);
+  gridEnd.setDate(end.getDate() + (6 - end.getDay()));
+
+  const days: CalendarDay[] = [];
+  const today = startOfDay(new Date());
+  const startDate = checkIn ? startOfDay(checkIn) : null;
+  const endDate = checkOut ? startOfDay(checkOut) : null;
+
+  for (
+    let cursor = new Date(gridStart);
+    cursor <= gridEnd;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const date = new Date(cursor);
+    const normalized = startOfDay(date);
+    const isStart = startDate ? normalized.getTime() === startDate.getTime() : false;
+    const isEnd = endDate ? normalized.getTime() === endDate.getTime() : false;
+    const isBetween = startDate && endDate && normalized > startDate && normalized < endDate;
+
+    days.push({
+      date,
+      isCurrentMonth: date.getMonth() === month,
+      isPast: normalized < today,
+      isStart,
+      isEnd,
+      isBetween: Boolean(isBetween),
+    });
+  }
+
+  return days;
+};
+
+const filterListings = (filter: FilterState) => {
+  const minBudget = parseCurrencyInput(filter.minBudget);
+  const maxBudget = parseCurrencyInput(filter.maxBudget);
+  const numberOfGuests = filter.guests
+    ? filter.guests === '6+'
+      ? 6
+      : Number(filter.guests)
+    : null;
+
+  return DUMMY_LISTINGS.filter((listing) => {
+    if (filter.type && listing.apartmentType !== filter.type) return false;
+    if (minBudget !== null && listing.minimumPrice < minBudget) return false;
+    if (maxBudget !== null && listing.minimumPrice > maxBudget) return false;
+    if (numberOfGuests && listing.maxNumberOfGuestsAllowed < numberOfGuests) return false;
+    if (filter.amenities.length > 0) {
+      const hasAll = filter.amenities.every((amenity) => listing.amenities.includes(amenity));
+      if (!hasAll) return false;
+    }
+    return true;
+  });
+};
+
+export default function ExploreScreen() {
+  const router = useRouter();
+  const [filters, setFilters] = useState<FilterState>(createInitialFilters);
+  const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
+  const [page, setPage] = useState(1);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const calendarDays = useMemo(
+    () => buildCalendarDays(calendarMonth, filters.checkIn, filters.checkOut),
+    [calendarMonth, filters.checkIn, filters.checkOut]
+  );
+
+  const filteredListings = useMemo(() => filterListings(appliedFilters), [appliedFilters]);
+
+  const listings = useMemo(
+    () => filteredListings.slice(0, page * PAGE_SIZE),
+    [filteredListings, page]
+  );
+
+  const hasMore = listings.length < filteredListings.length;
+
+  useEffect(() => {
+    setPage(1);
+  }, [appliedFilters]);
+
+  const handleLoadMore = () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    setTimeout(() => {
+      setPage((prev) => prev + 1);
+      setLoadingMore(false);
+    }, 300);
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setPage(1);
+      setRefreshing(false);
+    }, 350);
+  };
+
+  const toggleAmenity = (amenity: string) => {
+    setFilters((prev) => {
+      const exists = prev.amenities.includes(amenity);
+      return {
+        ...prev,
+        amenities: exists ? prev.amenities.filter((a) => a !== amenity) : [...prev.amenities, amenity],
+      };
+    });
+  };
+
+  const resetFilters = () => {
+    const nextFilters = createInitialFilters();
+    setFilters(nextFilters);
+    setAppliedFilters(nextFilters);
+    setFilterSheetOpen(false);
+  };
+
+  const applyFilters = () => {
+    const nextApplied = { ...filters };
+    setFilterSheetOpen(false);
+    setAppliedFilters(nextApplied);
+  };
+
+  const handleSelectDate = (date: Date) => {
+    const normalized = startOfDay(date);
+    const today = startOfDay(new Date());
+    if (normalized < today) return;
+
+    setFilters((prev) => {
+      if (!prev.checkIn || (prev.checkIn && prev.checkOut)) {
+        return { ...prev, checkIn: normalized, checkOut: null };
+      }
+      if (prev.checkIn && !prev.checkOut) {
+        if (normalized < prev.checkIn) {
+          return { ...prev, checkIn: normalized, checkOut: null };
+        }
+        return { ...prev, checkOut: normalized };
+      }
+      return prev;
+    });
+  };
+
+  const clearDates = () => {
+    setFilters((prev) => ({ ...prev, checkIn: null, checkOut: null }));
+  };
+
+  const renderApartment = ({ item }: { item: Listing }) => {
+    return (
+      <View className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200">
+        <LoadingImageBackground
+          source={{ uri: item.coverPhoto }}
+          className="h-56 w-full overflow-hidden"
+          imageStyle={{ borderTopLeftRadius: 32, borderTopRightRadius: 32 }}>
+          <View className="flex-1 flex-row items-start justify-between p-4">
+            <Text className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-800">
+              {item.apartmentType || 'Apartment'}
+            </Text>
+            <View className="flex-row items-center gap-1 rounded-full bg-slate-900/60 px-3 py-1">
+              <Feather name="star" size={14} color="#fde047" />
+              <Text className="text-xs font-semibold text-white">{item.rating.toFixed(1)}</Text>
+            </View>
+          </View>
+        </LoadingImageBackground>
+
+        <View className="space-y-2 px-5 py-5">
+          <View className="flex-row items-start justify-between gap-3">
+            <Text className="flex-1 text-xl font-semibold text-slate-900" numberOfLines={2}>
+              {item.name}
+            </Text>
+            <Text className="text-base font-semibold text-blue-600">
+              ₦{item.minimumPrice.toLocaleString()}
+              <Text className="text-xs font-medium text-slate-500"> / night</Text>
+            </Text>
+          </View>
+          <View className="mt-1 flex-row items-center gap-2">
+            <Feather name="map-pin" size={14} color="#94a3b8" />
+            <Text className="text-sm text-slate-500">{item.area}</Text>
+          </View>
+          <Text className="text-sm text-slate-500" numberOfLines={2} ellipsizeMode="tail">
+            {item.description}
+          </Text>
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <Feather name="users" size={16} color="#64748b" />
+              <Text className="text-sm font-medium text-slate-600">
+                Up to {item.maxNumberOfGuestsAllowed} guests
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Feather name="award" size={16} color="#0f172a" />
+              <Text className="text-sm font-semibold text-slate-800">+{item.pointsToWin} pts/night</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <View className="flex-row items-center justify-between px-6 pt-4">
+        <View>
+          <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
+            Safarihills
+          </Text>
+          <Text className="mt-1 text-3xl font-bold text-slate-900">Welcome back, Adim</Text>
+        </View>
+        <Pressable
+          className="h-12 w-12 items-center justify-center rounded-full bg-blue-100"
+          onPress={() => router.push('/(tabs)/profile')}>
+          <Text className="text-lg font-bold text-blue-900">AE</Text>
+        </Pressable>
+      </View>
+
+      <View className="mt-6 px-6">
+        <Pressable
+          className="flex-row items-center justify-between rounded-3xl border border-blue-100 bg-white px-5 py-4 shadow-sm shadow-blue-50"
+          onPress={() => setFilterSheetOpen((prev) => !prev)}>
+          <View>
+            <Text className="text-xs uppercase tracking-[0.3em] text-blue-500">Filters</Text>
+            <Text className="text-base font-semibold text-slate-900">Budget, type, amenities</Text>
+          </View>
+          <Feather name="sliders" size={22} color="#1d4ed8" />
+        </Pressable>
+
+        {filterSheetOpen && (
+          <View className="mt-4 max-h-[70%] rounded-3xl border border-slate-200 bg-white">
+            <ScrollView
+              className="px-5 py-5"
+              contentContainerStyle={{ paddingBottom: 16 }}
+              showsVerticalScrollIndicator={false}>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-base font-semibold text-slate-900">Quick filters</Text>
+                <Pressable onPress={resetFilters}>
+                  <Text className="text-sm font-semibold text-blue-600">Reset</Text>
+                </Pressable>
+              </View>
+
+              <View className="mt-4">
+                <Text className="text-xs font-semibold uppercase text-slate-400">Dates</Text>
+                <View className="mt-3 flex-row gap-3">
+                  <Pressable
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                    onPress={() => setCalendarVisible(true)}>
+                    <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                    <Text className="mt-1 text-base font-semibold text-slate-900">
+                      {filters.checkIn ? formatDateDisplay(filters.checkIn) : 'Add date'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                    onPress={() => setCalendarVisible(true)}>
+                    <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
+                    <Text className="mt-1 text-base font-semibold text-slate-900">
+                      {filters.checkOut ? formatDateDisplay(filters.checkOut) : 'Add date'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <View className="mt-2 flex-row items-center justify-between">
+                  <Pressable onPress={clearDates}>
+                    <Text className="text-sm font-semibold text-blue-600">Clear dates</Text>
+                  </Pressable>
+                  <Text className="text-xs font-medium text-slate-500">Past dates disabled</Text>
+                </View>
+              </View>
+
+              <View className="mt-5">
+                <Text className="text-xs font-semibold uppercase text-slate-400">Budget per night (₦)</Text>
+                <View className="mt-3 flex-row gap-3">
+                  <TextInput
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
+                    keyboardType="number-pad"
+                    placeholder="Min"
+                    placeholderTextColor="#94a3b8"
+                    value={filters.minBudget}
+                    onChangeText={(value) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        minBudget: formatCurrencyInput(value),
+                      }))
+                    }
+                  />
+                  <TextInput
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
+                    keyboardType="number-pad"
+                    placeholder="Max"
+                    placeholderTextColor="#94a3b8"
+                    value={filters.maxBudget}
+                    onChangeText={(value) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        maxBudget: formatCurrencyInput(value),
+                      }))
+                    }
+                  />
+                </View>
+              </View>
+
+              <View className="mt-5">
+                <Text className="text-xs font-semibold uppercase text-slate-400">Apartment type</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
+                  <View className="flex-row gap-3">
+                    {TYPES.map((type) => {
+                      const isActive = filters.type === type;
+                      return (
+                        <Pressable
+                          key={type}
+                          className={`rounded-full px-4 py-2 ${
+                            isActive ? 'bg-blue-600' : 'border border-slate-200 bg-white'
+                          }`}
+                          onPress={() =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              type: isActive ? '' : type,
+                            }))
+                          }>
+                          <Text
+                            className={`text-sm font-semibold ${
+                              isActive ? 'text-white' : 'text-slate-600'
+                            }`}>
+                            {type}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              </View>
+
+              <View className="mt-5">
+                <Text className="text-xs font-semibold uppercase text-slate-400">Guests</Text>
+                <View className="mt-3 flex-row flex-wrap gap-3">
+                  {GUEST_OPTIONS.map((option) => {
+                    const isActive = filters.guests === option;
+                    return (
+                      <Pressable
+                        key={option}
+                        className={`rounded-full border px-4 py-2 ${
+                          isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                        }`}
+                        onPress={() =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            guests: isActive ? '' : option,
+                          }))
+                        }>
+                        <Text
+                          className={`text-sm font-semibold ${
+                            isActive ? 'text-blue-700' : 'text-slate-600'
+                          }`}>
+                          {option} guests
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View className="mt-5">
+                <Text className="text-xs font-semibold uppercase text-slate-400">Amenities</Text>
+                <View className="mt-3 flex-row flex-wrap gap-3">
+                  {AMENITIES.map((amenity) => {
+                    const isActive = filters.amenities.includes(amenity);
+                    return (
+                      <Pressable
+                        key={amenity}
+                        className={`rounded-full border px-4 py-2 ${
+                          isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                        }`}
+                        onPress={() => toggleAmenity(amenity)}>
+                        <Text
+                          className={`text-sm font-semibold ${
+                            isActive ? 'text-blue-700' : 'text-slate-600'
+                          }`}>
+                          {amenity}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <Pressable
+                className="mt-6 mb-6 items-center justify-center rounded-2xl bg-blue-600 px-4 py-3"
+                onPress={applyFilters}>
+                <Text className="text-base font-semibold text-white">Apply filters</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+      </View>
+
+      <FlatList
+        data={listings}
+        renderItem={renderApartment}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ padding: 24, paddingTop: 16 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#1d4ed8"
+            colors={['#1d4ed8']}
+          />
+        }
+        onEndReachedThreshold={0.3}
+        onEndReached={() => {
+          if (!loadingMore && hasMore) {
+            handleLoadMore();
+          }
+        }}
+        ListFooterComponent={
+          <View className="py-4">
+            {loadingMore && (
+              <View className="items-center justify-center py-2">
+                <ActivityIndicator color="#1d4ed8" />
+              </View>
+            )}
+            {!loadingMore && !hasMore && listings.length > 0 && (
+              <Text className="text-center text-sm text-slate-400">You are all caught up.</Text>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          <View className="py-24">
+            {refreshing ? (
+              <View className="items-center justify-center">
+                <ActivityIndicator color="#1d4ed8" size="large" />
+                <Text className="mt-3 text-sm font-semibold text-slate-500">
+                  Loading apartments...
+                </Text>
+              </View>
+            ) : (
+              <Text className="text-center text-sm font-semibold text-slate-500">
+                No apartments found with the selected filters.
+              </Text>
+            )}
+          </View>
+        }
+      />
+
+      <Modal
+        transparent
+        animationType="slide"
+        visible={calendarVisible}
+        onRequestClose={() => setCalendarVisible(false)}>
+        <View className="flex-1 justify-end bg-black/30">
+          <View className="max-h-[80%] rounded-t-3xl bg-white p-5">
+            <View className="flex-row items-center justify-between">
+              <Pressable
+                disabled={calendarMonth.getTime() === startOfMonth(new Date()).getTime()}
+                onPress={() =>
+                  setCalendarMonth((prev) => {
+                    const next = new Date(prev);
+                    next.setMonth(prev.getMonth() - 1, 1);
+                    return startOfMonth(next);
+                  })
+                }
+                className="rounded-full p-2">
+                <Feather
+                  name="chevron-left"
+                  size={22}
+                  color={
+                    calendarMonth.getTime() === startOfMonth(new Date()).getTime()
+                      ? '#cbd5e1'
+                      : '#0f172a'
+                  }
+                />
+              </Pressable>
+              <Text className="text-base font-semibold text-slate-900">
+                {calendarMonth.toLocaleString('default', {
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  setCalendarMonth((prev) => {
+                    const next = new Date(prev);
+                    next.setMonth(prev.getMonth() + 1, 1);
+                    return startOfMonth(next);
+                  })
+                }
+                className="rounded-full p-2">
+                <Feather name="chevron-right" size={22} color="#0f172a" />
+              </Pressable>
+            </View>
+
+            <View className="mt-4 flex-row justify-between">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                <Text
+                  key={day}
+                  className="flex-1 text-center text-xs font-semibold uppercase text-slate-400">
+                  {day}
+                </Text>
+              ))}
+            </View>
+
+            <View className="mt-2 flex-row flex-wrap">
+              {calendarDays.map((day) => {
+                const isDisabled = day.isPast;
+                const isSelected = day.isStart || day.isEnd;
+                const dayClasses = [
+                  'm-[2px] h-12 w-[13.6%] items-center justify-center rounded-full',
+                  isSelected ? 'bg-blue-600' : day.isBetween ? 'bg-blue-50' : 'bg-transparent',
+                  !day.isCurrentMonth ? 'opacity-40' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+
+                return (
+                  <Pressable
+                    key={day.date.toDateString()}
+                    disabled={isDisabled}
+                    className={dayClasses}
+                    onPress={() => handleSelectDate(day.date)}>
+                    <Text
+                      className={`text-sm font-semibold ${
+                        isSelected ? 'text-white' : isDisabled ? 'text-slate-300' : 'text-slate-700'
+                      }`}>
+                      {day.date.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View className="mt-4 flex-row items-center justify-between">
+              <Pressable className="rounded-2xl border border-slate-200 px-4 py-3" onPress={clearDates}>
+                <Text className="text-sm font-semibold text-slate-700">Clear dates</Text>
+              </Pressable>
+              <View className="flex-row gap-3">
+                <Pressable
+                  className="rounded-2xl border border-slate-200 px-4 py-3"
+                  onPress={() => setCalendarVisible(false)}>
+                  <Text className="text-sm font-semibold text-slate-700">Close</Text>
+                </Pressable>
+                <Pressable
+                  className="rounded-2xl bg-blue-600 px-4 py-3"
+                  onPress={() => setCalendarVisible(false)}>
+                  <Text className="text-sm font-semibold text-white">Save dates</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-});
