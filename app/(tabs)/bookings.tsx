@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LISTINGS } from '@/data/listings';
 
@@ -407,27 +408,13 @@ export default function BookingsScreen() {
             <Text className="mt-1 text-3xl font-bold text-slate-900">Bookings</Text>
           </View>
           <View className="flex-1 items-center justify-center px-8">
-            <View className="items-center rounded-3xl border border-blue-100 bg-white px-6 py-10 shadow-sm shadow-blue-100">
-              <View className="h-14 w-14 items-center justify-center rounded-full bg-blue-100">
-                <Feather name="calendar" size={24} color="#1d4ed8" />
-              </View>
-              <Text className="mt-6 text-center text-2xl font-bold text-slate-900">
-                Sign in to see bookings
-              </Text>
-              <Text className="mt-2 text-center text-sm text-slate-500">
-                Keep track of upcoming stays, rewards, and booking history in one place.
-              </Text>
-              <Pressable
-                className="mt-6 w-full items-center justify-center rounded-full border border-blue-500/30 bg-blue-600 px-6 py-4 shadow-sm shadow-blue-200"
-                onPress={() => router.push('/auth/login')}>
-                <Text className="text-base font-semibold text-white">Sign in</Text>
-              </Pressable>
-              <Pressable
-                className="mt-3 w-full items-center justify-center rounded-full border border-blue-200 bg-white px-6 py-4 shadow-sm shadow-slate-100"
-                onPress={() => router.push('/auth/sign-up')}>
-                <Text className="text-base font-semibold text-blue-700">Create account</Text>
-              </Pressable>
-            </View>
+            <BlankSlate
+              title="Sign in to see bookings"
+              description="Keep track of upcoming stays, rewards, and booking history in one place."
+              iconName="calendar"
+              primaryAction={{ label: 'Sign in', onPress: () => router.push('/auth/login') }}
+              secondaryAction={{ label: 'Create account', onPress: () => router.push('/auth/sign-up') }}
+            />
           </View>
         </View>
       ) : (
