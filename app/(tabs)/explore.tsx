@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import { LISTINGS, ListingDetail } from '@/data/listings';
 
 const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
 
@@ -43,20 +44,6 @@ type FilterState = {
   checkOut: Date | null;
 };
 
-type Listing = {
-  id: string;
-  name: string;
-  apartmentType: string;
-  coverPhoto: string;
-  description: string;
-  minimumPrice: number;
-  rating: number;
-  area: string;
-  pointsToWin: number;
-  maxNumberOfGuestsAllowed: number;
-  amenities: string[];
-};
-
 type CalendarDay = {
   date: Date;
   isCurrentMonth: boolean;
@@ -65,165 +52,6 @@ type CalendarDay = {
   isEnd: boolean;
   isBetween: boolean;
 };
-
-const DUMMY_LISTINGS: Listing[] = [
-  {
-    id: 'saf-001',
-    name: 'Azure Bay Studio',
-    apartmentType: 'Studio',
-    coverPhoto: 'https://placehold.co/800x600/1d4ed8/ffffff?text=Azure+Bay+Studio',
-    description: 'A calm, sunlit studio with a city skyline view and a cozy lounge corner.',
-    minimumPrice: 65000,
-    rating: 4.7,
-    area: 'Lekki Phase 1',
-    pointsToWin: 80,
-    maxNumberOfGuestsAllowed: 2,
-    amenities: ['wifi', 'ac', 'smart tv', 'balcony'],
-  },
-  {
-    id: 'saf-002',
-    name: 'Ikoyi Skyline Suite',
-    apartmentType: '1 bed',
-    coverPhoto: 'https://placehold.co/800x600/0f172a/ffffff?text=Ikoyi+Skyline+Suite',
-    description: 'Elegant one-bedroom suite with panoramic views and premium finishes.',
-    minimumPrice: 120000,
-    rating: 4.9,
-    area: 'Ikoyi',
-    pointsToWin: 140,
-    maxNumberOfGuestsAllowed: 3,
-    amenities: ['wifi', 'ac', 'dining area', 'gym'],
-  },
-  {
-    id: 'saf-003',
-    name: 'Eko Pearl Penthouse',
-    apartmentType: '3 bed',
-    coverPhoto: 'https://placehold.co/800x600/1e3a8a/ffffff?text=Eko+Pearl+Penthouse',
-    description: 'Spacious penthouse with a private cinema lounge and chef-ready kitchen.',
-    minimumPrice: 280000,
-    rating: 4.8,
-    area: 'Victoria Island',
-    pointsToWin: 260,
-    maxNumberOfGuestsAllowed: 6,
-    amenities: ['wifi', 'cinema', 'dining area', 'balcony'],
-  },
-  {
-    id: 'saf-004',
-    name: 'Coastal Retreat',
-    apartmentType: '2 bed',
-    coverPhoto: 'https://placehold.co/800x600/0ea5e9/ffffff?text=Coastal+Retreat',
-    description: 'Ocean-kissed two-bedroom escape with airy interiors and soft lighting.',
-    minimumPrice: 145000,
-    rating: 4.6,
-    area: 'Oniru',
-    pointsToWin: 160,
-    maxNumberOfGuestsAllowed: 4,
-    amenities: ['wifi', 'swimming pool', 'ac', 'balcony'],
-  },
-  {
-    id: 'saf-005',
-    name: 'Banana Island Loft',
-    apartmentType: 'Studio',
-    coverPhoto: 'https://placehold.co/800x600/0284c7/ffffff?text=Banana+Island+Loft',
-    description: 'Modern loft with high ceilings, smart lighting, and designer details.',
-    minimumPrice: 98000,
-    rating: 4.5,
-    area: 'Banana Island',
-    pointsToWin: 110,
-    maxNumberOfGuestsAllowed: 2,
-    amenities: ['wifi', 'ac', 'smart tv', 'gym'],
-  },
-  {
-    id: 'saf-006',
-    name: 'Lekki Grande Residence',
-    apartmentType: '4 bed',
-    coverPhoto: 'https://placehold.co/800x600/0f172a/ffffff?text=Lekki+Grande+Residence',
-    description: 'Luxury four-bedroom residence with a private garden lounge.',
-    minimumPrice: 320000,
-    rating: 4.9,
-    area: 'Lekki',
-    pointsToWin: 310,
-    maxNumberOfGuestsAllowed: 8,
-    amenities: ['wifi', 'swimming pool', 'dining area', 'gym'],
-  },
-  {
-    id: 'saf-007',
-    name: 'Marina Executive Stay',
-    apartmentType: '2 bed',
-    coverPhoto: 'https://placehold.co/800x600/1d4ed8/ffffff?text=Marina+Executive+Stay',
-    description: 'Business-ready two-bedroom with a focused workspace and fast Wi-Fi.',
-    minimumPrice: 150000,
-    rating: 4.4,
-    area: 'Marina',
-    pointsToWin: 170,
-    maxNumberOfGuestsAllowed: 4,
-    amenities: ['wifi', 'ac', 'dining area', 'smart tv'],
-  },
-  {
-    id: 'saf-008',
-    name: 'Yaba City Smart Flat',
-    apartmentType: '1 bed',
-    coverPhoto: 'https://placehold.co/800x600/38bdf8/0f172a?text=Yaba+City+Smart+Flat',
-    description: 'Bright one-bedroom with a tech-friendly setup and breezy balcony.',
-    minimumPrice: 78000,
-    rating: 4.3,
-    area: 'Yaba',
-    pointsToWin: 90,
-    maxNumberOfGuestsAllowed: 2,
-    amenities: ['wifi', 'fans', 'balcony', 'smart tv'],
-  },
-  {
-    id: 'saf-009',
-    name: 'Parkview Signature Home',
-    apartmentType: '5 bed',
-    coverPhoto: 'https://placehold.co/800x600/0f172a/ffffff?text=Parkview+Signature+Home',
-    description: 'Prestige five-bedroom villa with an entertainment-ready dining hall.',
-    minimumPrice: 480000,
-    rating: 4.9,
-    area: 'Parkview',
-    pointsToWin: 420,
-    maxNumberOfGuestsAllowed: 10,
-    amenities: ['wifi', 'swimming pool', 'cinema', 'gym'],
-  },
-  {
-    id: 'saf-010',
-    name: 'Ajah Horizon Suites',
-    apartmentType: '3 bed',
-    coverPhoto: 'https://placehold.co/800x600/1e40af/ffffff?text=Ajah+Horizon+Suites',
-    description: 'Relaxed three-bedroom retreat with a breezy dining space.',
-    minimumPrice: 195000,
-    rating: 4.5,
-    area: 'Ajah',
-    pointsToWin: 200,
-    maxNumberOfGuestsAllowed: 6,
-    amenities: ['wifi', 'dining area', 'ac', 'balcony'],
-  },
-  {
-    id: 'saf-011',
-    name: 'Lekki Garden Terrace',
-    apartmentType: '1 bed',
-    coverPhoto: 'https://placehold.co/800x600/2563eb/ffffff?text=Lekki+Garden+Terrace',
-    description: 'Chic one-bedroom with leafy views and a warm dining nook.',
-    minimumPrice: 88000,
-    rating: 4.6,
-    area: 'Lekki Phase 2',
-    pointsToWin: 95,
-    maxNumberOfGuestsAllowed: 2,
-    amenities: ['wifi', 'dining area', 'fans', 'balcony'],
-  },
-  {
-    id: 'saf-012',
-    name: 'Oniru Poolside Escape',
-    apartmentType: '2 bed',
-    coverPhoto: 'https://placehold.co/800x600/0ea5e9/0f172a?text=Oniru+Poolside+Escape',
-    description: 'Two-bedroom escape with serene interiors and pool access.',
-    minimumPrice: 168000,
-    rating: 4.7,
-    area: 'Oniru',
-    pointsToWin: 185,
-    maxNumberOfGuestsAllowed: 4,
-    amenities: ['wifi', 'swimming pool', 'ac', 'smart tv'],
-  },
-];
 
 const createInitialFilters = (): FilterState => ({
   minBudget: '',
@@ -319,7 +147,7 @@ const filterListings = (filter: FilterState) => {
       : Number(filter.guests)
     : null;
 
-  return DUMMY_LISTINGS.filter((listing) => {
+  return LISTINGS.filter((listing) => {
     if (filter.type && listing.apartmentType !== filter.type) return false;
     if (minBudget !== null && listing.minimumPrice < minBudget) return false;
     if (maxBudget !== null && listing.minimumPrice > maxBudget) return false;
@@ -424,9 +252,11 @@ export default function ExploreScreen() {
     setFilters((prev) => ({ ...prev, checkIn: null, checkOut: null }));
   };
 
-  const renderApartment = ({ item }: { item: Listing }) => {
+  const renderApartment = ({ item }: { item: ListingDetail }) => {
     return (
-      <View className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200">
+      <Pressable
+        className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200"
+        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: item.id } })}>
         <LoadingImageBackground
           source={{ uri: item.coverPhoto }}
           className="h-56 w-full overflow-hidden"
@@ -472,7 +302,7 @@ export default function ExploreScreen() {
             </View>
           </View>
         </View>
-      </View>
+      </Pressable>
     );
   };
 
