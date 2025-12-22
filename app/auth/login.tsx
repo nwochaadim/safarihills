@@ -133,6 +133,13 @@ export default function LoginScreen() {
               {isSubmitting ? 'Signing in...' : 'Log in'}
             </Text>
           </Pressable>
+
+          <View className="mt-6 flex-row items-center justify-center">
+            <Text className="text-sm text-slate-500">New here?</Text>
+            <Pressable className="ml-2" onPress={() => router.push('/auth/sign-up')}>
+              <Text className="text-sm font-semibold text-blue-600">Create account</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -81,10 +81,12 @@ export default function SignUpScreen() {
     setServerError(null);
     setErrorMessages([]);
 
+    const trimmedEmail = email.trim().toLowerCase();
+
     setTimeout(() => {
       setIsSubmitting(false);
       Alert.alert('Account created', 'Your Safarihills account is ready.');
-      router.replace('/auth/login');
+      router.replace({ pathname: '/auth/otp', params: { email: trimmedEmail } });
     }, 500);
   };
 
