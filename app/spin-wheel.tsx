@@ -140,7 +140,7 @@ export default function SpinWheelScreen() {
               Spin to unlock your offer
             </Text>
             <Text className="mt-2 text-sm text-slate-500">
-              One spin per checkout. The pointer decides your reward.
+              The pointer decides your reward.
             </Text>
           </View>
           <View className="rounded-full bg-slate-900 px-3 py-2">
