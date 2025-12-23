@@ -101,6 +101,10 @@ export default function WalletScreen() {
   const [newAccountNumber, setNewAccountNumber] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
+  const handleBackToProfile = () => {
+    router.replace('/(tabs)/profile');
+  };
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -162,14 +166,17 @@ export default function WalletScreen() {
     <SafeAreaView className="flex-1 bg-slate-50">
       <Stack.Screen options={{ headerShown: false }} />
       {authStatus === 'signed-out' ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <BlankSlate
-            title="Sign in to view wallet"
-            description="Top up your balance, track transactions, and manage funding accounts."
-            iconName="credit-card"
-            primaryAction={{ label: 'Sign in', onPress: () => router.push('/auth/login') }}
-            secondaryAction={{ label: 'Create account', onPress: () => router.push('/auth/sign-up') }}
-          />
+        <View className="flex-1 px-6 pt-2">
+          <BackButton onPress={handleBackToProfile} />
+          <View className="flex-1 items-center justify-center px-2">
+            <BlankSlate
+              title="Sign in to view wallet"
+              description="Top up your balance, track transactions, and manage funding accounts."
+              iconName="credit-card"
+              primaryAction={{ label: 'Sign in', onPress: () => router.push('/auth/login') }}
+              secondaryAction={{ label: 'Create account', onPress: () => router.push('/auth/sign-up') }}
+            />
+          </View>
         </View>
       ) : (
         <>
@@ -177,7 +184,7 @@ export default function WalletScreen() {
             contentContainerStyle={{ padding: 24, paddingBottom: 140 }}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
-            <BackButton onPress={() => router.back()} />
+            <BackButton onPress={handleBackToProfile} />
             <Text className="mt-2 text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
               Wallet
             </Text>
