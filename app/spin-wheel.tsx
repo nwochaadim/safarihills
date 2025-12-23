@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Dimensions,
   Easing,
@@ -52,11 +53,14 @@ export default function SpinWheelScreen() {
   const rotation = useRef(new Animated.Value(0)).current;
   const rotationValue = useRef(0);
   const [isSpinning, setIsSpinning] = useState(false);
+  const [hasSpun, setHasSpun] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const router = useRouter();
 
   const rewards = WHEEL_SEGMENTS.filter((segment) => !segment.isEmpty);
 
   const selectedSegment = selectedIndex !== null ? WHEEL_SEGMENTS[selectedIndex] : null;
+  const isSpinDisabled = isSpinning || hasSpun;
 
   useEffect(() => {
     const id = rotation.addListener(({ value }) => {
@@ -71,7 +75,7 @@ export default function SpinWheelScreen() {
   });
 
   const handleSpin = () => {
-    if (isSpinning) return;
+    if (isSpinDisabled) return;
 
     setIsSpinning(true);
     setSelectedIndex(null);
@@ -91,6 +95,18 @@ export default function SpinWheelScreen() {
     }).start(() => {
       setIsSpinning(false);
       setSelectedIndex(targetIndex);
+      setHasSpun(true);
+      const segment = WHEEL_SEGMENTS[targetIndex];
+      const title = segment.isEmpty ? 'Better luck next time' : 'Congratulations!';
+      const message = segment.isEmpty
+        ? "You didn't win anything this time."
+        : `You won ${segment.label}.`;
+      Alert.alert(
+        title,
+        message,
+        [{ text: 'Okay', onPress: () => router.replace('/(tabs)/explore') }],
+        { cancelable: false },
+      );
     });
   };
 
@@ -212,12 +228,12 @@ export default function SpinWheelScreen() {
 
           <Pressable
             className={`mt-8 w-full items-center justify-center rounded-full py-4 ${
-              isSpinning ? 'bg-blue-300' : 'bg-blue-600'
+              isSpinDisabled ? 'bg-blue-300' : 'bg-blue-600'
             }`}
             onPress={handleSpin}
-            disabled={isSpinning}>
+            disabled={isSpinDisabled}>
             <Text className="text-base font-semibold text-white">
-              {isSpinning ? 'Spinning...' : 'Spin the wheel'}
+              {isSpinning ? 'Spinning...' : hasSpun ? 'Spin complete' : 'Spin the wheel'}
             </Text>
           </Pressable>
 
