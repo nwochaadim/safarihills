@@ -2,6 +2,7 @@ export type OfferListing = {
   id: string;
   name: string;
   location: string;
+  rating: number;
   price: number;
   priceUnit: string;
   image: string;
@@ -48,6 +49,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'ln-1',
             name: 'Azure Heights Apartment',
             location: 'Lekki Phase 1',
+            rating: 4.7,
             price: 68000,
             priceUnit: 'per night',
             image:
@@ -57,6 +59,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'ln-2',
             name: 'Skyline One Bedroom',
             location: 'Victoria Island',
+            rating: 4.8,
             price: 82000,
             priceUnit: 'per night',
             image:
@@ -66,6 +69,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'ln-3',
             name: 'Cedar Loft Studio',
             location: 'Ikoyi',
+            rating: 4.6,
             price: 91000,
             priceUnit: 'per night',
             image:
@@ -86,6 +90,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'ln-4',
             name: 'Obsidian Suite',
             location: 'Lekki',
+            rating: 4.5,
             price: 72000,
             priceUnit: 'per night',
             image:
@@ -95,6 +100,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'ln-5',
             name: 'Luna View Apartment',
             location: 'Banana Island',
+            rating: 4.9,
             price: 125000,
             priceUnit: 'per night',
             image:
@@ -104,6 +110,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'ln-6',
             name: 'Midtown Hideaway',
             location: 'Oniru',
+            rating: 4.4,
             price: 59000,
             priceUnit: 'per night',
             image:
@@ -135,6 +142,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'fn-1',
             name: 'Palm Residence',
             location: 'Ikate',
+            rating: 4.6,
             price: 78000,
             priceUnit: 'per night',
             image:
@@ -144,6 +152,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'fn-2',
             name: 'Harbor View Suite',
             location: 'Marina',
+            rating: 4.7,
             price: 98000,
             priceUnit: 'per night',
             image:
@@ -153,6 +162,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'fn-3',
             name: 'Terrace Garden Loft',
             location: 'Lekki Phase 2',
+            rating: 4.5,
             price: 64000,
             priceUnit: 'per night',
             image:
@@ -173,6 +183,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'fn-4',
             name: 'Amber Bay Apartment',
             location: 'Victoria Island',
+            rating: 4.8,
             price: 102000,
             priceUnit: 'per night',
             image:
@@ -182,6 +193,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'fn-5',
             name: 'Eko Crest Studio',
             location: 'Oniru',
+            rating: 4.4,
             price: 74000,
             priceUnit: 'per night',
             image:
@@ -191,6 +203,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'fn-6',
             name: 'Blue Pearl Residence',
             location: 'Lekki',
+            rating: 4.7,
             price: 88000,
             priceUnit: 'per night',
             image:
@@ -222,6 +235,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'hd-1',
             name: 'Orchid City Studio',
             location: 'Ikeja GRA',
+            rating: 4.5,
             price: 32000,
             priceUnit: 'per 6 hours',
             image:
@@ -231,6 +245,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'hd-2',
             name: 'Terminal View Loft',
             location: 'Ikeja',
+            rating: 4.3,
             price: 28000,
             priceUnit: 'per 6 hours',
             image:
@@ -240,6 +255,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'hd-3',
             name: 'West Point Suite',
             location: 'Maryland',
+            rating: 4.6,
             price: 35000,
             priceUnit: 'per 6 hours',
             image:
@@ -260,6 +276,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'hd-4',
             name: 'Maple Executive Suite',
             location: 'Yaba',
+            rating: 4.4,
             price: 42000,
             priceUnit: 'per 8 hours',
             image:
@@ -269,6 +286,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'hd-5',
             name: 'Palm View Apartment',
             location: 'Surulere',
+            rating: 4.2,
             price: 30000,
             priceUnit: 'per 8 hours',
             image:
@@ -278,6 +296,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'hd-6',
             name: 'City Breeze Studio',
             location: 'Ikeja',
+            rating: 4.5,
             price: 36000,
             priceUnit: 'per 8 hours',
             image:
@@ -309,6 +328,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'sp-1',
             name: 'Lagoon Breeze Suite',
             location: 'Lekki Phase 1',
+            rating: 4.8,
             price: 92000,
             priceUnit: 'per night',
             image:
@@ -318,6 +338,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'sp-2',
             name: 'Coral Bay Apartment',
             location: 'Ikoyi',
+            rating: 4.9,
             price: 124000,
             priceUnit: 'per night',
             image:
@@ -327,6 +348,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'sp-3',
             name: 'Solace Retreat Loft',
             location: 'Banana Island',
+            rating: 4.7,
             price: 155000,
             priceUnit: 'per night',
             image:
@@ -347,6 +369,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'sp-4',
             name: 'Harbor Luxe Apartment',
             location: 'Victoria Island',
+            rating: 4.6,
             price: 134000,
             priceUnit: 'per night',
             image:
@@ -356,6 +379,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'sp-5',
             name: 'Skyline Serenity Suite',
             location: 'Ikoyi',
+            rating: 4.8,
             price: 168000,
             priceUnit: 'per night',
             image:
@@ -365,6 +389,7 @@ export const OFFER_CATEGORIES: OfferCategory[] = [
             id: 'sp-6',
             name: 'Golden Palm Residence',
             location: 'Lekki Phase 1',
+            rating: 4.7,
             price: 119000,
             priceUnit: 'per night',
             image:
