@@ -40,36 +40,6 @@ export default function OfferCategoryScreen() {
         <Text className="mt-2 text-3xl font-bold text-slate-900">{category.title}</Text>
         <Text className="mt-1 text-sm text-slate-500">{category.description}</Text>
 
-        <View className="mt-6 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm shadow-slate-100">
-          <LoadingImageBackground source={{ uri: category.image }} className="h-44">
-            <View className="absolute inset-0 bg-black/30" />
-            <View className="flex-1 justify-end p-4">
-              <Text className="text-xs font-semibold uppercase tracking-[0.3em] text-white/70">
-                Rewards
-              </Text>
-              <View className="mt-2 flex-row flex-wrap gap-2">
-                {category.rewards.map((reward) => (
-                  <View key={reward} className="rounded-full bg-white/90 px-3 py-1">
-                    <Text className="text-xs font-semibold text-blue-700">{reward}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </LoadingImageBackground>
-
-          <View className="flex-row items-center justify-between px-5 py-4">
-            <View>
-              <Text className="text-sm font-semibold text-slate-900">
-                {category.offers.length} offers available
-              </Text>
-              <Text className="text-xs text-slate-500">Tap an offer to see listings and rates.</Text>
-            </View>
-            <View className="h-10 w-10 items-center justify-center rounded-full bg-blue-50">
-              <Feather name="tag" size={18} color="#1d4ed8" />
-            </View>
-          </View>
-        </View>
-
         <View className="mt-8 gap-5">
           {category.offers.map((offer) => (
             <Pressable
