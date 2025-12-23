@@ -1,0 +1,83 @@
+import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import { OFFER_CATEGORIES } from '@/data/offers';
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+
+export default function OffersScreen() {
+  const router = useRouter();
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <ScrollView
+        contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}>
+        <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
+          Safarihills
+        </Text>
+        <Text className="mt-2 text-3xl font-bold text-slate-900">Apartment deals and offers</Text>
+        <Text className="mt-1 text-sm text-slate-500">
+          The biggest marketplace for apartment deals, flash discounts, and stay rewards.
+        </Text>
+
+        <View className="mt-6 rounded-3xl border border-blue-100 bg-white p-5 shadow-sm shadow-blue-100">
+          <View className="flex-row items-center gap-4">
+            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-blue-50">
+              <Feather name="tag" size={20} color="#1d4ed8" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-slate-900">
+                New deals drop every week
+              </Text>
+              <Text className="mt-1 text-sm text-slate-500">
+                Save on late-night arrivals, long stays, half-day rests, and spa perks.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-8">
+          <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+            Offer categories
+          </Text>
+        </View>
+
+        {OFFER_CATEGORIES.map((category) => (
+          <Pressable
+            key={category.id}
+            className="mt-5 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm shadow-slate-100"
+            onPress={() => router.push(`/offers/${category.id}`)}>
+            <LoadingImageBackground source={{ uri: category.image }} className="h-40">
+              <View className="absolute inset-0 bg-black/35" />
+              <View className="flex-1 justify-between p-4">
+                <View className="self-end rounded-full bg-white/90 px-3 py-1">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
+                    {category.offers.length} offers
+                  </Text>
+                </View>
+                <Text className="text-2xl font-bold text-white">{category.title}</Text>
+              </View>
+            </LoadingImageBackground>
+
+            <View className="p-5">
+              <View className="flex-row flex-wrap gap-2">
+                {category.rewards.map((reward) => (
+                  <View
+                    key={reward}
+                    className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1">
+                    <Text className="text-xs font-semibold text-blue-700">{reward}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text className="mt-3 text-sm text-slate-500">{category.description}</Text>
+              <View className="mt-4 flex-row items-center justify-between">
+                <Text className="text-sm font-semibold text-blue-700">View offers</Text>
+                <Feather name="arrow-right" size={18} color="#1d4ed8" />
+              </View>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
