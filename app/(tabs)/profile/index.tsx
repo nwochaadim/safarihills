@@ -1,4 +1,3 @@
-import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
@@ -17,13 +16,6 @@ const accountLinks: LinkConfig[] = [
   { label: 'Wallet', href: '/(tabs)/profile/wallet' },
   { label: 'Referrals', href: '/profile/referrals' },
 ];
-
-const medalLabel: Record<string, string> = {
-  Silver: 'Silver',
-  Ruby: 'Ruby',
-  Gold: 'Gold',
-  Diamond: 'Diamond',
-};
 
 const supportLinks: LinkConfig[] = [
   { label: 'FAQs', href: '/profile/faqs' },
@@ -48,17 +40,6 @@ const renderLink = (router: ReturnType<typeof useRouter>) => (item: LinkConfig) 
 export default function ProfileScreen() {
   const router = useRouter();
   const version = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
-  const stats = {
-    points: 260,
-    bookings: 34,
-    badges: {
-      Silver: 5,
-      Ruby: 3,
-      Gold: 2,
-      Diamond: 1,
-    },
-  };
-  const [tooltip, setTooltip] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
     'checking'
   );
@@ -112,54 +93,6 @@ export default function ProfileScreen() {
                 <Text className="mt-1 text-center text-sm text-slate-500">
                   adim@gmail.com - Elite Navigator
                 </Text>
-              </View>
-            <View className="mt-6">
-              <View className="flex-row flex-wrap items-center justify-center gap-4">
-                <Pressable
-                  className="flex-row items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2"
-                  onPress={() => setTooltip(`${stats.points} pts have been earned.`)}>
-                  <Feather name="award" size={14} color="#1d4ed8" />
-                  <Text className="text-sm font-semibold text-blue-700">
-                    {stats.points} pts
-                  </Text>
-                </Pressable>
-                <Pressable
-                  className="flex-row items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-4 py-2"
-                  onPress={() => setTooltip(`${stats.bookings} bookings recorded.`)}>
-                  <Feather name="briefcase" size={14} color="#0f172a" />
-                  <Text className="text-sm font-semibold text-slate-700">
-                    {stats.bookings} bookings
-                  </Text>
-                </Pressable>
-              </View>
-              <View className="mt-3 flex-row flex-wrap items-center justify-center gap-3">
-                {Object.entries(stats.badges).map(([badge, count]) => (
-                  <Pressable
-                    key={badge}
-                    className="flex-row items-center gap-2 rounded-full border border-slate-100 bg-white px-4 py-2 shadow-sm shadow-slate-50"
-                    onPress={() =>
-                      setTooltip(
-                        `${medalLabel[badge]} medal has been won ${count} ${
-                          count === 1 ? 'time' : 'times'
-                        }.`
-                      )
-                    }>
-                    <Text className="text-sm font-semibold text-slate-900">
-                      {count} {medalLabel[badge]}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-              {tooltip ? (
-                <View className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
-                  <View className="flex-row items-start justify-between">
-                      <Text className="flex-1 text-sm text-blue-700">{tooltip}</Text>
-                      <Pressable onPress={() => setTooltip(null)}>
-                        <Feather name="x" size={16} color="#1d4ed8" />
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : null}
               </View>
             </View>
 
