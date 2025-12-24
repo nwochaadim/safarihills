@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   SafeAreaView,
@@ -18,6 +19,8 @@ import {
 const { width } = Dimensions.get('window');
 const GALLERY_HORIZONTAL_PADDING = 24;
 const GALLERY_WIDTH = width - GALLERY_HORIZONTAL_PADDING * 2;
+const TERMS_URL = 'https://safarihills.app/terms';
+const WALLET_BALANCE = 120000;
 
 const PURPOSE_OPTIONS: { label: string; icon: 'moon' | 'sun' | 'briefcase' | 'monitor' | 'users' | 'music' | 'camera' }[] =
   [
@@ -186,6 +189,8 @@ export default function BookingScreen() {
   const [purposeModalVisible, setPurposeModalVisible] = useState(false);
   const [galleryRoom, setGalleryRoom] = useState<RoomCategory | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
 
   const bookingOptions = listing?.bookingOptions ?? [];
   const defaultBookingType: BookingOption = bookingOptions.includes('entire')
@@ -236,10 +241,22 @@ export default function BookingScreen() {
   const cautionFee = CAUTION_FEES[bookingType] ?? 0;
   const subtotal = nights > 0 ? nights * nightlyPrice : 0;
   const total = subtotal + (nights > 0 ? cautionFee : 0);
+  const hasDates = nights > 0;
+  const hasPrice = nightlyPrice > 0;
+  const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
+  const canPay =
+    acceptedTerms &&
+    hasDates &&
+    hasPrice &&
+    (paymentMethod === 'paystack' || walletHasFunds);
 
   const openCalendar = () => {
     setSelectionError(null);
     setCalendarVisible(true);
+  };
+
+  const handleOpenTerms = () => {
+    Linking.openURL(TERMS_URL);
   };
 
   const openGallery = (room: RoomCategory) => {
@@ -537,6 +554,121 @@ export default function BookingScreen() {
                 Select your dates to see a detailed price breakdown.
               </Text>
             )}
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Payment method
+            </Text>
+            <View className="mt-4 flex-row gap-3">
+              <Pressable
+                className={`flex-1 rounded-2xl border px-4 py-3 ${
+                  paymentMethod === 'paystack'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-slate-200 bg-white'
+                }`}
+                onPress={() => setPaymentMethod('paystack')}>
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text
+                      className={`text-sm font-semibold ${
+                        paymentMethod === 'paystack' ? 'text-blue-700' : 'text-slate-700'
+                      }`}>
+                      Pay Online
+                    </Text>
+                    <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
+                  </View>
+                  <View
+                    className={`h-5 w-5 items-center justify-center rounded-full border ${
+                      paymentMethod === 'paystack'
+                        ? 'border-blue-600 bg-blue-600'
+                        : 'border-slate-300'
+                    }`}>
+                    {paymentMethod === 'paystack' ? (
+                      <View className="h-2 w-2 rounded-full bg-white" />
+                    ) : null}
+                  </View>
+                </View>
+              </Pressable>
+              <Pressable
+                className={`flex-1 rounded-2xl border px-4 py-3 ${
+                  paymentMethod === 'wallet' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                }`}
+                onPress={() => setPaymentMethod('wallet')}>
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text
+                      className={`text-sm font-semibold ${
+                        paymentMethod === 'wallet' ? 'text-blue-700' : 'text-slate-700'
+                      }`}>
+                      Pay via wallet
+                    </Text>
+                    <Text className="mt-1 text-xs text-slate-500">
+                      Balance {formatCurrency(WALLET_BALANCE)}
+                    </Text>
+                  </View>
+                  <View
+                    className={`h-5 w-5 items-center justify-center rounded-full border ${
+                      paymentMethod === 'wallet'
+                        ? 'border-blue-600 bg-blue-600'
+                        : 'border-slate-300'
+                    }`}>
+                    {paymentMethod === 'wallet' ? (
+                      <View className="h-2 w-2 rounded-full bg-white" />
+                    ) : null}
+                  </View>
+                </View>
+              </Pressable>
+            </View>
+            {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">
+                  Wallet balance is lower than the booking total.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <View className="flex-row items-start gap-3">
+              <Pressable
+                className={`mt-0.5 h-5 w-5 items-center justify-center rounded border ${
+                  acceptedTerms ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
+                }`}
+                onPress={() => setAcceptedTerms((prev) => !prev)}>
+                {acceptedTerms ? <Feather name="check" size={12} color="#ffffff" /> : null}
+              </Pressable>
+              <Text className="flex-1 text-sm text-slate-600">
+                I have read and accepted the{' '}
+                <Text className="font-semibold text-blue-600" onPress={handleOpenTerms}>
+                  Terms of use
+                </Text>
+              </Text>
+            </View>
+
+            <Pressable
+              className={`mt-5 items-center justify-center rounded-full py-4 ${
+                canPay ? 'bg-blue-600' : 'bg-slate-200'
+              }`}
+              disabled={!canPay}
+              onPress={() => {}}>
+              <View className="items-center">
+                <Text
+                  className={`text-base font-semibold ${
+                    canPay ? 'text-white' : 'text-slate-500'
+                  }`}>
+                  Pay Now · {formatCurrency(total)}
+                </Text>
+                <Text
+                  className={`text-xs font-semibold ${
+                    canPay ? 'text-blue-100' : 'text-slate-400'
+                  }`}>
+                  Booking total
+                </Text>
+              </View>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
