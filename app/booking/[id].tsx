@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -67,6 +68,18 @@ const formatDateDisplay = (date: Date | null) =>
     : 'Add date';
 
 const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
+
+const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
+
+const getCouponAmount = (code: string, subtotal: number) => {
+  if (code === 'SAFARI10') {
+    return Math.round(subtotal * 0.1);
+  }
+  if (code === 'WELCOME5') {
+    return 5000;
+  }
+  return 0;
+};
 
 type CalendarDay = {
   date: Date;
@@ -191,6 +204,9 @@ export default function BookingScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponStatus, setCouponStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
+  const [couponAmount, setCouponAmount] = useState(0);
 
   const bookingOptions = listing?.bookingOptions ?? [];
   const defaultBookingType: BookingOption = bookingOptions.includes('entire')
@@ -240,7 +256,8 @@ export default function BookingScreen() {
 
   const cautionFee = CAUTION_FEES[bookingType] ?? 0;
   const subtotal = nights > 0 ? nights * nightlyPrice : 0;
-  const total = subtotal + (nights > 0 ? cautionFee : 0);
+  const discount = nights > 0 ? Math.min(couponAmount, subtotal) : 0;
+  const total = subtotal - discount + (nights > 0 ? cautionFee : 0);
   const hasDates = nights > 0;
   const hasPrice = nightlyPrice > 0;
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
@@ -249,6 +266,37 @@ export default function BookingScreen() {
     hasDates &&
     hasPrice &&
     (paymentMethod === 'paystack' || walletHasFunds);
+
+  const handleApplyCoupon = () => {
+    const normalized = normalizeCouponCode(couponCode);
+    if (!normalized) {
+      setCouponStatus('invalid');
+      setCouponAmount(0);
+      return;
+    }
+    const amount = getCouponAmount(normalized, subtotal);
+    if (amount > 0 || normalized === 'SAFARI10' || normalized === 'WELCOME5') {
+      setCouponAmount(amount);
+      setCouponStatus('valid');
+      return;
+    }
+    setCouponStatus('invalid');
+    setCouponAmount(0);
+  };
+
+  const clearCouponFeedback = () => {
+    if (couponStatus !== 'idle') {
+      setCouponStatus('idle');
+    }
+  };
+
+  useEffect(() => {
+    if (couponStatus !== 'valid') return;
+    const normalized = normalizeCouponCode(couponCode);
+    if (!normalized) return;
+    const amount = getCouponAmount(normalized, subtotal);
+    setCouponAmount(amount);
+  }, [couponCode, couponStatus, subtotal]);
 
   const openCalendar = () => {
     setSelectionError(null);
@@ -533,6 +581,14 @@ export default function BookingScreen() {
                     {formatCurrency(subtotal)}
                   </Text>
                 </View>
+                {discount > 0 ? (
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-sm text-emerald-600">Coupon discount</Text>
+                    <Text className="text-sm font-semibold text-emerald-600">
+                      -{formatCurrency(discount)}
+                    </Text>
+                  </View>
+                ) : null}
                 <View className="flex-row items-center justify-between">
                   <Text className="text-sm text-slate-500">Caution fee</Text>
                   <Text className="text-sm font-semibold text-slate-900">
@@ -559,6 +615,47 @@ export default function BookingScreen() {
 
         <View className="mt-6 px-6">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Coupon
+            </Text>
+            <Text className="mt-2 text-sm text-slate-500">
+              Apply a promo code to unlock savings on your stay.
+            </Text>
+            <View className="mt-4 flex-row items-center gap-3">
+              <TextInput
+                className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
+                placeholder="Enter coupon code"
+                placeholderTextColor="#94a3b8"
+                autoCapitalize="characters"
+                value={couponCode}
+                onChangeText={(value) => {
+                  setCouponCode(value);
+                  clearCouponFeedback();
+                }}
+              />
+              <Pressable className="rounded-2xl bg-blue-600 px-4 py-3" onPress={handleApplyCoupon}>
+                <Text className="text-sm font-semibold text-white">Apply</Text>
+              </Pressable>
+            </View>
+            {couponStatus === 'valid' ? (
+              <View className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-emerald-600">
+                  {discount > 0
+                    ? `Coupon applied. You saved ${formatCurrency(discount)}.`
+                    : 'Coupon applied. Select dates to see savings.'}
+                </Text>
+              </View>
+            ) : null}
+            {couponStatus === 'invalid' ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">
+                  That coupon code is invalid.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Payment method
             </Text>
