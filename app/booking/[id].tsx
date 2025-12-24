@@ -19,15 +19,16 @@ const { width } = Dimensions.get('window');
 const GALLERY_HORIZONTAL_PADDING = 24;
 const GALLERY_WIDTH = width - GALLERY_HORIZONTAL_PADDING * 2;
 
-const PURPOSE_OPTIONS = [
-  'Sleep over',
-  'Vacation',
-  'Business',
-  'Work related',
-  'Get Together',
-  'Parties',
-  'PhotoShoot',
-];
+const PURPOSE_OPTIONS: { label: string; icon: 'moon' | 'sun' | 'briefcase' | 'monitor' | 'users' | 'music' | 'camera' }[] =
+  [
+    { label: 'Sleep over', icon: 'moon' },
+    { label: 'Vacation', icon: 'sun' },
+    { label: 'Business', icon: 'briefcase' },
+    { label: 'Work related', icon: 'monitor' },
+    { label: 'Get Together', icon: 'users' },
+    { label: 'Parties', icon: 'music' },
+    { label: 'PhotoShoot', icon: 'camera' },
+  ];
 
 const CAUTION_FEES: Record<BookingOption, number> = {
   room: 30000,
@@ -479,13 +480,21 @@ export default function BookingScreen() {
             <Pressable
               className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
               onPress={() => setPurposeModalVisible(true)}>
-              <View>
+              <View className="flex-1 pr-3">
                 <Text className="text-xs font-semibold uppercase text-slate-500">Purpose</Text>
                 <Text className="mt-1 text-base font-semibold text-slate-900">
                   {purpose || 'Select purpose of stay'}
                 </Text>
+                <Text className="mt-1 text-xs text-slate-400">
+                  This helps us tailor your stay experience.
+                </Text>
               </View>
-              <Feather name="chevron-down" size={18} color="#64748b" />
+              <View className="flex-row items-center gap-2 rounded-full bg-white px-3 py-1.5">
+                <Feather name="sliders" size={14} color="#1d4ed8" />
+                <Text className="text-xs font-semibold text-blue-700">
+                  {purpose ? 'Change' : 'Choose'}
+                </Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -809,22 +818,40 @@ export default function BookingScreen() {
                 <Feather name="x" size={20} color="#0f172a" />
               </Pressable>
             </View>
-            <View className="mt-4 space-y-2">
+            <Text className="mt-2 text-sm text-slate-500">
+              Let us know why you are visiting so we can personalize your experience.
+            </Text>
+            <View className="mt-4 flex-row flex-wrap gap-3">
               {PURPOSE_OPTIONS.map((option) => {
-                const isSelected = purpose === option;
+                const isSelected = purpose === option.label;
                 return (
                   <Pressable
-                    key={option}
+                    key={option.label}
                     onPress={() => {
-                      setPurpose(option);
+                      setPurpose(option.label);
                       setPurposeModalVisible(false);
                     }}
-                    className={`rounded-2xl border px-4 py-3 ${
+                    className={`w-[48%] rounded-2xl border px-4 py-3 ${
                       isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
                     }`}>
-                    <Text className={`text-sm font-semibold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
-                      {option}
-                    </Text>
+                    <View className="flex-row items-center gap-2">
+                      <View
+                        className={`h-8 w-8 items-center justify-center rounded-full ${
+                          isSelected ? 'bg-blue-600' : 'bg-slate-100'
+                        }`}>
+                        <Feather
+                          name={option.icon}
+                          size={16}
+                          color={isSelected ? '#ffffff' : '#64748b'}
+                        />
+                      </View>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          isSelected ? 'text-blue-700' : 'text-slate-700'
+                        }`}>
+                        {option.label}
+                      </Text>
+                    </View>
                   </Pressable>
                 );
               })}
