@@ -1,0 +1,837 @@
+import { BackButton } from '@/components/BackButton';
+import { LoadingImage } from '@/components/LoadingImage';
+import { BookingOption, findListingById, RoomCategory } from '@/data/listings';
+import { Feather } from '@expo/vector-icons';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Dimensions,
+  FlatList,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
+
+const { width } = Dimensions.get('window');
+const GALLERY_HORIZONTAL_PADDING = 24;
+const GALLERY_WIDTH = width - GALLERY_HORIZONTAL_PADDING * 2;
+
+const PURPOSE_OPTIONS = [
+  'Sleep over',
+  'Vacation',
+  'Business',
+  'Work related',
+  'Get Together',
+  'Parties',
+  'PhotoShoot',
+];
+
+const CAUTION_FEES: Record<BookingOption, number> = {
+  room: 30000,
+  entire: 50000,
+};
+
+const startOfDay = (date: Date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const startOfMonth = (date: Date) => {
+  const next = new Date(date);
+  next.setDate(1);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateDisplay = (date: Date | null) =>
+  date
+    ? date.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+      })
+    : 'Add date';
+
+const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
+
+type CalendarDay = {
+  date: Date;
+  isCurrentMonth: boolean;
+  isPast: boolean;
+  isBooked: boolean;
+  isStart: boolean;
+  isEnd: boolean;
+  isBetween: boolean;
+  nightlyPrice: number;
+};
+
+const formatShortCurrency = (value: number) => {
+  if (value >= 1000000) {
+    const millions = value / 1000000;
+    const label = millions % 1 === 0 ? millions.toFixed(0) : millions.toFixed(1);
+    return `${label}m`;
+  }
+  if (value >= 1000) {
+    return `${Math.round(value / 1000)}k`;
+  }
+  return `${value}`;
+};
+
+const getDatePrice = (date: Date, basePrice: number) => {
+  if (basePrice <= 0) return 0;
+  const seed = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
+  const varianceSteps = (seed % 9) - 4;
+  const variance = varianceSteps * 0.03;
+  const price = Math.round((basePrice * (1 + variance)) / 1000) * 1000;
+  return Math.max(price, 0);
+};
+
+const buildCalendarDays = (
+  calendarMonth: Date,
+  checkIn: Date | null,
+  checkOut: Date | null,
+  availability: Record<string, boolean>,
+  basePrice: number
+): CalendarDay[] => {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  const gridStart = new Date(start);
+  gridStart.setDate(start.getDate() - start.getDay());
+  const gridEnd = new Date(end);
+  gridEnd.setDate(end.getDate() + (6 - end.getDay()));
+
+  const days: CalendarDay[] = [];
+  const today = startOfDay(new Date());
+  const startDate = checkIn ? startOfDay(checkIn) : null;
+  const endDate = checkOut ? startOfDay(checkOut) : null;
+
+  for (
+    let cursor = new Date(gridStart);
+    cursor <= gridEnd;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const date = new Date(cursor);
+    const normalized = startOfDay(date);
+    const key = formatDateKey(date);
+    const isStart = startDate ? normalized.getTime() === startDate.getTime() : false;
+    const isEnd = endDate ? normalized.getTime() === endDate.getTime() : false;
+    const isBetween = startDate && endDate && normalized > startDate && normalized < endDate;
+
+    days.push({
+      date,
+      isCurrentMonth: date.getMonth() === month,
+      isPast: normalized < today,
+      isBooked: availability[key] === false,
+      isStart,
+      isEnd,
+      isBetween: Boolean(isBetween),
+      nightlyPrice: getDatePrice(date, basePrice),
+    });
+  }
+
+  return days;
+};
+
+const isRangeAvailable = (
+  start: Date,
+  end: Date,
+  availability: Record<string, boolean>
+) => {
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const endDate = new Date(end);
+  endDate.setHours(0, 0, 0, 0);
+
+  while (cursor < endDate) {
+    const key = formatDateKey(cursor);
+    if (availability[key] === false) {
+      return false;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return true;
+};
+
+const getBookingTypeLabel = (option: BookingOption) =>
+  option === 'room' ? 'Single room' : 'Entire apartment';
+
+const getBookingTypeIcon = (option: BookingOption) => (option === 'room' ? 'key' : 'home');
+
+export default function BookingScreen() {
+  const router = useRouter();
+  const { id: idParam } = useLocalSearchParams<{ id?: string }>();
+  const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  const listing = useMemo(() => (id ? findListingById(id) : undefined), [id]);
+
+  const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
+  const [checkIn, setCheckIn] = useState<Date | null>(null);
+  const [checkOut, setCheckOut] = useState<Date | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [guestCount, setGuestCount] = useState(1);
+  const [purpose, setPurpose] = useState('');
+  const [purposeModalVisible, setPurposeModalVisible] = useState(false);
+  const [galleryRoom, setGalleryRoom] = useState<RoomCategory | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+
+  const bookingOptions = listing?.bookingOptions ?? [];
+  const defaultBookingType: BookingOption = bookingOptions.includes('entire')
+    ? 'entire'
+    : bookingOptions[0] ?? 'entire';
+  const [bookingType, setBookingType] = useState<BookingOption>(defaultBookingType);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(
+    listing?.roomCategories?.[0]?.id ?? null
+  );
+
+  const availability = listing?.availability ?? {};
+
+
+  useEffect(() => {
+    if (!listing) return;
+    if (bookingOptions.length && !bookingOptions.includes(bookingType)) {
+      setBookingType(defaultBookingType);
+    }
+  }, [bookingOptions, bookingType, defaultBookingType, listing]);
+
+  useEffect(() => {
+    if (bookingType !== 'room') return;
+    if (selectedRoomId) return;
+    if (listing?.roomCategories?.length) {
+      setSelectedRoomId(listing.roomCategories[0].id);
+    }
+  }, [bookingType, listing, selectedRoomId]);
+
+  const nights = useMemo(() => {
+    if (!checkIn || !checkOut) return 0;
+    const diff = startOfDay(checkOut).getTime() - startOfDay(checkIn).getTime();
+    return Math.max(Math.round(diff / (1000 * 60 * 60 * 24)), 0);
+  }, [checkIn, checkOut]);
+
+  const selectedRoom = useMemo<RoomCategory | undefined>(
+    () => listing?.roomCategories?.find((room) => room.id === selectedRoomId),
+    [listing, selectedRoomId]
+  );
+
+  const nightlyPrice =
+    bookingType === 'room' ? selectedRoom?.nightlyPrice ?? 0 : listing?.minimumPrice ?? 0;
+
+  const calendarDays = useMemo(
+    () => buildCalendarDays(calendarMonth, checkIn, checkOut, availability, nightlyPrice),
+    [calendarMonth, checkIn, checkOut, availability, nightlyPrice]
+  );
+
+  const cautionFee = CAUTION_FEES[bookingType] ?? 0;
+  const subtotal = nights > 0 ? nights * nightlyPrice : 0;
+  const total = subtotal + (nights > 0 ? cautionFee : 0);
+
+  const openCalendar = () => {
+    setSelectionError(null);
+    setCalendarVisible(true);
+  };
+
+  const openGallery = (room: RoomCategory) => {
+    setGalleryRoom(room);
+    setGalleryIndex(0);
+  };
+
+  const closeGallery = () => {
+    setGalleryRoom(null);
+  };
+
+  const handleSelectDate = (day: CalendarDay) => {
+    if (day.isPast) {
+      setSelectionError('Past dates are unavailable.');
+      return;
+    }
+    if (day.isBooked) {
+      setSelectionError('This date is already booked.');
+      return;
+    }
+
+    const normalized = startOfDay(day.date);
+    if (!checkIn || (checkIn && checkOut)) {
+      setCheckIn(normalized);
+      setCheckOut(null);
+      setSelectionError(null);
+      return;
+    }
+
+    if (checkIn && !checkOut) {
+      if (normalized <= checkIn) {
+        setCheckIn(normalized);
+        setCheckOut(null);
+        setSelectionError(null);
+        return;
+      }
+      const isAvailable = isRangeAvailable(checkIn, normalized, availability);
+      if (!isAvailable) {
+        setSelectionError('Some dates in that range are already booked.');
+        return;
+      }
+      setCheckOut(normalized);
+      setSelectionError(null);
+      setCalendarVisible(false);
+    }
+  };
+
+  const adjustGuestCount = (delta: number) => {
+    const maxGuests = listing?.maxNumberOfGuestsAllowed ?? 1;
+    setGuestCount((prev) => Math.max(1, Math.min(maxGuests, prev + delta)));
+  };
+
+  if (!listing) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-white">
+        <Stack.Screen options={{ headerShown: false }} />
+        <Pressable
+          className="rounded-full bg-blue-600 px-5 py-3"
+          onPress={() => router.back()}>
+          <Text className="text-base font-semibold text-white">Booking not found. Go back</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}>
+        <View className="px-6 pt-4">
+          <BackButton onPress={() => router.back()} />
+          <Text className="mt-4 text-3xl font-bold text-slate-900">Book your stay</Text>
+          <Text className="mt-2 text-base text-slate-500">
+            {listing.name} · {listing.area}
+          </Text>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Booking type
+            </Text>
+            <View className="mt-4 flex-row flex-wrap gap-3">
+              {bookingOptions.map((option) => {
+                const isActive = bookingType === option;
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => setBookingType(option)}
+                    className={`flex-row items-center gap-2 rounded-full border px-4 py-2 ${
+                      isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                    }`}>
+                    <Feather
+                      name={getBookingTypeIcon(option)}
+                      size={14}
+                      color={isActive ? '#1d4ed8' : '#94a3b8'}
+                    />
+                    <Text
+                      className={`text-sm font-semibold ${
+                        isActive ? 'text-blue-700' : 'text-slate-600'
+                      }`}>
+                      {getBookingTypeLabel(option)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {bookingType === 'entire' ? (
+              <View className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+                  Entire apartment rate
+                </Text>
+                <Text className="mt-1 text-lg font-semibold text-slate-900">
+                  {formatCurrency(listing.minimumPrice)}
+                  <Text className="text-xs font-medium text-slate-500"> / night</Text>
+                </Text>
+              </View>
+            ) : (
+              <View className="mt-4">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Choose a room category
+                </Text>
+                {listing.roomCategories.length === 0 ? (
+                  <View className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4">
+                    <Text className="text-sm text-slate-500">
+                      Room options will be available soon for this listing.
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="mt-3 space-y-4">
+                    {listing.roomCategories.map((room) => {
+                      const isSelected = selectedRoomId === room.id;
+                      return (
+                        <Pressable
+                          key={`${listing.id}-${room.id}`}
+                          onPress={() => setSelectedRoomId(room.id)}
+                          className={`rounded-3xl border p-4 ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50/40'
+                              : 'border-slate-200 bg-white'
+                          }`}>
+                          <View className="flex-row items-start justify-between">
+                            <View className="flex-1 pr-3">
+                              <Text className="text-base font-semibold text-slate-900">
+                                {room.name}
+                              </Text>
+                              <Text className="mt-1 text-sm text-slate-500">
+                                {room.description}
+                              </Text>
+                            </View>
+                            <Text className="text-base font-semibold text-blue-700">
+                              {formatCurrency(room.nightlyPrice)}
+                              <Text className="text-xs font-medium text-slate-500"> / night</Text>
+                            </Text>
+                          </View>
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            className="mt-4"
+                            contentContainerStyle={{ paddingRight: 8 }}>
+                            {room.photos.map((photo, index) => (
+                              <LoadingImage
+                                key={`${room.id}-${index}`}
+                                source={{ uri: photo }}
+                                className="mr-3 h-28 w-44 rounded-2xl"
+                                resizeMode="cover"
+                              />
+                            ))}
+                          </ScrollView>
+                          <View className="mt-3 flex-row items-center justify-between">
+                            <Text className="text-xs text-slate-500">
+                              {room.photos.length} photos
+                            </Text>
+                            <Pressable
+                              className="flex-row items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5"
+                              onPress={() => openGallery(room)}>
+                              <Feather name="image" size={14} color="#1d4ed8" />
+                              <Text className="text-xs font-semibold text-blue-700">
+                                View all
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Stay details
+            </Text>
+            <View className="mt-4 flex-row gap-3">
+              <Pressable
+                className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                onPress={openCalendar}>
+                <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {formatDateDisplay(checkIn)}
+                </Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                onPress={openCalendar}>
+                <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {formatDateDisplay(checkOut)}
+                </Text>
+              </Pressable>
+            </View>
+            <Text className="mt-2 text-xs text-slate-400">Tap a date to open the calendar.</Text>
+
+            <View className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <Text className="text-sm font-semibold text-slate-700">Guests</Text>
+              <View className="flex-row items-center gap-3">
+                <Pressable
+                  className="h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white"
+                  onPress={() => adjustGuestCount(-1)}>
+                  <Feather name="minus" size={16} color="#475569" />
+                </Pressable>
+                <Text className="text-base font-semibold text-slate-900">{guestCount}</Text>
+                <Pressable
+                  className="h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white"
+                  onPress={() => adjustGuestCount(1)}>
+                  <Feather name="plus" size={16} color="#475569" />
+                </Pressable>
+              </View>
+            </View>
+
+            <Pressable
+              className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+              onPress={() => setPurposeModalVisible(true)}>
+              <View>
+                <Text className="text-xs font-semibold uppercase text-slate-500">Purpose</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {purpose || 'Select purpose of stay'}
+                </Text>
+              </View>
+              <Feather name="chevron-down" size={18} color="#64748b" />
+            </Pressable>
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Price summary
+            </Text>
+            {nights > 0 ? (
+              <View className="mt-4 space-y-3">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">Nights</Text>
+                  <Text className="text-sm font-semibold text-slate-900">{nights}</Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">Subtotal</Text>
+                  <Text className="text-sm font-semibold text-slate-900">
+                    {formatCurrency(subtotal)}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">Caution fee</Text>
+                  <Text className="text-sm font-semibold text-slate-900">
+                    {formatCurrency(cautionFee)}
+                  </Text>
+                </View>
+                <View className="mt-2 flex-row items-center justify-between border-t border-slate-200 pt-3">
+                  <Text className="text-base font-semibold text-slate-900">Total</Text>
+                  <Text className="text-base font-semibold text-blue-700">
+                    {formatCurrency(total)}
+                  </Text>
+                </View>
+                <Text className="text-xs text-slate-500">
+                  Discounts apply for weekly stays and above.
+                </Text>
+              </View>
+            ) : (
+              <Text className="mt-3 text-sm text-slate-500">
+                Select your dates to see a detailed price breakdown.
+              </Text>
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      <Modal transparent animationType="slide" visible={Boolean(galleryRoom)} onRequestClose={closeGallery}>
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="max-h-[85%] rounded-t-[32px] bg-white">
+            <View className="flex-row items-start justify-between px-6 pt-6">
+              <View>
+                <Text className="text-lg font-semibold text-slate-900">
+                  {galleryRoom?.name ?? 'Room gallery'}
+                </Text>
+                <Text className="mt-1 text-sm text-slate-500">
+                  {galleryRoom?.photos.length ?? 0} photos
+                </Text>
+              </View>
+              <Pressable onPress={closeGallery} className="rounded-full border border-slate-200 p-2">
+                <Feather name="x" size={18} color="#0f172a" />
+              </Pressable>
+            </View>
+            <ScrollView className="mt-4" contentContainerStyle={{ paddingBottom: 24 }}>
+              <View className="px-6">
+                <FlatList
+                  data={galleryRoom?.photos ?? []}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(photo, index) => `${galleryRoom?.id ?? 'room'}-${index}`}
+                  snapToInterval={GALLERY_WIDTH}
+                  decelerationRate="fast"
+                  onMomentumScrollEnd={(event) => {
+                    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / GALLERY_WIDTH);
+                    setGalleryIndex(nextIndex);
+                  }}
+                  renderItem={({ item }) => (
+                    <View style={{ width: GALLERY_WIDTH }}>
+                      <LoadingImage
+                        source={{ uri: item }}
+                        className="h-64 w-full rounded-3xl"
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
+                />
+                <View className="mt-3 flex-row items-center justify-center gap-2">
+                  {(galleryRoom?.photos ?? []).map((_, index) => (
+                    <View
+                      key={`${galleryRoom?.id ?? 'room'}-dot-${index}`}
+                      className={`h-1.5 rounded-full ${
+                        index === galleryIndex ? 'w-8 bg-slate-900' : 'w-3 bg-slate-300'
+                      }`}
+                    />
+                  ))}
+                </View>
+
+                <Text className="mt-5 text-base font-semibold text-slate-900">About this room</Text>
+                <Text className="mt-2 text-sm leading-6 text-slate-500">
+                  {galleryRoom?.description ?? 'Room details will be updated soon.'}
+                </Text>
+
+                <View className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+                    Amenities
+                  </Text>
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {(galleryRoom?.amenities ?? []).length === 0 ? (
+                      <Text className="text-sm text-slate-500">Amenities coming soon.</Text>
+                    ) : (
+                      (galleryRoom?.amenities ?? []).map((amenity) => (
+                        <View
+                          key={`${galleryRoom?.id ?? 'room'}-${amenity}`}
+                          className="rounded-full border border-blue-100 bg-white px-3 py-1.5">
+                          <Text className="text-xs font-semibold text-blue-700">{amenity}</Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+
+                <View className="mt-4 rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-500">
+                    Restrictions
+                  </Text>
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {(galleryRoom?.restrictions ?? []).length === 0 ? (
+                      <Text className="text-sm text-slate-500">No restrictions listed.</Text>
+                    ) : (
+                      (galleryRoom?.restrictions ?? []).map((restriction) => (
+                        <View
+                          key={`${galleryRoom?.id ?? 'room'}-${restriction}`}
+                          className="rounded-full border border-rose-100 bg-white px-3 py-1.5">
+                          <Text className="text-xs font-semibold text-rose-700">{restriction}</Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="slide"
+        visible={calendarVisible}
+        onRequestClose={() => setCalendarVisible(false)}>
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
+            <View className="mb-4 h-1 w-12 self-center rounded-full bg-slate-200" />
+            <View className="flex-row items-center justify-between">
+              <Text className="text-lg font-semibold text-slate-900">Select dates</Text>
+              <Pressable onPress={() => setCalendarVisible(false)}>
+                <Feather name="x" size={20} color="#0f172a" />
+              </Pressable>
+            </View>
+
+            <View className="mt-3 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+              <View>
+                <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                <Text className="mt-1 text-sm font-semibold text-slate-900">
+                  {formatDateDisplay(checkIn)}
+                </Text>
+              </View>
+              <Feather name="arrow-right" size={16} color="#94a3b8" />
+              <View>
+                <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
+                <Text className="mt-1 text-sm font-semibold text-slate-900">
+                  {formatDateDisplay(checkOut)}
+                </Text>
+              </View>
+            </View>
+
+            <View className="mt-4 flex-row items-center justify-between">
+              <Pressable
+                className="rounded-full border border-slate-200 p-2"
+                onPress={() =>
+                  setCalendarMonth((prev) => {
+                    const next = new Date(prev);
+                    next.setMonth(prev.getMonth() - 1, 1);
+                    return startOfMonth(next);
+                  })
+                }>
+                <Feather name="chevron-left" size={18} color="#0f172a" />
+              </Pressable>
+              <Text className="text-base font-semibold text-slate-900">
+                {calendarMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </Text>
+              <Pressable
+                className="rounded-full border border-slate-200 p-2"
+                onPress={() =>
+                  setCalendarMonth((prev) => {
+                    const next = new Date(prev);
+                    next.setMonth(prev.getMonth() + 1, 1);
+                    return startOfMonth(next);
+                  })
+                }>
+                <Feather name="chevron-right" size={18} color="#0f172a" />
+              </Pressable>
+            </View>
+
+            <View className="mt-4 flex-row justify-between">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                <Text
+                  key={day}
+                  className="w-[13%] text-center text-xs font-semibold uppercase text-slate-400">
+                  {day}
+                </Text>
+              ))}
+            </View>
+
+            <View className="mt-3 flex-row flex-wrap">
+              {calendarDays.map((day) => {
+                const isDisabled = day.isPast || day.isBooked || !day.isCurrentMonth;
+                const isSelected = day.isStart || day.isEnd;
+                const priceLabel =
+                  day.isCurrentMonth && day.nightlyPrice > 0
+                    ? formatShortCurrency(day.nightlyPrice)
+                    : '';
+                let containerClass =
+                  'm-[1.3%] h-14 w-[13%] items-center justify-center rounded-2xl border';
+                let textClass = 'text-sm font-semibold';
+                let priceClass = 'text-[10px] font-semibold';
+
+                if (!day.isCurrentMonth) {
+                  containerClass += ' border-transparent bg-transparent';
+                  textClass += ' text-slate-300';
+                  priceClass += ' text-slate-300';
+                } else if (day.isBooked) {
+                  containerClass += ' border-rose-200 bg-rose-50';
+                  textClass += ' text-rose-500';
+                  priceClass += ' text-rose-400';
+                } else if (day.isPast) {
+                  containerClass += ' border-slate-100 bg-slate-50';
+                  textClass += ' text-slate-300';
+                  priceClass += ' text-slate-300';
+                } else if (isSelected) {
+                  containerClass += ' border-blue-600 bg-blue-600';
+                  textClass += ' text-white';
+                  priceClass += ' text-white/80';
+                } else if (day.isBetween) {
+                  containerClass += ' border-blue-100 bg-blue-50';
+                  textClass += ' text-blue-700';
+                  priceClass += ' text-blue-600';
+                } else {
+                  containerClass += ' border-slate-200 bg-white';
+                  textClass += ' text-slate-700';
+                  priceClass += ' text-slate-500';
+                }
+
+                return (
+                  <Pressable
+                    key={day.date.toDateString()}
+                    disabled={isDisabled}
+                    className={containerClass}
+                    onPress={() => handleSelectDate(day)}>
+                    <View className="items-center">
+                      <Text className={textClass}>{day.date.getDate()}</Text>
+                      {priceLabel ? <Text className={priceClass}>{priceLabel}</Text> : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {selectionError ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">{selectionError}</Text>
+              </View>
+            ) : null}
+
+            <View className="mt-4 flex-row flex-wrap items-center gap-4">
+              <View className="flex-row items-center gap-2">
+                <View className="h-2.5 w-6 rounded-full bg-blue-500" />
+                <Text className="text-xs text-slate-500">Selected</Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="h-2.5 w-6 rounded-full bg-blue-100" />
+                <Text className="text-xs text-slate-500">In range</Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="h-2.5 w-6 rounded-full bg-rose-200" />
+                <Text className="text-xs text-slate-500">Booked</Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="h-2.5 w-6 rounded-full bg-slate-200" />
+                <Text className="text-xs text-slate-500">Unavailable</Text>
+              </View>
+            </View>
+
+            <View className="mt-4 flex-row items-center justify-between">
+              <Pressable
+                className="rounded-full border border-slate-200 px-4 py-2"
+                onPress={() => {
+                  setCheckIn(null);
+                  setCheckOut(null);
+                  setSelectionError(null);
+                }}>
+                <Text className="text-xs font-semibold text-slate-600">Clear dates</Text>
+              </Pressable>
+              <Pressable
+                className="rounded-full bg-blue-600 px-5 py-2.5"
+                onPress={() => setCalendarVisible(false)}>
+                <Text className="text-xs font-semibold text-white">Done</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent animationType="slide" visible={purposeModalVisible}>
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
+            <View className="mb-4 h-1 w-12 self-center rounded-full bg-slate-200" />
+            <View className="flex-row items-center justify-between">
+              <Text className="text-lg font-semibold text-slate-900">Purpose of stay</Text>
+              <Pressable onPress={() => setPurposeModalVisible(false)}>
+                <Feather name="x" size={20} color="#0f172a" />
+              </Pressable>
+            </View>
+            <View className="mt-4 space-y-2">
+              {PURPOSE_OPTIONS.map((option) => {
+                const isSelected = purpose === option;
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => {
+                      setPurpose(option);
+                      setPurposeModalVisible(false);
+                    }}
+                    className={`rounded-2xl border px-4 py-3 ${
+                      isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                    }`}>
+                    <Text className={`text-sm font-semibold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                      {option}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}

@@ -10,7 +10,6 @@ import {
   Dimensions,
   FlatList,
   Linking,
-  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -69,17 +68,23 @@ export default function ListingDetailScreen() {
     );
   }
 
-  return <ListingDetailContent listing={listing} onBack={() => router.back()} />;
+  return (
+    <ListingDetailContent
+      listing={listing}
+      onBack={() => router.back()}
+      onBook={() => router.push({ pathname: '/booking/[id]', params: { id: listing.id } })}
+    />
+  );
 }
 
 type ListingDetailContentProps = {
   listing: ListingDetail;
   onBack: () => void;
+  onBook: () => void;
 };
 
-function ListingDetailContent({ listing, onBack }: ListingDetailContentProps) {
+function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentProps) {
   const [activeImage, setActiveImage] = useState(0);
-  const [bookingSheetVisible, setBookingSheetVisible] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const handleOpenAttraction = (mapUrl: string) => {
@@ -308,7 +313,7 @@ function ListingDetailContent({ listing, onBack }: ListingDetailContentProps) {
         style={{ bottom: 0 }}>
         <Pressable
           className="items-center justify-center rounded-full bg-blue-600 py-4"
-          onPress={() => setBookingSheetVisible(true)}>
+          onPress={onBook}>
           <View className="flex-row items-center gap-2">
             <Text className="text-base font-semibold text-white">Book Now</Text>
             <Text className="text-xs font-semibold text-blue-100">
@@ -320,51 +325,6 @@ function ListingDetailContent({ listing, onBack }: ListingDetailContentProps) {
           Discounts apply for weekly stays and above
         </Text>
       </Animated.View>
-
-      <Modal animationType="slide" transparent visible={bookingSheetVisible}>
-        <View className="flex-1 justify-end bg-black/40">
-          <View className="rounded-t-[32px] bg-white px-6 pb-10 pt-6">
-            <View className="mb-6 h-1 w-14 self-center rounded-full bg-slate-200" />
-            <View className="flex-row items-start justify-between">
-              <Text className="text-2xl font-bold text-slate-900">Book your stay</Text>
-              <Pressable onPress={() => setBookingSheetVisible(false)}>
-                <Feather name="x" size={22} color="#0f172a" />
-              </Pressable>
-            </View>
-            <Text className="mt-2 text-base text-slate-500">
-              Secure this listing in minutes. Confirm dates and guests in the next step.
-            </Text>
-
-            <View className="mt-6 rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
-              <View className="flex-row items-center justify-between">
-                <Text className="text-sm font-semibold text-slate-500">From</Text>
-                <Text className="text-lg font-semibold text-slate-900">
-                  ₦{listing.minimumPrice.toLocaleString()}
-                  <Text className="text-xs font-medium text-slate-500"> / night</Text>
-                </Text>
-              </View>
-              <View className="mt-3 flex-row items-center justify-between">
-                <Text className="text-sm text-slate-500">Max guests</Text>
-                <Text className="text-sm font-semibold text-slate-800">
-                  {listing.maxNumberOfGuestsAllowed}
-                </Text>
-              </View>
-              <View className="mt-4">
-                <Text className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Booking options
-                </Text>
-                <View className="mt-2">{renderBookingOptions()}</View>
-              </View>
-            </View>
-
-            <Pressable
-              className="mt-8 items-center justify-center rounded-full bg-blue-600 py-4"
-              onPress={() => setBookingSheetVisible(false)}>
-              <Text className="text-base font-semibold text-white">Continue to booking</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

@@ -16,6 +16,16 @@ export type ListingAttraction = {
   mapUrl: string;
 };
 
+export type RoomCategory = {
+  id: string;
+  name: string;
+  description: string;
+  nightlyPrice: number;
+  photos: string[];
+  amenities: string[];
+  restrictions: string[];
+};
+
 export type ListingDetail = {
   id: string;
   name: string;
@@ -29,6 +39,7 @@ export type ListingDetail = {
   maxNumberOfGuestsAllowed: number;
   bookingOptions: BookingOption[];
   attractions: ListingAttraction[];
+  roomCategories: RoomCategory[];
   amenities: string[];
   gallery: string[];
   reviews: ListingReview[];
@@ -68,6 +79,19 @@ const APARTMENT_IMAGES = [
   'https://images.unsplash.com/photo-1549187774-b4e9b0445b41?auto=format&fit=crop&w=1200&q=80',
 ];
 
+const ROOM_IMAGES = {
+  deluxe: [
+    'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1502005097973-6a7082348e28?auto=format&fit=crop&w=1200&q=80',
+  ],
+  premium: [
+    'https://images.unsplash.com/photo-1505691723518-36a5ac3be353?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=1200&q=80',
+  ],
+};
+
 const buildGallery = (label: string, colors: string[]) => {
   if (!APARTMENT_IMAGES.length) return [];
   let hash = 0;
@@ -80,6 +104,27 @@ const buildGallery = (label: string, colors: string[]) => {
     return APARTMENT_IMAGES[imageIndex];
   });
 };
+
+const buildRoomCategories = (deluxePrice: number, premiumPrice: number): RoomCategory[] => [
+  {
+    id: 'deluxe',
+    name: 'Deluxe Room',
+    description: 'Bright, comfortable space with a cozy lounge corner.',
+    nightlyPrice: deluxePrice,
+    photos: ROOM_IMAGES.deluxe,
+    amenities: ['King bed', 'Smart TV', 'Workspace', 'Mini fridge', 'Air conditioning'],
+    restrictions: ['No smoking', 'No parties', 'No loud music', 'No pets'],
+  },
+  {
+    id: 'premium',
+    name: 'Premium Room',
+    description: 'Elevated finishes, larger layout, and upgraded amenities.',
+    nightlyPrice: premiumPrice,
+    photos: ROOM_IMAGES.premium,
+    amenities: ['King bed', 'Smart TV', 'Balcony', 'Work desk', 'Tea station'],
+    restrictions: ['No smoking', 'No parties', 'No loud music'],
+  },
+];
 
 const buildMapUrl = (query: string) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
@@ -362,6 +407,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 2,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA['Lekki Phase 1'],
+    roomCategories: [],
     amenities: ['wifi', 'ac', 'smart tv', 'balcony'],
     reviews: [
       {
@@ -395,6 +441,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 3,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA.Ikoyi,
+    roomCategories: [],
     amenities: ['wifi', 'ac', 'dining area', 'gym'],
     reviews: [
       {
@@ -421,6 +468,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 6,
     bookingOptions: ['room', 'entire'],
     attractions: ATTRACTIONS_BY_AREA['Victoria Island'],
+    roomCategories: buildRoomCategories(120000, 175000),
     amenities: ['wifi', 'cinema', 'dining area', 'balcony'],
     reviews: [
       {
@@ -447,6 +495,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 4,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA.Oniru,
+    roomCategories: [],
     amenities: ['wifi', 'swimming pool', 'ac', 'balcony'],
     reviews: [],
     availability: buildAvailability([4, 5, 14, 17]),
@@ -465,6 +514,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 2,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA['Banana Island'],
+    roomCategories: [],
     amenities: ['wifi', 'ac', 'smart tv', 'gym'],
     reviews: [],
     availability: buildAvailability([1, 7, 10, 13]),
@@ -483,6 +533,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 8,
     bookingOptions: ['room', 'entire'],
     attractions: ATTRACTIONS_BY_AREA.Lekki,
+    roomCategories: buildRoomCategories(140000, 210000),
     amenities: ['wifi', 'swimming pool', 'dining area', 'gym'],
     reviews: [
       {
@@ -509,6 +560,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 4,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA.Marina,
+    roomCategories: [],
     amenities: ['wifi', 'ac', 'dining area', 'smart tv'],
     reviews: [],
     availability: buildAvailability([3, 5, 11, 22]),
@@ -527,6 +579,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 2,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA.Yaba,
+    roomCategories: [],
     amenities: ['wifi', 'fans', 'balcony', 'smart tv'],
     reviews: [],
     availability: buildAvailability([2, 8, 13, 19]),
@@ -545,6 +598,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 10,
     bookingOptions: ['room', 'entire'],
     attractions: ATTRACTIONS_BY_AREA.Parkview,
+    roomCategories: buildRoomCategories(180000, 260000),
     amenities: ['wifi', 'swimming pool', 'cinema', 'gym'],
     reviews: [
       {
@@ -571,6 +625,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 6,
     bookingOptions: ['room', 'entire'],
     attractions: ATTRACTIONS_BY_AREA.Ajah,
+    roomCategories: buildRoomCategories(95000, 135000),
     amenities: ['wifi', 'dining area', 'ac', 'balcony'],
     reviews: [],
     availability: buildAvailability([1, 6, 14, 23]),
@@ -589,6 +644,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 2,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA['Lekki Phase 2'],
+    roomCategories: [],
     amenities: ['wifi', 'dining area', 'fans', 'balcony'],
     reviews: [],
     availability: buildAvailability([5, 10, 17, 24]),
@@ -607,6 +663,7 @@ export const LISTINGS: ListingDetail[] = [
     maxNumberOfGuestsAllowed: 4,
     bookingOptions: ['entire'],
     attractions: ATTRACTIONS_BY_AREA.Oniru,
+    roomCategories: [],
     amenities: ['wifi', 'swimming pool', 'ac', 'smart tv'],
     reviews: [],
     availability: buildAvailability([2, 7, 16, 20]),
