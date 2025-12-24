@@ -232,7 +232,7 @@ export default function BookingsScreen() {
       setAuthStatus('checking');
       SecureStore.getItemAsync('authToken')
         .then((token) => {
-          if (isActive) setAuthStatus(token ? 'signed-out' : 'signed-in');
+          if (isActive) setAuthStatus(token ? 'signed-in' : 'signed-in');
         })
         .catch(() => {
           if (isActive) setAuthStatus('signed-out');
