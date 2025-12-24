@@ -309,8 +309,16 @@ function ListingDetailContent({ listing, onBack }: ListingDetailContentProps) {
         <Pressable
           className="items-center justify-center rounded-full bg-blue-600 py-4"
           onPress={() => setBookingSheetVisible(true)}>
-          <Text className="text-base font-semibold text-white">Book Now</Text>
+          <View className="flex-row items-center gap-2">
+            <Text className="text-base font-semibold text-white">Book Now</Text>
+            <Text className="text-xs font-semibold text-blue-100">
+              ₦{listing.minimumPrice.toLocaleString()} / night
+            </Text>
+          </View>
         </Pressable>
+        <Text className="mt-2 text-center text-xs text-slate-500">
+          Discounts apply for weekly stays and above
+        </Text>
       </Animated.View>
 
       <Modal animationType="slide" transparent visible={bookingSheetVisible}>
