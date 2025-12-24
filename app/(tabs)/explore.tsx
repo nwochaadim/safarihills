@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { ComponentProps, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { LISTINGS, ListingDetail } from '@/data/listings';
+import { BookingOption, LISTINGS, ListingDetail } from '@/data/listings';
 
 const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
 
@@ -33,6 +33,34 @@ const AMENITIES = [
 
 const GUEST_OPTIONS = ['1', '2', '3', '4', '5', '6+'];
 const PAGE_SIZE = 10;
+
+type BookingOptionMeta = {
+  label: string;
+  icon: ComponentProps<typeof Feather>['name'];
+  containerClass: string;
+  textClass: string;
+  iconColor: string;
+};
+
+const getBookingOptionMeta = (option: BookingOption): BookingOptionMeta => {
+  if (option === 'room') {
+    return {
+      label: 'Single room',
+      icon: 'key',
+      containerClass: 'border-amber-200 bg-amber-50',
+      textClass: 'text-amber-700',
+      iconColor: '#b45309',
+    };
+  }
+
+  return {
+    label: 'Entire apartment',
+    icon: 'home',
+    containerClass: 'border-blue-200 bg-blue-50',
+    textClass: 'text-blue-700',
+    iconColor: '#1d4ed8',
+  };
+};
 
 type FilterState = {
   minBudget: string;
@@ -289,6 +317,24 @@ export default function ExploreScreen() {
           <Text className="text-sm text-slate-500" numberOfLines={2} ellipsizeMode="tail">
             {item.description}
           </Text>
+          <View className="mt-3">
+            <Text className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Bookable as
+            </Text>
+            <View className="mt-2 flex-row flex-wrap gap-2">
+              {item.bookingOptions.map((option) => {
+                const meta = getBookingOptionMeta(option);
+                return (
+                  <View
+                    key={`${item.id}-${option}`}
+                    className={`flex-row items-center gap-2 rounded-full border px-3 py-1.5 ${meta.containerClass}`}>
+                    <Feather name={meta.icon} size={12} color={meta.iconColor} />
+                    <Text className={`text-xs font-semibold ${meta.textClass}`}>{meta.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
               <Feather name="users" size={16} color="#64748b" />

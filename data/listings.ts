@@ -6,6 +6,8 @@ export type ListingReview = {
   rating: number;
 };
 
+export type BookingOption = 'room' | 'entire';
+
 export type ListingDetail = {
   id: string;
   name: string;
@@ -17,6 +19,7 @@ export type ListingDetail = {
   area: string;
   pointsToWin: number;
   maxNumberOfGuestsAllowed: number;
+  bookingOptions: BookingOption[];
   amenities: string[];
   gallery: string[];
   reviews: ListingReview[];
@@ -82,6 +85,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Lekki Phase 1',
     pointsToWin: 80,
     maxNumberOfGuestsAllowed: 2,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'ac', 'smart tv', 'balcony'],
     reviews: [
       {
@@ -113,6 +117,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Ikoyi',
     pointsToWin: 140,
     maxNumberOfGuestsAllowed: 3,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'ac', 'dining area', 'gym'],
     reviews: [
       {
@@ -137,6 +142,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Victoria Island',
     pointsToWin: 260,
     maxNumberOfGuestsAllowed: 6,
+    bookingOptions: ['room', 'entire'],
     amenities: ['wifi', 'cinema', 'dining area', 'balcony'],
     reviews: [
       {
@@ -161,6 +167,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Oniru',
     pointsToWin: 160,
     maxNumberOfGuestsAllowed: 4,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'swimming pool', 'ac', 'balcony'],
     reviews: [],
     availability: buildAvailability([4, 5, 14, 17]),
@@ -177,6 +184,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Banana Island',
     pointsToWin: 110,
     maxNumberOfGuestsAllowed: 2,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'ac', 'smart tv', 'gym'],
     reviews: [],
     availability: buildAvailability([1, 7, 10, 13]),
@@ -193,6 +201,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Lekki',
     pointsToWin: 310,
     maxNumberOfGuestsAllowed: 8,
+    bookingOptions: ['room', 'entire'],
     amenities: ['wifi', 'swimming pool', 'dining area', 'gym'],
     reviews: [
       {
@@ -217,6 +226,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Marina',
     pointsToWin: 170,
     maxNumberOfGuestsAllowed: 4,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'ac', 'dining area', 'smart tv'],
     reviews: [],
     availability: buildAvailability([3, 5, 11, 22]),
@@ -233,6 +243,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Yaba',
     pointsToWin: 90,
     maxNumberOfGuestsAllowed: 2,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'fans', 'balcony', 'smart tv'],
     reviews: [],
     availability: buildAvailability([2, 8, 13, 19]),
@@ -249,6 +260,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Parkview',
     pointsToWin: 420,
     maxNumberOfGuestsAllowed: 10,
+    bookingOptions: ['room', 'entire'],
     amenities: ['wifi', 'swimming pool', 'cinema', 'gym'],
     reviews: [
       {
@@ -273,6 +285,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Ajah',
     pointsToWin: 200,
     maxNumberOfGuestsAllowed: 6,
+    bookingOptions: ['room', 'entire'],
     amenities: ['wifi', 'dining area', 'ac', 'balcony'],
     reviews: [],
     availability: buildAvailability([1, 6, 14, 23]),
@@ -289,6 +302,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Lekki Phase 2',
     pointsToWin: 95,
     maxNumberOfGuestsAllowed: 2,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'dining area', 'fans', 'balcony'],
     reviews: [],
     availability: buildAvailability([5, 10, 17, 24]),
@@ -305,6 +319,7 @@ export const LISTINGS: ListingDetail[] = [
     area: 'Oniru',
     pointsToWin: 185,
     maxNumberOfGuestsAllowed: 4,
+    bookingOptions: ['entire'],
     amenities: ['wifi', 'swimming pool', 'ac', 'smart tv'],
     reviews: [],
     availability: buildAvailability([2, 7, 16, 20]),
