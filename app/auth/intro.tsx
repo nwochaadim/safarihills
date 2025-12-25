@@ -72,10 +72,10 @@ export default function IntroScreen() {
       <View className="mt-6 w-full items-center">
         <LoadingImageBackground
           source={{ uri: item.image }}
-          style={{ width: CARD_WIDTH, height: width * 1.15 }}
+          style={{ width: CARD_WIDTH, minHeight: width * 1.15 }}
           imageStyle={{ borderRadius: 32 }}
           className="overflow-hidden rounded-[32px] bg-blue-100">
-          <View className="flex-1 justify-end bg-black/30 p-6">
+          <View className="flex-1 justify-end bg-black/30 px-6 pb-20">
             <Text className="text-xl font-semibold leading-tight text-white">{item.title}</Text>
             <Text className="mt-3 text-base leading-relaxed text-white/80">{item.description}</Text>
           </View>
