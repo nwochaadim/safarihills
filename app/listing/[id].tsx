@@ -1,7 +1,9 @@
+import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { BookingOption, findListingById, ListingDetail } from '@/data/listings';
+import { BookingOption, findListingById, ListingDetail, ListingReview, LISTINGS } from '@/data/listings';
+import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { ComponentProps, useMemo, useRef, useState } from 'react';
@@ -48,14 +50,161 @@ const getBookingOptionMeta = (option: BookingOption): BookingOptionMeta => {
   };
 };
 
+type RemoteReview = {
+  id: string;
+  userName: string | null;
+  rating: number | null;
+  comments: string | null;
+  createdAt: string | null;
+};
+
+type RemotePropertyPhoto = {
+  id: string;
+  tinyUrl: string | null;
+  smallUrl: string | null;
+  mediumUrl: string | null;
+  largeUrl: string | null;
+  xtraLargeUrl: string | null;
+};
+
+type RemoteListing = {
+  id: string;
+  name: string | null;
+  apartmentType: string | null;
+  coverPhoto: string | null;
+  description: string | null;
+  minimumPrice: number | null;
+  rating: number | null;
+  area: string | null;
+  pointsToWin: number | null;
+  maxNumberOfGuestsAllowed: number | null;
+  amenities: string[] | null;
+  bookableOptions: string[] | null;
+  reviews: RemoteReview[] | null;
+  propertyPhotos: RemotePropertyPhoto[] | null;
+  bookedDays: Record<string, boolean> | null;
+};
+
+type V2UserFindListingResponse = {
+  v2UserFindListing: RemoteListing | null;
+};
+
+const mapBookableOptions = (options: string[] | null | undefined): BookingOption[] => {
+  const mapped: BookingOption[] = [];
+  if (options?.includes('single_room')) mapped.push('room');
+  if (options?.includes('entire_apartment')) mapped.push('entire');
+  return mapped.length ? mapped : ['entire'];
+};
+
+const formatReviewStay = (dateString: string | null) => {
+  if (!dateString) return 'Recent stay';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'Recent stay';
+  return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+};
+
+const mapReviews = (reviews: RemoteReview[] | null | undefined): ListingReview[] | null => {
+  if (!reviews) return null;
+  return reviews.map((review) => ({
+    id: review.id,
+    guest: review.userName ?? 'Guest',
+    stay: formatReviewStay(review.createdAt),
+    comment: review.comments ?? 'No review comment provided.',
+    rating: review.rating ?? 0,
+  }));
+};
+
+const getGalleryFromPhotos = (photos: RemotePropertyPhoto[] | null | undefined) => {
+  if (!photos?.length) return null;
+  return photos
+    .map((photo) => photo.largeUrl || photo.mediumUrl || photo.smallUrl || photo.xtraLargeUrl || photo.tinyUrl)
+    .filter((url): url is string => Boolean(url));
+};
+
 export default function ListingDetailScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
 
-  const listing = useMemo(() => (id ? findListingById(id) : undefined), [id]);
+  const fallbackListing = useMemo(() => (id ? findListingById(id) : undefined), [id]);
+  const { data, error, loading } = useQuery<V2UserFindListingResponse>(V2_USER_FIND_LISTING, {
+    variables: { id: id ?? '' },
+    skip: !id,
+  });
+
+  const remoteListing = data?.v2UserFindListing ?? null;
+  const listing = useMemo<ListingDetail | undefined>(() => {
+    if (!fallbackListing && !remoteListing) return undefined;
+    const baseListing =
+      fallbackListing ??
+      LISTINGS[0] ?? {
+        id: id ?? 'listing',
+        name: 'Safarihills stay',
+        apartmentType: 'Apartment',
+        coverPhoto: '',
+        description: '',
+        minimumPrice: 0,
+        rating: 0,
+        area: '',
+        pointsToWin: 0,
+        maxNumberOfGuestsAllowed: 1,
+        bookingOptions: ['entire'],
+        attractions: [],
+        roomCategories: [],
+        amenities: [],
+        gallery: [],
+        reviews: [],
+        availability: {},
+      };
+
+    if (!remoteListing || error) {
+      return baseListing;
+    }
+
+    const gallery = getGalleryFromPhotos(remoteListing.propertyPhotos) ?? [];
+    const fallbackGallery = baseListing.gallery.length ? baseListing.gallery : [];
+    const coverFallback = remoteListing.coverPhoto ?? baseListing.coverPhoto;
+    const finalGallery =
+      gallery.length > 0
+        ? gallery
+        : fallbackGallery.length > 0
+          ? fallbackGallery
+          : coverFallback
+            ? [coverFallback]
+            : [];
+    const reviews = mapReviews(remoteListing.reviews);
+    const bookingOptions = remoteListing.bookableOptions
+      ? mapBookableOptions(remoteListing.bookableOptions)
+      : baseListing.bookingOptions;
+
+    return {
+      ...baseListing,
+      id: remoteListing.id ?? baseListing.id,
+      name: remoteListing.name ?? baseListing.name,
+      apartmentType: remoteListing.apartmentType ?? baseListing.apartmentType,
+      coverPhoto: remoteListing.coverPhoto ?? baseListing.coverPhoto,
+      description: remoteListing.description ?? baseListing.description,
+      minimumPrice: remoteListing.minimumPrice ?? baseListing.minimumPrice,
+      rating: remoteListing.rating ?? baseListing.rating,
+      area: remoteListing.area ?? baseListing.area,
+      pointsToWin: remoteListing.pointsToWin ?? baseListing.pointsToWin,
+      maxNumberOfGuestsAllowed:
+        remoteListing.maxNumberOfGuestsAllowed ?? baseListing.maxNumberOfGuestsAllowed,
+      amenities: remoteListing.amenities ?? baseListing.amenities,
+      bookingOptions,
+      reviews: reviews ?? baseListing.reviews,
+      gallery: finalGallery,
+      coverPhoto:
+        remoteListing.coverPhoto ??
+        finalGallery[0] ??
+        baseListing.coverPhoto,
+    };
+  }, [fallbackListing, remoteListing, error, id]);
 
   if (!listing) {
+    if (loading) {
+      return null;
+    }
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white">
         <Stack.Screen options={{ headerShown: false }} />
