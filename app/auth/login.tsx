@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -16,11 +16,20 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { error: errorParam } = useLocalSearchParams<{ error?: string | string[] }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!errorParam) return;
+    const message = Array.isArray(errorParam) ? errorParam[0] : errorParam;
+    if (message && message !== error) {
+      setError(message);
+    }
+  }, [errorParam, error]);
 
   const handleLogin = () => {
     const trimmedEmail = email.trim().toLowerCase();

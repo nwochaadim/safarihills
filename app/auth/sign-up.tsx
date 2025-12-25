@@ -1,8 +1,8 @@
+import { useMutation } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SIGNUP_GUEST } from '@/mutations/signupGuest';
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const COUNTRIES = [
@@ -24,6 +26,43 @@ const COUNTRIES = [
 ];
 
 type CountryOption = (typeof COUNTRIES)[number];
+
+type SignupGuestResponse = {
+  signupGuest: {
+    user: { id: string } | null;
+    errors: unknown;
+    nextStep: string | null;
+  } | null;
+};
+
+type SignupGuestVariables = {
+  signupGuest: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    phone: string;
+    referralCode?: string | null;
+  };
+};
+
+const normalizeErrors = (errors: unknown): string[] => {
+  if (!errors) return [];
+  if (Array.isArray(errors)) {
+    return errors.map((item) => String(item)).filter((item) => item.trim().length > 0);
+  }
+  if (typeof errors === 'string') {
+    return errors.trim().length ? [errors] : [];
+  }
+  if (typeof errors === 'object') {
+    const values = Object.values(errors as Record<string, unknown>);
+    return values
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value))
+      .filter((value) => value.trim().length > 0);
+  }
+  return [String(errors)];
+};
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -37,6 +76,8 @@ export default function SignUpScreen() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [signupGuest] = useMutation<SignupGuestResponse, SignupGuestVariables>(SIGNUP_GUEST);
 
   const [countryCode, setCountryCode] = useState('NG');
   const [callingCode, setCallingCode] = useState('234');
@@ -69,7 +110,7 @@ export default function SignUpScreen() {
     setPickerVisible(false);
   };
 
-  const handleCreateAccount = () => {
+  const handleCreateAccount = async () => {
     if (!isFormValid || isSubmitting) {
       if (!isFormValid) {
         setErrorMessages(['Please complete all required fields.']);
@@ -82,12 +123,54 @@ export default function SignUpScreen() {
     setErrorMessages([]);
 
     const trimmedEmail = email.trim().toLowerCase();
+    const normalizedPhone = phoneNumber.replace(/[^\d]/g, '');
+    const fullPhoneNumber = `+${callingCode}${normalizedPhone}`;
 
-    setTimeout(() => {
+    try {
+      const { data } = await signupGuest({
+        variables: {
+          signupGuest: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: trimmedEmail,
+            password: password.trim(),
+            phone: fullPhoneNumber,
+            referralCode: referralCode.trim().length > 0 ? referralCode.trim() : null,
+          },
+        },
+      });
+      const response = data?.signupGuest;
+      const errors = normalizeErrors(response?.errors);
+      const nextStep = response?.nextStep ?? null;
+
+      if (nextStep === 'otp') {
+        router.replace({ pathname: '/auth/otp', params: { email: trimmedEmail } });
+        return;
+      }
+
+      if (nextStep === 'login') {
+        const errorMessage = errors.join(' ');
+        router.replace(
+          errorMessage
+            ? { pathname: '/auth/login', params: { error: errorMessage } }
+            : { pathname: '/auth/login' }
+        );
+        return;
+      }
+
+      if (errors.length) {
+        if (errors.length === 1) {
+          setServerError(errors[0]);
+        } else {
+          setErrorMessages(errors);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to create account right now.';
+      setServerError(message);
+    } finally {
       setIsSubmitting(false);
-      Alert.alert('Account created', 'Your Safarihills account is ready.');
-      router.replace({ pathname: '/auth/otp', params: { email: trimmedEmail } });
-    }, 500);
+    }
   };
 
   const inputWrapperClass = 'rounded-2xl border border-slate-200 bg-slate-50/50 px-4';
