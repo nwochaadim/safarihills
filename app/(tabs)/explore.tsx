@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ComponentProps, useEffect, useMemo, useState } from 'react';
@@ -15,7 +16,8 @@ import {
 } from 'react-native';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { BookingOption, LISTINGS, ListingDetail } from '@/data/listings';
+import { BookingOption, LISTINGS } from '@/data/listings';
+import { V2_EXPLORE_LISTINGS } from '@/queries/v2ExploreListings';
 
 const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
 
@@ -116,6 +118,13 @@ const formatDateDisplay = (date: Date) =>
     year: 'numeric',
   });
 
+const formatQueryDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const startOfMonth = (date: Date) => {
   const next = new Date(date);
   next.setDate(1);
@@ -166,6 +175,82 @@ const buildCalendarDays = (
   return days;
 };
 
+type ExploreListing = {
+  id: string;
+  name: string;
+  apartmentType: string;
+  coverPhoto: string;
+  description: string;
+  minimumPrice: number;
+  rating: number;
+  area: string;
+  pointsToWin: number;
+  maxNumberOfGuestsAllowed: number;
+  bookingOptions: BookingOption[];
+};
+
+type ExploreListingResponse = {
+  id: string;
+  name: string;
+  apartmentType: string;
+  coverPhoto: string;
+  description: string;
+  minimumPrice: number;
+  rating: number;
+  area: string;
+  pointsToWin: number;
+  maxNumberOfGuestsAllowed: number;
+  bookableOptions: string[];
+  propertyPhotos: {
+    id: string;
+    tinyUrl: string;
+    smallUrl: string;
+    mediumUrl: string;
+    largeUrl: string;
+    xtraLargeUrl: string;
+  }[];
+};
+
+type V2ExploreListingsResponse = {
+  v2ExploreListings: ExploreListingResponse[];
+};
+
+type V2ExploreListingsVariables = {
+  minBudget?: number | null;
+  maxBudget?: number | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  numberOfGuests?: number | null;
+  amenities?: string[] | null;
+  limit: number;
+  offset: number;
+};
+
+const mapBookableOptions = (options: string[] | null | undefined): BookingOption[] => {
+  const mapped: BookingOption[] = [];
+  if (options?.includes('single_room')) mapped.push('room');
+  if (options?.includes('entire_apartment')) mapped.push('entire');
+  return mapped.length ? mapped : ['entire'];
+};
+
+const mapExploreListing = (listing: ExploreListingResponse): ExploreListing => ({
+  id: listing.id,
+  name: listing.name,
+  apartmentType: listing.apartmentType,
+  coverPhoto:
+    listing.coverPhoto ||
+    listing.propertyPhotos?.[0]?.mediumUrl ||
+    listing.propertyPhotos?.[0]?.smallUrl ||
+    '',
+  description: listing.description,
+  minimumPrice: listing.minimumPrice,
+  rating: listing.rating ?? 0,
+  area: listing.area,
+  pointsToWin: listing.pointsToWin,
+  maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
+  bookingOptions: mapBookableOptions(listing.bookableOptions),
+});
+
 const filterListings = (filter: FilterState) => {
   const minBudget = parseCurrencyInput(filter.minBudget);
   const maxBudget = parseCurrencyInput(filter.maxBudget);
@@ -198,6 +283,39 @@ export default function ExploreScreen() {
   const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [remoteHasMore, setRemoteHasMore] = useState(true);
+
+  const queryVariables = useMemo<V2ExploreListingsVariables>(() => {
+    const minBudget = parseCurrencyInput(appliedFilters.minBudget);
+    const maxBudget = parseCurrencyInput(appliedFilters.maxBudget);
+    const numberOfGuests = appliedFilters.guests
+      ? appliedFilters.guests === '6+'
+        ? 6
+        : Number(appliedFilters.guests)
+      : null;
+
+    return {
+      minBudget,
+      maxBudget,
+      checkIn: appliedFilters.checkIn ? formatQueryDate(appliedFilters.checkIn) : null,
+      checkOut: appliedFilters.checkOut ? formatQueryDate(appliedFilters.checkOut) : null,
+      numberOfGuests,
+      amenities: appliedFilters.amenities.length > 0 ? appliedFilters.amenities : null,
+      limit: PAGE_SIZE,
+      offset: 0,
+    };
+  }, [appliedFilters]);
+
+  const { data, error, fetchMore, refetch } = useQuery<
+    V2ExploreListingsResponse,
+    V2ExploreListingsVariables
+  >(
+    V2_EXPLORE_LISTINGS,
+    {
+      variables: queryVariables,
+      notifyOnNetworkStatusChange: true,
+    }
+  );
 
   const calendarDays = useMemo(
     () => buildCalendarDays(calendarMonth, filters.checkIn, filters.checkOut),
@@ -206,28 +324,87 @@ export default function ExploreScreen() {
 
   const filteredListings = useMemo(() => filterListings(appliedFilters), [appliedFilters]);
 
-  const listings = useMemo(
-    () => filteredListings.slice(0, page * PAGE_SIZE),
-    [filteredListings, page]
+  const remoteListings = useMemo(() => {
+    const items = data?.v2ExploreListings ?? [];
+    const mapped = items.map(mapExploreListing);
+    if (appliedFilters.type) {
+      return mapped.filter((listing) => listing.apartmentType === appliedFilters.type);
+    }
+    return mapped;
+  }, [data, appliedFilters.type]);
+
+  const remoteListingCount = data?.v2ExploreListings?.length ?? 0;
+  const useRemoteListings = Boolean(data?.v2ExploreListings) && !error;
+
+  const listings = useMemo<ExploreListing[]>(
+    () =>
+      useRemoteListings
+        ? remoteListings
+        : (filteredListings.slice(0, page * PAGE_SIZE) as ExploreListing[]),
+    [useRemoteListings, remoteListings, filteredListings, page]
   );
 
-  const hasMore = listings.length < filteredListings.length;
+  const hasMore = useRemoteListings
+    ? remoteHasMore
+    : listings.length < filteredListings.length;
 
   useEffect(() => {
     setPage(1);
+    setRemoteHasMore(true);
   }, [appliedFilters]);
 
-  const handleLoadMore = () => {
+  useEffect(() => {
+    if (useRemoteListings && data?.v2ExploreListings && data.v2ExploreListings.length < PAGE_SIZE) {
+      setRemoteHasMore(false);
+    }
+  }, [data, useRemoteListings]);
+
+  const handleLoadMore = async () => {
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
+    if (useRemoteListings) {
+      try {
+        const result = await fetchMore({
+          variables: {
+            ...queryVariables,
+            offset: remoteListingCount,
+          },
+          updateQuery: (previous, { fetchMoreResult }) => {
+            if (!fetchMoreResult?.v2ExploreListings) return previous;
+            return {
+              v2ExploreListings: [
+                ...(previous?.v2ExploreListings ?? []),
+                ...fetchMoreResult.v2ExploreListings,
+              ],
+            };
+          },
+        });
+        const fetched = result.data?.v2ExploreListings ?? [];
+        if (fetched.length < PAGE_SIZE) {
+          setRemoteHasMore(false);
+        }
+      } finally {
+        setLoadingMore(false);
+      }
+      return;
+    }
     setTimeout(() => {
       setPage((prev) => prev + 1);
       setLoadingMore(false);
     }, 300);
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
+    if (useRemoteListings) {
+      try {
+        await refetch({ ...queryVariables, offset: 0 });
+        setRemoteHasMore(true);
+      } finally {
+        setRefreshing(false);
+      }
+      return;
+    }
     setTimeout(() => {
       setPage(1);
       setRefreshing(false);
@@ -280,7 +457,7 @@ export default function ExploreScreen() {
     setFilters((prev) => ({ ...prev, checkIn: null, checkOut: null }));
   };
 
-  const renderApartment = ({ item }: { item: ListingDetail }) => {
+  const renderApartment = ({ item }: { item: ExploreListing }) => {
     return (
       <Pressable
         className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200"
