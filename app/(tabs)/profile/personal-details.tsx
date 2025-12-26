@@ -1,24 +1,42 @@
-import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { UPDATE_PERSONAL_INFO } from '@/mutations/updatePersonalInfo';
 import { GET_USER_INFO_V2 } from '@/queries/getUserInfoV2';
 
 export default function PersonalDetailsScreen() {
   const router = useRouter();
-  const [firstName, setFirstName] = useState('Adim');
-  const [lastName, setLastName] = useState('Eze');
-  const [phone, setPhone] = useState('+234 812 345 6789');
-  const [email, setEmail] = useState('adim@gmail.com');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { data } = useQuery(GET_USER_INFO_V2);
+  const { data, refetch } = useQuery(GET_USER_INFO_V2);
   const [updatePersonalInfo, { loading: isUpdating }] = useMutation(UPDATE_PERSONAL_INFO);
+
+  useFocusEffect(
+    useCallback(() => {
+      setHasHydrated(false);
+      refetch();
+    }, [refetch])
+  );
 
   useEffect(() => {
     if (hasHydrated) return;
@@ -30,6 +48,16 @@ export default function PersonalDetailsScreen() {
     setEmail(user.email ?? 'adim@gmail.com');
     setHasHydrated(true);
   }, [data, hasHydrated]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setHasHydrated(false);
+    try {
+      await refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await SecureStore.deleteItemAsync('authToken');
@@ -43,9 +71,7 @@ export default function PersonalDetailsScreen() {
         variables: {
           input: {
             firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            phone: phone.trim(),
-            email: email.trim().toLowerCase(),
+            lastName: lastName.trim()
           },
         },
       });
@@ -55,6 +81,7 @@ export default function PersonalDetailsScreen() {
         setLastName(updated.lastName ?? lastName);
         setPhone(updated.phone ?? phone);
         setEmail(updated.email ?? email);
+        Alert.alert('Profile updated', 'Your personal details were saved.');
       }
     } catch {
       // Keep the current values if the update fails.
@@ -65,7 +92,10 @@ export default function PersonalDetailsScreen() {
     <SafeAreaView className="flex-1 bg-slate-50">
       <ScrollView
         contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }>
         <BackButton onPress={() => router.back()} />
         <Text className="mt-2 text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
           Profile
