@@ -1,18 +1,64 @@
+import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+
+import { UPDATE_PERSONAL_INFO } from '@/mutations/updatePersonalInfo';
+import { GET_USER_INFO_V2 } from '@/queries/getUserInfoV2';
 
 export default function PersonalDetailsScreen() {
   const router = useRouter();
   const [firstName, setFirstName] = useState('Adim');
   const [lastName, setLastName] = useState('Eze');
+  const [phone, setPhone] = useState('+234 812 345 6789');
+  const [email, setEmail] = useState('adim@gmail.com');
+  const [hasHydrated, setHasHydrated] = useState(false);
+
+  const { data } = useQuery(GET_USER_INFO_V2);
+  const [updatePersonalInfo, { loading: isUpdating }] = useMutation(UPDATE_PERSONAL_INFO);
+
+  useEffect(() => {
+    if (hasHydrated) return;
+    const user = data?.user;
+    if (!user) return;
+    setFirstName(user.firstName ?? 'Adim');
+    setLastName(user.lastName ?? 'Eze');
+    setPhone(user.phone ?? '+234 812 345 6789');
+    setEmail(user.email ?? 'adim@gmail.com');
+    setHasHydrated(true);
+  }, [data, hasHydrated]);
 
   const handleSignOut = async () => {
     await SecureStore.deleteItemAsync('authToken');
     router.replace('/auth/intro');
+  };
+
+  const handleUpdateProfile = async () => {
+    if (isUpdating) return;
+    try {
+      const { data: response } = await updatePersonalInfo({
+        variables: {
+          input: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phone: phone.trim(),
+            email: email.trim().toLowerCase(),
+          },
+        },
+      });
+      const updated = response?.updatePersonalInfoV2;
+      if (updated) {
+        setFirstName(updated.firstName ?? firstName);
+        setLastName(updated.lastName ?? lastName);
+        setPhone(updated.phone ?? phone);
+        setEmail(updated.email ?? email);
+      }
+    } catch {
+      // Keep the current values if the update fails.
+    }
   };
 
   return (
@@ -61,20 +107,23 @@ export default function PersonalDetailsScreen() {
               Phone number
             </Text>
             <Text className="mt-2 text-base font-semibold text-slate-900">
-              +234 812 345 6789
+              {phone}
             </Text>
           </View>
 
           <View className="border-t border-slate-100 pt-4">
             <Text className="text-xs uppercase tracking-[0.3em] text-slate-400">Email</Text>
             <Text className="mt-2 text-base font-semibold text-slate-900">
-              adim@gmail.com
+              {email}
             </Text>
           </View>
         </View>
 
         <View className="mt-6 space-y-3">
-          <Pressable className="flex-row items-center justify-center gap-2 rounded-full bg-blue-600 py-4 shadow-lg shadow-blue-200">
+          <Pressable
+            className="flex-row items-center justify-center gap-2 rounded-full bg-blue-600 py-4 shadow-lg shadow-blue-200"
+            onPress={handleUpdateProfile}
+            disabled={isUpdating}>
             <Feather name="save" size={18} color="#fff" />
             <Text className="text-center text-base font-semibold text-white">Update profile</Text>
           </Pressable>
