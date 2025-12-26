@@ -42,10 +42,10 @@ export default function PersonalDetailsScreen() {
     if (hasHydrated) return;
     const user = data?.user;
     if (!user) return;
-    setFirstName(user.firstName ?? 'Adim');
-    setLastName(user.lastName ?? 'Eze');
-    setPhone(user.phone ?? '+234 812 345 6789');
-    setEmail(user.email ?? 'adim@gmail.com');
+    setFirstName(user.firstName ?? '');
+    setLastName(user.lastName ?? '');
+    setPhone(user.phone ?? '');
+    setEmail(user.email ?? '');
     setHasHydrated(true);
   }, [data, hasHydrated]);
 
