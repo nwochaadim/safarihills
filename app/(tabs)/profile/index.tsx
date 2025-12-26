@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
@@ -6,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 
 import { BlankSlate } from '@/components/BlankSlate';
+import { PROFILE_QUERY } from '@/queries/profile';
 
 type LinkConfig = {
   label: string;
@@ -37,12 +39,25 @@ const renderLink = (router: ReturnType<typeof useRouter>) => (item: LinkConfig) 
   </Pressable>
 );
 
+type ProfileQueryResponse = {
+  user?: {
+    name?: string | null;
+    email?: string | null;
+    initials?: string | null;
+    tier?: string | null;
+  } | null;
+};
+
 export default function ProfileScreen() {
   const router = useRouter();
   const version = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
     'checking'
   );
+  const { data, loading, error, refetch } = useQuery<ProfileQueryResponse>(PROFILE_QUERY, {
+    skip: authStatus !== 'signed-in',
+    fetchPolicy: 'cache-and-network',
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -61,11 +76,50 @@ export default function ProfileScreen() {
     }, [])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (authStatus === 'signed-in') {
+        refetch();
+      }
+    }, [authStatus, refetch])
+  );
+
+  const profile = data?.user;
+  const profileName = profile?.name?.trim() ?? '';
+  const derivedInitials = profileName
+    ? profileName
+        .split(/\s+/)
+        .map((part) => part[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : '';
+  const profileInitials = profile?.initials?.trim() || derivedInitials || 'SH';
+  const profileEmail = profile?.email?.trim() ?? '';
+  const profileTier = profile?.tier?.trim() ?? '';
+  const profileMeta = [profileEmail, profileTier].filter(Boolean).join(' - ');
+  const displayName = profileName || 'Your profile';
+  const isProfileLoading = authStatus === 'signed-in' && loading && !profile;
+
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
       {authStatus === 'checking' ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#2563eb" />
+        </View>
+      ) : isProfileLoading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#2563eb" />
+        </View>
+      ) : authStatus === 'signed-in' && error && !profile ? (
+        <View className="flex-1 items-center justify-center px-8">
+          <BlankSlate
+            title="Unable to load profile"
+            description="Check your connection and try again."
+            iconName="alert-circle"
+            primaryAction={{ label: 'Try again', onPress: () => refetch() }}
+          />
         </View>
       ) : authStatus === 'signed-out' ? (
         <View className="flex-1 items-center justify-center px-8">
@@ -85,14 +139,14 @@ export default function ProfileScreen() {
             <View className="pt-2">
               <View className="mt-3 items-center">
                 <View className="h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-                  <Text className="text-xl font-bold text-blue-800">AE</Text>
+                  <Text className="text-xl font-bold text-blue-800">{profileInitials}</Text>
                 </View>
                 <Text className="mt-4 text-center text-3xl font-bold text-slate-900">
-                  Adim Eze
+                  {displayName}
                 </Text>
-                <Text className="mt-1 text-center text-sm text-slate-500">
-                  adim@gmail.com - Elite Navigator
-                </Text>
+                {profileMeta ? (
+                  <Text className="mt-1 text-center text-sm text-slate-500">{profileMeta}</Text>
+                ) : null}
               </View>
             </View>
 
