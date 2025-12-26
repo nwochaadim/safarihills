@@ -1,7 +1,7 @@
 import { gql } from '@apollo/client';
 
 export const V2_EXPLORE_LISTINGS = gql`
-  query V2ExploreListings(
+  query ProfileWithListings(
     $minBudget: Int
     $maxBudget: Int
     $checkIn: String
@@ -11,6 +11,10 @@ export const V2_EXPLORE_LISTINGS = gql`
     $limit: Int
     $offset: Int
   ) {
+    profile: user {
+      firstName
+      initials
+    }
     v2ExploreListings(
       minBudget: $minBudget
       maxBudget: $maxBudget
@@ -34,14 +38,6 @@ export const V2_EXPLORE_LISTINGS = gql`
       pointsToWin
       maxNumberOfGuestsAllowed
       bookableOptions
-      propertyPhotos {
-        id
-        tinyUrl
-        smallUrl
-        mediumUrl
-        largeUrl
-        xtraLargeUrl
-      }
     }
   }
 `;

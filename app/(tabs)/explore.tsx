@@ -194,7 +194,7 @@ type ExploreListingResponse = {
   id: string;
   name: string;
   apartmentType: string;
-  coverPhoto: string;
+  coverPhoto: string | null;
   description: string;
   minimumPrice: number;
   rating: number;
@@ -202,17 +202,15 @@ type ExploreListingResponse = {
   pointsToWin: number;
   maxNumberOfGuestsAllowed: number;
   bookableOptions: string[];
-  propertyPhotos: {
-    id: string;
-    tinyUrl: string;
-    smallUrl: string;
-    mediumUrl: string;
-    largeUrl: string;
-    xtraLargeUrl: string;
-  }[];
 };
 
-type V2ExploreListingsResponse = {
+type ProfileResponse = {
+  firstName?: string | null;
+  initials?: string | null;
+};
+
+type ProfileWithListingsResponse = {
+  profile?: ProfileResponse | null;
   v2ExploreListings: ExploreListingResponse[];
 };
 
@@ -239,10 +237,7 @@ const mapExploreListing = (listing: ExploreListingResponse): ExploreListing => (
   name: listing.name,
   apartmentType: listing.apartmentType,
   coverPhoto:
-    listing.coverPhoto ||
-    listing.propertyPhotos?.[0]?.mediumUrl ||
-    listing.propertyPhotos?.[0]?.smallUrl ||
-    '',
+    listing.coverPhoto ?? '',
   description: listing.description,
   minimumPrice: listing.minimumPrice,
   rating: listing.rating ?? 0,
@@ -309,7 +304,7 @@ export default function ExploreScreen() {
   }, [appliedFilters]);
 
   const { data, error, fetchMore, refetch } = useQuery<
-    V2ExploreListingsResponse,
+    ProfileWithListingsResponse,
     V2ExploreListingsVariables
   >(
     V2_EXPLORE_LISTINGS,
@@ -351,6 +346,10 @@ export default function ExploreScreen() {
     ? remoteHasMore
     : listings.length < filteredListings.length;
 
+  const profileName = data?.profile?.firstName ?? '';
+  const profileInitials = data?.profile?.initials ?? 'SH';
+  const welcomeMessage = profileName ? `Welcome back, ${profileName}` : 'Welcome back';
+
   useEffect(() => {
     setPage(1);
     setRemoteHasMore(true);
@@ -375,6 +374,7 @@ export default function ExploreScreen() {
           updateQuery: (previous, { fetchMoreResult }) => {
             if (!fetchMoreResult?.v2ExploreListings) return previous;
             return {
+              profile: fetchMoreResult.profile ?? previous?.profile,
               v2ExploreListings: [
                 ...(previous?.v2ExploreListings ?? []),
                 ...fetchMoreResult.v2ExploreListings,
@@ -539,12 +539,12 @@ export default function ExploreScreen() {
           <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
             Safarihills
           </Text>
-          <Text className="mt-1 text-3xl font-bold text-slate-900">Welcome back, Adim</Text>
+          <Text className="mt-1 text-3xl font-bold text-slate-900">{welcomeMessage}</Text>
         </View>
         <Pressable
           className="h-12 w-12 items-center justify-center rounded-full bg-blue-100"
           onPress={() => router.push('/(tabs)/profile')}>
-          <Text className="text-lg font-bold text-blue-900">AE</Text>
+          <Text className="text-lg font-bold text-blue-900">{profileInitials}</Text>
         </Pressable>
       </View>
 
