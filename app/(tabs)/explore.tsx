@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { ComponentProps, useEffect, useMemo, useState } from 'react';
 import {
@@ -275,6 +276,7 @@ const filterListings = (filter: FilterState) => {
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -314,6 +316,7 @@ export default function ExploreScreen() {
     {
       variables: queryVariables,
       notifyOnNetworkStatusChange: true,
+      skip: !isFocused,
     }
   );
 
