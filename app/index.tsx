@@ -9,7 +9,7 @@ export default function Index() {
     const checkToken = async () => {
       const token = await SecureStore.getItemAsync("authToken");
       if (token) {
-        router.replace("/auth/intro");
+        router.replace("/(tabs)/explore");
         return;
       }
       router.replace("/auth/intro");

@@ -61,7 +61,7 @@ export default function PersonalDetailsScreen() {
 
   const handleSignOut = async () => {
     await SecureStore.deleteItemAsync('authToken');
-    router.replace('/auth/intro');
+    router.replace('/auth/login');
   };
 
   const handleUpdateProfile = async () => {
