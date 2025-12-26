@@ -1,3 +1,4 @@
+import { useMutation } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -11,13 +12,64 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
+
+import { RESEND_GUEST_OTP } from '@/mutations/resendGuestOtp';
+import { VERIFY_GUEST_OTP } from '@/mutations/verifyGuestOtp';
 
 const OTP_LENGTH = 4;
 const RESEND_INTERVAL_SECONDS = 60;
 
+type VerifyGuestOtpResponse = {
+  verifyGuestOtp: {
+    errors: unknown;
+    valid: boolean | null;
+    token: string | null;
+  } | null;
+};
+
+type VerifyGuestOtpVariables = {
+  otp: {
+    email: string;
+    otpCode: string;
+  };
+};
+
+type ResendGuestOtpResponse = {
+  resendGuestOtp: {
+    errors: unknown;
+    success: boolean | null;
+  } | null;
+};
+
+type ResendGuestOtpVariables = {
+  input: {
+    email: string;
+  };
+};
+
+const normalizeErrors = (errors: unknown): string[] => {
+  if (!errors) return [];
+  if (Array.isArray(errors)) {
+    return errors.map((item) => String(item)).filter((item) => item.trim().length > 0);
+  }
+  if (typeof errors === 'string') {
+    return errors.trim().length ? [errors] : [];
+  }
+  if (typeof errors === 'object') {
+    const values = Object.values(errors as Record<string, unknown>);
+    return values
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value))
+      .filter((value) => value.trim().length > 0);
+  }
+  return [String(errors)];
+};
+
 export default function OtpScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  const { email: emailParam } = useLocalSearchParams<{ email?: string | string[] }>();
+  const email = Array.isArray(emailParam) ? emailParam[0] : emailParam;
   const [otpValues, setOtpValues] = useState(Array(OTP_LENGTH).fill(''));
   const [resendTimer, setResendTimer] = useState(RESEND_INTERVAL_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +77,13 @@ export default function OtpScreen() {
   const [isResending, setIsResending] = useState(false);
 
   const inputsRef = useRef<Array<TextInput | null>>([]);
+
+  const [verifyGuestOtp] = useMutation<VerifyGuestOtpResponse, VerifyGuestOtpVariables>(
+    VERIFY_GUEST_OTP
+  );
+  const [resendGuestOtp] = useMutation<ResendGuestOtpResponse, ResendGuestOtpVariables>(
+    RESEND_GUEST_OTP
+  );
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -60,7 +119,7 @@ export default function OtpScreen() {
   const otpCode = otpValues.join('');
   const isOtpComplete = otpCode.length === OTP_LENGTH;
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (!isOtpComplete || isSubmitting) return;
     if (!email) {
       setError('Email missing. Please restart verification.');
@@ -68,14 +127,40 @@ export default function OtpScreen() {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const { data } = await verifyGuestOtp({
+        variables: {
+          otp: {
+            email,
+            otpCode: otpCode,
+          },
+        },
+      });
+      const response = data?.verifyGuestOtp;
+      const errors = normalizeErrors(response?.errors);
+      if (errors.length) {
+        setError(errors.join(' '));
+        return;
+      }
+      if (response?.valid) {
+        if (response.token) {
+          await SecureStore.setItemAsync('authToken', response.token);
+        }
+        Alert.alert('Verification complete', 'Your account is now verified.');
+        router.replace('/(tabs)/explore');
+        return;
+      }
+      setError('Invalid or expired code. Please try again.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to verify the code.';
+      setError(message);
+    } finally {
       setIsSubmitting(false);
-      Alert.alert('Verification complete', 'Your account is now verified.');
-      router.replace('/(tabs)/explore');
-    }, 600);
+    }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (resendTimer > 0 || isResending) return;
     if (!email) {
       setError('Email missing. Please restart verification.');
@@ -83,14 +168,35 @@ export default function OtpScreen() {
     }
 
     setIsResending(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const { data } = await resendGuestOtp({
+        variables: {
+          input: {
+            email,
+          },
+        },
+      });
+      const response = data?.resendGuestOtp;
+      const errors = normalizeErrors(response?.errors);
+      if (errors.length) {
+        setError(errors.join(' '));
+        return;
+      }
+      if (response?.success) {
+        setOtpValues(Array(OTP_LENGTH).fill(''));
+        inputsRef.current[0]?.focus();
+        setResendTimer(RESEND_INTERVAL_SECONDS);
+        Alert.alert('New code sent', 'Please check your inbox for the new code.');
+        return;
+      }
+      setError('Unable to resend code. Please try again.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to resend the code.';
+      setError(message);
+    } finally {
       setIsResending(false);
-      setError(null);
-      setOtpValues(Array(OTP_LENGTH).fill(''));
-      inputsRef.current[0]?.focus();
-      setResendTimer(RESEND_INTERVAL_SECONDS);
-      Alert.alert('New code sent', 'Please check your inbox for the new code.');
-    }, 500);
+    }
   };
 
   const formattedResendTimer = `${Math.floor(resendTimer / 60)}:${String(
