@@ -1,8 +1,8 @@
+import { useMutation } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +11,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
+
+import { LOGIN_GUEST } from '@/mutations/loginGuest';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -23,6 +26,8 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [loginGuest] = useMutation(LOGIN_GUEST);
+
   useEffect(() => {
     if (!errorParam) return;
     const message = Array.isArray(errorParam) ? errorParam[0] : errorParam;
@@ -31,7 +36,7 @@ export default function LoginScreen() {
     }
   }, [errorParam, error]);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPassword = password.trim();
 
@@ -48,11 +53,52 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     setError(null);
 
-    setTimeout(() => {
+    try {
+      const { data } = await loginGuest({
+        variables: {
+          input: {
+            email: trimmedEmail,
+            password: trimmedPassword,
+          },
+        },
+      });
+      const response = data?.loginGuest;
+      const nextStep = response?.nextStep ?? null;
+      const errors = response?.errors;
+      const errorMessage =
+        Array.isArray(errors) ? errors.join(' ') : errors ? String(errors) : null;
+
+      if (nextStep === 'otp') {
+        router.replace({
+          pathname: '/auth/otp',
+          params: {
+            email: trimmedEmail,
+            error: errorMessage ?? undefined,
+          },
+        });
+        return;
+      }
+
+      if (nextStep === 'password_reset') {
+        router.replace('/auth/new-password');
+        return;
+      }
+
+      if (response?.token) {
+        await SecureStore.setItemAsync('authToken', response.token);
+        router.replace('/(tabs)/explore');
+        return;
+      }
+
+      if (errorMessage) {
+        setError(errorMessage);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to sign in right now.';
+      setError(message);
+    } finally {
       setIsSubmitting(false);
-      Alert.alert('Welcome back!', 'You are now signed in to Safarihills.');
-      router.replace('/(tabs)/explore');
-    }, 450);
+    }
   };
 
   return (

@@ -68,7 +68,10 @@ const normalizeErrors = (errors: unknown): string[] => {
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { email: emailParam } = useLocalSearchParams<{ email?: string | string[] }>();
+  const { email: emailParam, error: errorParam } = useLocalSearchParams<{
+    email?: string | string[];
+    error?: string | string[];
+  }>();
   const email = Array.isArray(emailParam) ? emailParam[0] : emailParam;
   const [otpValues, setOtpValues] = useState(Array(OTP_LENGTH).fill(''));
   const [resendTimer, setResendTimer] = useState(RESEND_INTERVAL_SECONDS);
@@ -84,6 +87,14 @@ export default function OtpScreen() {
   const [resendGuestOtp] = useMutation<ResendGuestOtpResponse, ResendGuestOtpVariables>(
     RESEND_GUEST_OTP
   );
+
+  useEffect(() => {
+    if (!errorParam) return;
+    const message = Array.isArray(errorParam) ? errorParam[0] : errorParam;
+    if (message && message !== error) {
+      setError(message);
+    }
+  }, [errorParam, error]);
 
   useEffect(() => {
     const timer = setInterval(() => {
