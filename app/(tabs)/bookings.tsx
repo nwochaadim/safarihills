@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -15,7 +16,7 @@ import {
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
-import { LISTINGS } from '@/data/listings';
+import { FIND_BOOKINGS } from '@/queries/findBookings';
 
 type BookingStatus = 'current' | 'upcoming' | 'past';
 
@@ -30,24 +31,42 @@ type BookingListItem = {
   checkOut: string;
   amountPaid: number;
   cautionFee: number;
-  pointsEarned: number;
+  referenceNumber: string;
+  numberOfOccupants: number;
+  state: string;
+  timelineStatus: string;
   coverImage?: string | null;
-  avatar?: string | null;
-  rating?: number | null;
 };
 
-type BookingSeed = {
+type BookingResponse = {
   id: string;
-  listingId: string;
-  status: BookingStatus;
-  guestName: string;
-  checkIn: string;
-  checkOut: string;
+  state: string;
+  timelineStatus: string;
   amountPaid: number;
   cautionFee: number;
-  pointsEarned: number;
-  avatar?: string | null;
-  rating?: number | null;
+  referenceNumber: string;
+  checkIn: string;
+  checkOut: string;
+  numberOfOccupants: number;
+  user?: {
+    name?: string | null;
+  } | null;
+  listing?: {
+    name?: string | null;
+    area?: string | null;
+    apartmentType?: string | null;
+    propertyPhotos?: { avatarPhoto?: string | null }[] | null;
+  } | null;
+};
+
+type FindBookingsResponse = {
+  findBookings: BookingResponse[];
+};
+
+type FindBookingsVariables = {
+  status?: string | null;
+  limit: number;
+  offset: number;
 };
 
 const PAGE_SIZE = 10;
@@ -67,143 +86,18 @@ const AVATARS = [
   'https://randomuser.me/api/portraits/men/58.jpg',
 ];
 
-const BOOKING_SEEDS: BookingSeed[] = [
-  {
-    id: 'booking-001',
-    listingId: 'saf-001',
-    status: 'current',
-    guestName: 'Chidinma U.',
-    checkIn: '2025-02-14',
-    checkOut: '2025-02-16',
-    amountPaid: 130000,
-    cautionFee: 50000,
-    pointsEarned: 120,
-    avatar: AVATARS[0],
-  },
-  {
-    id: 'booking-002',
-    listingId: 'saf-003',
-    status: 'current',
-    guestName: 'Folarin O.',
-    checkIn: '2025-02-15',
-    checkOut: '2025-02-19',
-    amountPaid: 560000,
-    cautionFee: 120000,
-    pointsEarned: 320,
-    avatar: AVATARS[1],
-  },
-  {
-    id: 'booking-003',
-    listingId: 'saf-006',
-    status: 'upcoming',
-    guestName: 'Amina B.',
-    checkIn: '2025-03-04',
-    checkOut: '2025-03-07',
-    amountPaid: 960000,
-    cautionFee: 150000,
-    pointsEarned: 410,
-    avatar: AVATARS[2],
-  },
-  {
-    id: 'booking-004',
-    listingId: 'saf-010',
-    status: 'upcoming',
-    guestName: 'Kelvin N.',
-    checkIn: '2025-03-12',
-    checkOut: '2025-03-15',
-    amountPaid: 585000,
-    cautionFee: 100000,
-    pointsEarned: 240,
-    avatar: AVATARS[3],
-  },
-  {
-    id: 'booking-005',
-    listingId: 'saf-002',
-    status: 'past',
-    guestName: 'Olamide S.',
-    checkIn: '2024-12-10',
-    checkOut: '2024-12-12',
-    amountPaid: 240000,
-    cautionFee: 80000,
-    pointsEarned: 180,
-    avatar: AVATARS[4],
-    rating: 4.8,
-  },
-  {
-    id: 'booking-006',
-    listingId: 'saf-009',
-    status: 'past',
-    guestName: 'Tayo A.',
-    checkIn: '2024-11-22',
-    checkOut: '2024-11-26',
-    amountPaid: 1920000,
-    cautionFee: 220000,
-    pointsEarned: 520,
-    avatar: AVATARS[5],
-    rating: 4.9,
-  },
-  {
-    id: 'booking-007',
-    listingId: 'saf-004',
-    status: 'past',
-    guestName: 'Zara L.',
-    checkIn: '2024-10-05',
-    checkOut: '2024-10-08',
-    amountPaid: 435000,
-    cautionFee: 90000,
-    pointsEarned: 210,
-    avatar: AVATARS[1],
-    rating: 4.6,
-  },
-  {
-    id: 'booking-008',
-    listingId: 'saf-008',
-    status: 'upcoming',
-    guestName: 'Femi O.',
-    checkIn: '2025-04-02',
-    checkOut: '2025-04-05',
-    amountPaid: 234000,
-    cautionFee: 60000,
-    pointsEarned: 130,
-    avatar: AVATARS[0],
-  },
-  {
-    id: 'booking-009',
-    listingId: 'saf-011',
-    status: 'current',
-    guestName: 'Nora A.',
-    checkIn: '2025-02-18',
-    checkOut: '2025-02-20',
-    amountPaid: 176000,
-    cautionFee: 65000,
-    pointsEarned: 95,
-    avatar: AVATARS[4],
-  },
-  {
-    id: 'booking-010',
-    listingId: 'saf-012',
-    status: 'upcoming',
-    guestName: 'Somto E.',
-    checkIn: '2025-03-20',
-    checkOut: '2025-03-23',
-    amountPaid: 504000,
-    cautionFee: 110000,
-    pointsEarned: 210,
-    avatar: AVATARS[3],
-  },
-];
-
-const LISTING_MAP = LISTINGS.reduce<Record<string, typeof LISTINGS[number]>>((acc, listing) => {
-  acc[listing.id] = listing;
-  return acc;
-}, {});
-
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
 const formatDateRange = (start: string, end: string) => {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
+  const safeStart = start?.trim() ?? '';
+  const safeEnd = end?.trim() ?? '';
+  const startDate = new Date(safeStart);
+  const endDate = new Date(safeEnd);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    if (safeStart && safeEnd) return `${safeStart} - ${safeEnd}`;
+    return safeStart || safeEnd || '';
+  }
   const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
   const startLabel = startDate.toLocaleDateString('en-US', options);
   const endLabel = endDate.toLocaleDateString('en-US', {
@@ -213,6 +107,30 @@ const formatDateRange = (start: string, end: string) => {
   return `${startLabel} - ${endLabel}`;
 };
 
+const formatStatusLabel = (value: string) =>
+  value.replace(/_/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase());
+
+const mapBooking = (booking: BookingResponse): BookingListItem => {
+  const photos = booking.listing?.propertyPhotos ?? [];
+  return {
+    id: booking.id,
+    listingId: null,
+    apartmentName: booking.listing?.name ?? 'Apartment',
+    apartmentType: booking.listing?.apartmentType ?? '—',
+    location: booking.listing?.area ?? '—',
+    guestName: booking.user?.name ?? 'Guest',
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    amountPaid: booking.amountPaid ?? 0,
+    cautionFee: booking.cautionFee ?? 0,
+    referenceNumber: booking.referenceNumber ?? '—',
+    numberOfOccupants: booking.numberOfOccupants ?? 0,
+    state: booking.state ?? '',
+    timelineStatus: booking.timelineStatus ?? '',
+    coverImage: photos[0]?.avatarPhoto ?? null,
+  };
+};
+
 export default function BookingsScreen() {
   const router = useRouter();
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
@@ -220,11 +138,28 @@ export default function BookingsScreen() {
   );
   const [activeFilter, setActiveFilter] = useState<BookingStatus>('current');
   const [selectedBooking, setSelectedBooking] = useState<BookingListItem | null>(null);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [remoteHasMore, setRemoteHasMore] = useState(true);
+
+  const queryVariables = useMemo<FindBookingsVariables>(
+    () => ({
+      status: activeFilter,
+      limit: PAGE_SIZE,
+      offset: 0,
+    }),
+    [activeFilter]
+  );
+
+  const { data, loading, error, fetchMore, refetch } = useQuery<
+    FindBookingsResponse,
+    FindBookingsVariables
+  >(FIND_BOOKINGS, {
+    variables: queryVariables,
+    notifyOnNetworkStatusChange: true,
+    skip: authStatus !== 'signed-in',
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -244,45 +179,60 @@ export default function BookingsScreen() {
     }, [])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (authStatus === 'signed-in') {
+        refetch(queryVariables);
+      }
+    }, [authStatus, refetch, queryVariables])
+  );
+
   useEffect(() => {
-    setLoading(true);
-    const timer = setTimeout(() => setLoading(false), 350);
-    return () => clearTimeout(timer);
+    setRemoteHasMore(true);
   }, [activeFilter]);
 
   const bookings = useMemo<BookingListItem[]>(() => {
-    return BOOKING_SEEDS.filter((booking) => booking.status === activeFilter).map((booking) => {
-      const listing = LISTING_MAP[booking.listingId];
-      return {
-        id: booking.id,
-        listingId: listing?.id ?? null,
-        apartmentName: listing?.name ?? 'Apartment',
-        apartmentType: listing?.apartmentType ?? '—',
-        location: listing?.area ?? '—',
-        guestName: booking.guestName,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        amountPaid: booking.amountPaid,
-        cautionFee: booking.cautionFee,
-        pointsEarned: booking.pointsEarned,
-        coverImage: listing?.coverPhoto ?? listing?.gallery?.[0],
-        avatar: booking.avatar,
-        rating: booking.rating ?? null,
-      };
-    });
-  }, [activeFilter]);
+    return (data?.findBookings ?? []).map(mapBooking);
+  }, [data]);
 
-  const pagedBookings = useMemo(() => bookings.slice(0, page * PAGE_SIZE), [bookings, page]);
-  const hasMore = pagedBookings.length < bookings.length;
+  const hasMore = remoteHasMore;
 
-  const handleLoadMore = () => {
+  useEffect(() => {
+    if (data?.findBookings && data.findBookings.length < PAGE_SIZE) {
+      setRemoteHasMore(false);
+    }
+  }, [data]);
+
+  const handleLoadMore = async () => {
     if (loading || loadingMore || !hasMore) return;
     setLoadMoreError(null);
     setLoadingMore(true);
-    setTimeout(() => {
-      setPage((prev) => prev + 1);
+    try {
+      const result = await fetchMore({
+        variables: {
+          status: activeFilter,
+          limit: PAGE_SIZE,
+          offset: bookings.length,
+        },
+        updateQuery: (previous, { fetchMoreResult }) => {
+          if (!fetchMoreResult?.findBookings) return previous;
+          return {
+            findBookings: [
+              ...(previous?.findBookings ?? []),
+              ...fetchMoreResult.findBookings,
+            ],
+          };
+        },
+      });
+      const fetched = result.data?.findBookings ?? [];
+      if (fetched.length < PAGE_SIZE) {
+        setRemoteHasMore(false);
+      }
+    } catch (err) {
+      setLoadMoreError('Unable to load more bookings.');
+    } finally {
       setLoadingMore(false);
-    }, 350);
+    }
   };
 
   const handleChangeFilter = (status: BookingStatus) => {
@@ -293,16 +243,17 @@ export default function BookingsScreen() {
     setActiveFilter(status);
     setSelectedBooking(null);
     setLoadMoreError(null);
-    setPage(1);
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setLoadMoreError(null);
     setRefreshing(true);
-    setTimeout(() => {
-      setPage(1);
+    try {
+      await refetch(queryVariables);
+      setRemoteHasMore(true);
+    } finally {
       setRefreshing(false);
-    }, 400);
+    }
   };
 
   const handleOpenListing = () => {
@@ -321,7 +272,7 @@ export default function BookingsScreen() {
       onPress={() => setSelectedBooking(item)}>
       <View className="flex-row items-center gap-4">
         <LoadingImage
-          source={{ uri: item.avatar ?? AVATARS[0] }}
+          source={{ uri: item.coverImage ?? AVATARS[0] }}
           style={{ height: 64, width: 64 }}
           className="rounded-2xl"
         />
@@ -333,16 +284,29 @@ export default function BookingsScreen() {
               ellipsizeMode="tail">
               {item.apartmentName}
             </Text>
-            <Text className="text-xs font-semibold uppercase text-blue-500">{item.apartmentType}</Text>
+            <View className="items-end">
+              <Text className="text-xs font-semibold uppercase text-blue-500">
+                {item.apartmentType}
+              </Text>
+              {item.state ? (
+                <Text className="text-[10px] font-semibold uppercase text-slate-400">
+                  {formatStatusLabel(item.state)}
+                </Text>
+              ) : null}
+            </View>
           </View>
           <Text className="text-sm text-slate-500">{item.guestName}</Text>
-          <Text className="text-xs text-slate-400">{formatDateRange(item.checkIn, item.checkOut)}</Text>
+          <Text className="text-xs text-slate-400">
+            {formatDateRange(item.checkIn, item.checkOut)}
+          </Text>
         </View>
       </View>
       <View className="mt-4 flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <Feather name="credit-card" size={16} color="#0f172a" />
-          <Text className="text-sm font-semibold text-slate-800">{formatCurrency(item.amountPaid)}</Text>
+          <Text className="text-sm font-semibold text-slate-800">
+            {formatCurrency(item.amountPaid)}
+          </Text>
         </View>
         <View className="flex-row items-center gap-2">
           <Feather name="shield" size={16} color="#0f172a" />
@@ -357,21 +321,12 @@ export default function BookingsScreen() {
           <Text className="text-sm font-semibold text-slate-600">{item.location}</Text>
         </View>
         <View className="flex-row items-center gap-2">
-          <Feather name="award" size={16} color="#0f172a" />
-          <Text className="text-sm font-semibold text-slate-800">+{item.pointsEarned} pts</Text>
+          <Feather name="users" size={16} color="#0f172a" />
+          <Text className="text-sm font-semibold text-slate-800">
+            {item.numberOfOccupants} guests
+          </Text>
         </View>
       </View>
-      {activeFilter === 'past' && item.rating != null ? (
-        <View className="mt-3 flex-row items-center justify-between rounded-2xl bg-amber-50/80 px-3 py-2">
-          <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-            Guest rating
-          </Text>
-          <View className="flex-row items-center gap-2">
-            <Feather name="star" size={16} color="#b45309" />
-            <Text className="text-sm font-semibold text-amber-700">{item.rating.toFixed(1)}</Text>
-          </View>
-        </View>
-      ) : null}
     </Pressable>
   );
 
@@ -453,7 +408,7 @@ export default function BookingsScreen() {
           </View>
 
           <FlatList
-            data={pagedBookings}
+            data={bookings}
             keyExtractor={(item) => item.id}
             renderItem={renderBookingCard}
             contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 16 }}
@@ -466,6 +421,12 @@ export default function BookingsScreen() {
               loading ? (
                 <View className="mt-20 items-center">
                   <ActivityIndicator color="#2563eb" />
+                </View>
+              ) : error ? (
+                <View className="mt-20 items-center">
+                  <Text className="text-sm text-slate-400">
+                    Unable to load bookings right now.
+                  </Text>
                 </View>
               ) : (
                 <View className="mt-20 items-center">
@@ -492,7 +453,7 @@ export default function BookingsScreen() {
                     </View>
                     <LoadingImage
                       source={{
-                        uri: selectedBooking.coverImage ?? LISTINGS[0]?.coverPhoto ?? AVATARS[0],
+                        uri: selectedBooking.coverImage ?? AVATARS[0],
                       }}
                       style={{ height: 192, width: '100%' }}
                       className="rounded-3xl"
@@ -529,21 +490,28 @@ export default function BookingsScreen() {
                         </Text>
                       </View>
                       <View className="mt-2 flex-row items-center justify-between">
-                        <Text className="text-sm text-slate-500">Rewards</Text>
-                        <Text className="text-sm font-semibold text-blue-600">
-                          +{selectedBooking.pointsEarned} pts
+                        <Text className="text-sm text-slate-500">Guests</Text>
+                        <Text className="text-sm font-semibold text-slate-900">
+                          {selectedBooking.numberOfOccupants}
+                        </Text>
+                      </View>
+                      <View className="mt-2 flex-row items-center justify-between">
+                        <Text className="text-sm text-slate-500">Reference</Text>
+                        <Text className="text-sm font-semibold text-slate-900">
+                          {selectedBooking.referenceNumber}
                         </Text>
                       </View>
                     </View>
-
-                    <Pressable
-                      className="mt-6 flex-row items-center justify-center rounded-full bg-blue-600 py-4"
-                      onPress={handleOpenListing}>
-                      <Feather name="external-link" size={18} color="#fff" />
-                      <Text className="ml-2 text-base font-semibold text-white">
-                        View Apartment
-                      </Text>
-                    </Pressable>
+                    {selectedBooking.listingId ? (
+                      <Pressable
+                        className="mt-6 flex-row items-center justify-center rounded-full bg-blue-600 py-4"
+                        onPress={handleOpenListing}>
+                        <Feather name="external-link" size={18} color="#fff" />
+                        <Text className="ml-2 text-base font-semibold text-white">
+                          View Apartment
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </>
                 ) : null}
               </View>
