@@ -262,8 +262,8 @@ export default function OfferDetailScreen() {
             }}
           />
         </Animated.View>
-        <View className="absolute inset-0 bg-black/40" />
-        <View className="absolute bottom-7 left-6 right-6">
+        <View className="absolute inset-0 bg-black/40" pointerEvents="none" />
+        <View className="absolute bottom-7 left-6 right-6" pointerEvents="box-none">
           <Text className="text-xs font-semibold uppercase tracking-[0.3em] text-white/70">
             {categoryTitle}
           </Text>
