@@ -1,8 +1,15 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
@@ -50,12 +57,24 @@ export default function OffersScreen() {
     }),
     []
   );
-  const { data, error } = useQuery<FindOfferCategoriesResponse, FindOfferCategoriesVariables>(
+  const [refreshing, setRefreshing] = useState(false);
+  const { data, error, refetch } = useQuery<
+    FindOfferCategoriesResponse,
+    FindOfferCategoriesVariables
+  >(
     FIND_OFFER_CATEGORIES,
     {
-    variables: queryVariables,
+      variables: queryVariables,
     }
   );
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetch(queryVariables);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [queryVariables, refetch]);
 
   const categories = useMemo<OfferCategoryCard[]>(() => {
     const remoteCategories = data?.findOfferCategories ?? [];
@@ -81,7 +100,15 @@ export default function OffersScreen() {
     <SafeAreaView className="flex-1 bg-slate-50">
       <ScrollView
         contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#1d4ed8"
+            colors={['#1d4ed8']}
+          />
+        }>
         <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
           Safarihills
         </Text>
