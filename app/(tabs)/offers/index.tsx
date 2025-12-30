@@ -1,11 +1,81 @@
-import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { OFFER_CATEGORIES } from '@/data/offers';
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+
+import { BlankSlate } from '@/components/BlankSlate';
+import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import { FIND_OFFER_CATEGORIES } from '@/queries/findOfferCategories';
+
+type OfferCategoryCard = {
+  id: string;
+  title: string;
+  description: string;
+  rewards: string[];
+  image: string;
+  offersCount: number;
+};
+
+type FindOfferCategory = {
+  id?: string | null;
+  name?: string | null;
+  description?: string | null;
+  rewards?: (string | null)[] | null;
+  coverPhoto?: string | null;
+  numberOfOffers?: number | null;
+};
+
+type FindOfferCategoriesResponse = {
+  findOfferCategories: FindOfferCategory[];
+};
+
+type FindOfferCategoriesVariables = {
+  limit?: number | null;
+  offset?: number | null;
+};
+
+const FALLBACK_TITLE = 'Offer category';
+const FALLBACK_REWARDS = ['Exclusive rewards', 'Member pricing', 'Bonus perks'];
+const FALLBACK_DESCRIPTION = 'Capture the essence of this offer category.';
+const FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80';
 
 export default function OffersScreen() {
   const router = useRouter();
+  const queryVariables = useMemo<FindOfferCategoriesVariables>(
+    () => ({
+      limit: 20,
+      offset: 0,
+    }),
+    []
+  );
+  const { data, error } = useQuery<FindOfferCategoriesResponse, FindOfferCategoriesVariables>(
+    FIND_OFFER_CATEGORIES,
+    {
+    variables: queryVariables,
+    }
+  );
+
+  const categories = useMemo<OfferCategoryCard[]>(() => {
+    const remoteCategories = data?.findOfferCategories ?? [];
+    return remoteCategories.map((category, index) => {
+      const rewards = (category?.rewards ?? [])
+        .map((reward) => reward?.trim())
+        .filter((reward): reward is string => Boolean(reward));
+      return {
+        id: category?.id ?? `offer-category-${index + 1}`,
+        title: category?.name?.trim() || FALLBACK_TITLE,
+        description: category?.description?.trim() || FALLBACK_DESCRIPTION,
+        rewards: rewards.length > 0 ? rewards : FALLBACK_REWARDS,
+        image: category?.coverPhoto || FALLBACK_IMAGE,
+        offersCount: category?.numberOfOffers ?? 0,
+      };
+    });
+  }, [data]);
+
+  const hasError = Boolean(error);
+  const showEmptyState = !hasError && categories.length === 0;
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
@@ -42,41 +112,61 @@ export default function OffersScreen() {
           </Text>
         </View>
 
-        {OFFER_CATEGORIES.map((category) => (
-          <Pressable
-            key={category.id}
-            className="mt-5 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm shadow-slate-100"
-            onPress={() => router.push(`/offers/${category.id}`)}>
-            <LoadingImageBackground source={{ uri: category.image }} className="h-40">
-              <View className="absolute inset-0 bg-black/35" />
-              <View className="flex-1 justify-between p-4">
-                <View className="self-end rounded-full bg-white/90 px-3 py-1">
-                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
-                    {category.offers.length} offers
-                  </Text>
-                </View>
-                <Text className="text-2xl font-bold text-white">{category.title}</Text>
-              </View>
-            </LoadingImageBackground>
+        {hasError ? (
+          <View className="mt-6">
+            <BlankSlate
+              title="Encountered error while trying to fetch offers."
+              description="Try again later."
+              iconName="alert-triangle"
+            />
+          </View>
+        ) : null}
 
-            <View className="p-5">
-              <View className="flex-row flex-wrap gap-2">
-                {category.rewards.map((reward) => (
-                  <View
-                    key={reward}
-                    className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1">
-                    <Text className="text-xs font-semibold text-blue-700">{reward}</Text>
+        {showEmptyState ? (
+          <View className="mt-6">
+            <BlankSlate
+              title="No offers exist yet."
+              description="Check back soon."
+              iconName="tag"
+            />
+          </View>
+        ) : (
+          categories.map((category) => (
+            <Pressable
+              key={category.id}
+              className="mt-5 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm shadow-slate-100"
+              onPress={() => router.push(`/offers/${category.id}`)}>
+              <LoadingImageBackground source={{ uri: category.image }} className="h-40">
+                <View className="absolute inset-0 bg-black/35" />
+                <View className="flex-1 justify-between p-4">
+                  <View className="self-end rounded-full bg-white/90 px-3 py-1">
+                    <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
+                      {category.offersCount} offers
+                    </Text>
                   </View>
-                ))}
+                  <Text className="text-2xl font-bold text-white">{category.title}</Text>
+                </View>
+              </LoadingImageBackground>
+
+              <View className="p-5">
+                <View className="flex-row flex-wrap gap-2">
+                  {category.rewards.map((reward) => (
+                    <View
+                      key={reward}
+                      className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1">
+                      <Text className="text-xs font-semibold text-blue-700">{reward}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text className="mt-3 text-sm text-slate-500">{category.description}</Text>
+                <View className="mt-4 flex-row items-center justify-between">
+                  <Text className="text-sm font-semibold text-blue-700">View offers</Text>
+                  <Feather name="arrow-right" size={18} color="#1d4ed8" />
+                </View>
               </View>
-              <Text className="mt-3 text-sm text-slate-500">{category.description}</Text>
-              <View className="mt-4 flex-row items-center justify-between">
-                <Text className="text-sm font-semibold text-blue-700">View offers</Text>
-                <Feather name="arrow-right" size={18} color="#1d4ed8" />
-              </View>
-            </View>
-          </Pressable>
-        ))}
+            </Pressable>
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
