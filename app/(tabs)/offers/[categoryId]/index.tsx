@@ -41,6 +41,7 @@ type OfferCampaign = {
   name?: string | null;
   description?: string | null;
   coverPhoto?: string | null;
+  imagesUrl?: (string | null)[] | null;
   offerCampaignRewards?: OfferCampaignReward[] | null;
   offerCampaignListings?: OfferCampaignListing[] | null;
 };
@@ -123,12 +124,14 @@ export default function OfferCategoryScreen() {
           .map((reward) => reward?.name?.trim() || reward?.description?.trim())
           .filter((reward): reward is string => Boolean(reward));
         const description = stripHtml(offer?.description) || FALLBACK_OFFER_DESCRIPTION;
+        const coverPhoto = offer?.coverPhoto?.trim();
+        const galleryImage = offer?.imagesUrl?.find((image) => image?.trim())?.trim();
         return {
           id: offer?.id ?? `offer-${index + 1}`,
           title: offer?.name?.trim() || FALLBACK_OFFER_TITLE,
           description,
           rewards: rewards.length > 0 ? rewards : category.rewards,
-          image: offer?.coverPhoto || category.image || FALLBACK_IMAGE,
+          image: coverPhoto || galleryImage || category.image || FALLBACK_IMAGE,
         };
       });
     }

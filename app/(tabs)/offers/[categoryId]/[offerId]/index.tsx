@@ -1,8 +1,16 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useRef } from 'react';
-import { Animated, Pressable, SafeAreaView, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Dimensions,
+  FlatList,
+  Pressable,
+  SafeAreaView,
+  Text,
+  View,
+} from 'react-native';
 
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
@@ -38,6 +46,7 @@ type OfferCampaign = {
   name?: string | null;
   description?: string | null;
   coverPhoto?: string | null;
+  imagesUrl?: (string | null)[] | null;
   bookableOption?: string | null;
   offerCampaignRewards?: OfferCampaignReward[] | null;
   offerCampaignListings?: OfferCampaignListing[] | null;
@@ -68,11 +77,13 @@ type OfferDetail = {
   description: string;
   rewards: string[];
   image: string;
+  images: string[];
   listings: OfferListing[];
 };
 
 const HEADER_HEIGHT = 280;
 const IMAGE_PARALLAX_DISTANCE = 36;
+const { width } = Dimensions.get('window');
 
 const FALLBACK_CATEGORY_TITLE = 'Offers';
 const FALLBACK_OFFER_TITLE = 'Offer';
@@ -101,6 +112,7 @@ export default function OfferDetailScreen() {
   const categoryId = Array.isArray(categoryParam) ? categoryParam[0] : categoryParam;
   const offerId = Array.isArray(offerParam) ? offerParam[0] : offerParam;
   const scrollY = useRef(new Animated.Value(0)).current;
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   const localCategory = useMemo(
     () => OFFER_CATEGORIES.find((item) => item.id === categoryId),
@@ -130,6 +142,14 @@ export default function OfferDetailScreen() {
 
   const offer = useMemo<OfferDetail | null>(() => {
     if (remoteOffer) {
+      const coverPhoto = remoteOffer.coverPhoto?.trim();
+      const galleryImages = (remoteOffer.imagesUrl ?? [])
+        .map((image) => image?.trim())
+        .filter((image): image is string => Boolean(image));
+      const mergedImages = coverPhoto
+        ? [coverPhoto, ...galleryImages.filter((image) => image !== coverPhoto)]
+        : galleryImages;
+      const resolvedImages = mergedImages.length > 0 ? mergedImages : [FALLBACK_IMAGE];
       const rewards = (remoteOffer.offerCampaignRewards ?? [])
         .map((reward) => reward?.name?.trim() || reward?.description?.trim())
         .filter((reward): reward is string => Boolean(reward));
@@ -152,18 +172,21 @@ export default function OfferDetailScreen() {
         title: remoteOffer.name?.trim() || FALLBACK_OFFER_TITLE,
         description: stripHtml(remoteOffer.description) || FALLBACK_OFFER_DESCRIPTION,
         rewards: rewards.length > 0 ? rewards : FALLBACK_REWARDS,
-        image: remoteOffer.coverPhoto || FALLBACK_IMAGE,
+        image: coverPhoto || resolvedImages[0] || FALLBACK_IMAGE,
+        images: resolvedImages,
         listings,
       };
     }
 
     if (localOffer) {
+      const image = localOffer.image || FALLBACK_IMAGE;
       return {
         id: localOffer.id,
         title: localOffer.title,
         description: localOffer.description || FALLBACK_OFFER_DESCRIPTION,
         rewards: localOffer.rewards.length > 0 ? localOffer.rewards : FALLBACK_REWARDS,
-        image: localOffer.image || FALLBACK_IMAGE,
+        image,
+        images: [image],
         listings: localOffer.listings.map((listing) => ({
           id: listing.id,
           name: listing.name,
@@ -178,6 +201,10 @@ export default function OfferDetailScreen() {
 
     return null;
   }, [localOffer, offerId, remoteOffer]);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [offer?.id]);
 
   const imageTranslate = scrollY.interpolate({
     inputRange: [0, HEADER_HEIGHT],
@@ -217,7 +244,23 @@ export default function OfferDetailScreen() {
             bottom: 0,
             transform: [{ translateY: imageTranslate }, { scale: imageScale }],
           }}>
-          <LoadingImageBackground source={{ uri: offer.image }} className="flex-1" />
+          <FlatList
+            data={offer.images}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item, index) => `${offer.id}-image-${index}`}
+            renderItem={({ item }) => (
+              <LoadingImageBackground
+                source={{ uri: item }}
+                style={{ width, height: HEADER_HEIGHT }}
+              />
+            )}
+            onMomentumScrollEnd={(event) => {
+              const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+              setActiveImageIndex(nextIndex);
+            }}
+          />
         </Animated.View>
         <View className="absolute inset-0 bg-black/40" />
         <View className="absolute bottom-7 left-6 right-6">
@@ -225,6 +268,18 @@ export default function OfferDetailScreen() {
             {categoryTitle}
           </Text>
           <Text className="mt-2 text-3xl font-bold text-white">{offer.title}</Text>
+          {offer.images.length > 1 ? (
+            <View className="mt-3 flex-row items-center gap-2">
+              {offer.images.map((_, index) => (
+                <View
+                  key={`${offer.id}-dot-${index}`}
+                  className={`h-1.5 rounded-full ${
+                    index === activeImageIndex ? 'w-7 bg-white' : 'w-2.5 bg-white/60'
+                  }`}
+                />
+              ))}
+            </View>
+          ) : null}
         </View>
         <View className="absolute left-6 top-4">
           <BackButton onPress={() => router.back()} />
@@ -272,10 +327,10 @@ export default function OfferDetailScreen() {
         </View>
 
         <View className="mt-4 gap-4">
-            {offer.listings.map((listing) => (
-              <View
-                key={listing.id}
-                className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
+          {offer.listings.map((listing) => (
+            <View
+              key={listing.id}
+              className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
               <View className="flex-row items-center gap-4">
                 <LoadingImage
                   source={{ uri: listing.image }}

@@ -16,6 +16,7 @@ export const FIND_OFFERS_FOR_CAMPAIGN_CATEGORY = gql`
       name
       description
       coverPhoto
+      imagesUrl: images
       visibleOn
       visibleStartTime
       visibleEndTime
