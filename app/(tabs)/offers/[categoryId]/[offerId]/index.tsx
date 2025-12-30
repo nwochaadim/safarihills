@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { BackButton } from '@/components/BackButton';
+import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { OFFER_CATEGORIES } from '@/data/offers';
@@ -74,7 +75,7 @@ type OfferListing = {
 type OfferDetail = {
   id: string;
   title: string;
-  description: string;
+  descriptionHtml: string;
   rewards: string[];
   image: string;
   images: string[];
@@ -94,11 +95,6 @@ const FALLBACK_IMAGE =
 
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
-
-const stripHtml = (value?: string | null) => {
-  if (!value) return '';
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-};
 
 const resolvePriceUnit = (bookableOption?: string | null) =>
   bookableOption === 'day_based' ? 'per day' : 'per night';
@@ -170,7 +166,7 @@ export default function OfferDetailScreen() {
       return {
         id: remoteOffer.id ?? offerId ?? 'offer',
         title: remoteOffer.name?.trim() || FALLBACK_OFFER_TITLE,
-        description: stripHtml(remoteOffer.description) || FALLBACK_OFFER_DESCRIPTION,
+        descriptionHtml: remoteOffer.description ?? FALLBACK_OFFER_DESCRIPTION,
         rewards: rewards.length > 0 ? rewards : FALLBACK_REWARDS,
         image: coverPhoto || resolvedImages[0] || FALLBACK_IMAGE,
         images: resolvedImages,
@@ -183,7 +179,7 @@ export default function OfferDetailScreen() {
       return {
         id: localOffer.id,
         title: localOffer.title,
-        description: localOffer.description || FALLBACK_OFFER_DESCRIPTION,
+        descriptionHtml: localOffer.description || FALLBACK_OFFER_DESCRIPTION,
         rewards: localOffer.rewards.length > 0 ? localOffer.rewards : FALLBACK_REWARDS,
         image,
         images: [image],
@@ -314,7 +310,11 @@ export default function OfferDetailScreen() {
 
         <View className="mt-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm shadow-slate-100">
           <Text className="text-base font-semibold text-slate-900">Offer details</Text>
-          <Text className="mt-2 text-sm text-slate-500">{offer.description}</Text>
+          <HtmlViewer
+            html={offer.descriptionHtml}
+            className="mt-2"
+            textClassName="text-sm text-slate-500"
+          />
         </View>
 
         <View className="mt-8">
