@@ -1,8 +1,11 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -47,18 +50,21 @@ const FALLBACK_REWARDS = ['Exclusive rewards', 'Member pricing', 'Bonus perks'];
 const FALLBACK_DESCRIPTION = 'Capture the essence of this offer category.';
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80';
+const PAGE_SIZE = 10;
 
 export default function OffersScreen() {
   const router = useRouter();
   const queryVariables = useMemo<FindOfferCategoriesVariables>(
     () => ({
-      limit: 20,
+      limit: PAGE_SIZE,
       offset: 0,
     }),
     []
   );
   const [refreshing, setRefreshing] = useState(false);
-  const { data, error, refetch } = useQuery<
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [remoteHasMore, setRemoteHasMore] = useState(true);
+  const { data, error, refetch, fetchMore } = useQuery<
     FindOfferCategoriesResponse,
     FindOfferCategoriesVariables
   >(
@@ -69,6 +75,7 @@ export default function OffersScreen() {
   );
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    setRemoteHasMore(true);
     try {
       await refetch(queryVariables);
     } finally {
@@ -95,12 +102,62 @@ export default function OffersScreen() {
 
   const hasError = Boolean(error);
   const showEmptyState = !hasError && categories.length === 0;
+  const hasMore = remoteHasMore && !hasError;
+
+  useEffect(() => {
+    if (data?.findOfferCategories && data.findOfferCategories.length < PAGE_SIZE) {
+      setRemoteHasMore(false);
+    }
+  }, [data]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!hasMore || loadingMore || refreshing) return;
+    setLoadingMore(true);
+    try {
+      const result = await fetchMore({
+        variables: {
+          limit: PAGE_SIZE,
+          offset: categories.length,
+        },
+        updateQuery: (previous, { fetchMoreResult }) => {
+          if (!fetchMoreResult?.findOfferCategories) return previous;
+          return {
+            findOfferCategories: [
+              ...(previous?.findOfferCategories ?? []),
+              ...fetchMoreResult.findOfferCategories,
+            ],
+          };
+        },
+      });
+      const newItems = result.data?.findOfferCategories ?? [];
+      if (newItems.length < PAGE_SIZE) {
+        setRemoteHasMore(false);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [categories.length, fetchMore, hasMore, loadingMore, refreshing]);
+
+  const handleScroll = useCallback(
+    ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const paddingToBottom = 160;
+      const isNearBottom =
+        nativeEvent.layoutMeasurement.height + nativeEvent.contentOffset.y >=
+        nativeEvent.contentSize.height - paddingToBottom;
+      if (isNearBottom) {
+        handleLoadMore();
+      }
+    },
+    [handleLoadMore]
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
       <ScrollView
         contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -194,6 +251,11 @@ export default function OffersScreen() {
             </Pressable>
           ))
         )}
+        {loadingMore ? (
+          <View className="mt-6 items-center justify-center">
+            <ActivityIndicator color="#1d4ed8" />
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
