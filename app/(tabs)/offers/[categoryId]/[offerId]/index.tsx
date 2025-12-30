@@ -1,17 +1,96 @@
-import { BackButton } from '@/components/BackButton';
-import { LoadingImage } from '@/components/LoadingImage';
-import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { OFFER_CATEGORIES } from '@/data/offers';
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useRef } from 'react';
 import { Animated, Pressable, SafeAreaView, Text, View } from 'react-native';
 
+import { BackButton } from '@/components/BackButton';
+import { LoadingImage } from '@/components/LoadingImage';
+import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import { OFFER_CATEGORIES } from '@/data/offers';
+import { FIND_OFFERS_FOR_CAMPAIGN_CATEGORY } from '@/queries/findOffersForCampaignCategory';
+
+type OfferCategory = {
+  id?: string | null;
+  name?: string | null;
+};
+
+type OfferCampaignReward = {
+  id?: string | null;
+  name?: string | null;
+  description?: string | null;
+};
+
+type OfferCampaignListing = {
+  id?: string | null;
+  listing?: {
+    name?: string | null;
+    rating?: number | null;
+    coverPhoto?: string | null;
+    description?: string | null;
+    area?: string | null;
+  } | null;
+  price?: number | null;
+};
+
+type OfferCampaign = {
+  id?: string | null;
+  name?: string | null;
+  description?: string | null;
+  coverPhoto?: string | null;
+  bookableOption?: string | null;
+  offerCampaignRewards?: OfferCampaignReward[] | null;
+  offerCampaignListings?: OfferCampaignListing[] | null;
+};
+
+type FindOffersForCampaignCategoryResponse = {
+  category?: OfferCategory | null;
+  offers?: OfferCampaign[] | null;
+};
+
+type FindOffersForCampaignCategoryVariables = {
+  categoryId: string;
+};
+
+type OfferListing = {
+  id: string;
+  name: string;
+  location: string;
+  rating: number;
+  price: number;
+  priceUnit: string;
+  image: string;
+};
+
+type OfferDetail = {
+  id: string;
+  title: string;
+  description: string;
+  rewards: string[];
+  image: string;
+  listings: OfferListing[];
+};
+
 const HEADER_HEIGHT = 280;
 const IMAGE_PARALLAX_DISTANCE = 36;
 
+const FALLBACK_CATEGORY_TITLE = 'Offers';
+const FALLBACK_OFFER_TITLE = 'Offer';
+const FALLBACK_OFFER_DESCRIPTION = 'Enjoy a curated offer tailored for you.';
+const FALLBACK_REWARDS = ['Exclusive rewards', 'Member pricing', 'Bonus perks'];
+const FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80';
+
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+
+const stripHtml = (value?: string | null) => {
+  if (!value) return '';
+  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+const resolvePriceUnit = (bookableOption?: string | null) =>
+  bookableOption === 'day_based' ? 'per day' : 'per night';
 
 export default function OfferDetailScreen() {
   const router = useRouter();
@@ -23,11 +102,82 @@ export default function OfferDetailScreen() {
   const offerId = Array.isArray(offerParam) ? offerParam[0] : offerParam;
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const { category, offer } = useMemo(() => {
-    const foundCategory = OFFER_CATEGORIES.find((item) => item.id === categoryId);
-    const foundOffer = foundCategory?.offers.find((item) => item.id === offerId);
-    return { category: foundCategory, offer: foundOffer };
-  }, [categoryId, offerId]);
+  const localCategory = useMemo(
+    () => OFFER_CATEGORIES.find((item) => item.id === categoryId),
+    [categoryId]
+  );
+  const localOffer = useMemo(
+    () => localCategory?.offers.find((item) => item.id === offerId),
+    [localCategory, offerId]
+  );
+
+  const { data, error } = useQuery<
+    FindOffersForCampaignCategoryResponse,
+    FindOffersForCampaignCategoryVariables
+  >(FIND_OFFERS_FOR_CAMPAIGN_CATEGORY, {
+    variables: { categoryId: categoryId ?? '' },
+    skip: !categoryId,
+  });
+
+  const remoteOffer = useMemo(
+    () => (data?.offers ?? []).find((item) => item?.id === offerId),
+    [data?.offers, offerId]
+  );
+
+  const categoryTitle =
+    data?.category?.name?.trim() || localCategory?.title || FALLBACK_CATEGORY_TITLE;
+  const categoryIdValue = data?.category?.id ?? localCategory?.id ?? categoryId ?? 'offer';
+
+  const offer = useMemo<OfferDetail | null>(() => {
+    if (remoteOffer) {
+      const rewards = (remoteOffer.offerCampaignRewards ?? [])
+        .map((reward) => reward?.name?.trim() || reward?.description?.trim())
+        .filter((reward): reward is string => Boolean(reward));
+      const listings =
+        remoteOffer.offerCampaignListings?.map((item, index) => {
+          const listing = item?.listing;
+          return {
+            id: item?.id ?? `listing-${index + 1}`,
+            name: listing?.name?.trim() || 'Apartment',
+            location: listing?.area?.trim() || '—',
+            rating: listing?.rating ?? 0,
+            price: item?.price ?? 0,
+            priceUnit: resolvePriceUnit(remoteOffer.bookableOption),
+            image: listing?.coverPhoto || FALLBACK_IMAGE,
+          };
+        }) ?? [];
+
+      return {
+        id: remoteOffer.id ?? offerId ?? 'offer',
+        title: remoteOffer.name?.trim() || FALLBACK_OFFER_TITLE,
+        description: stripHtml(remoteOffer.description) || FALLBACK_OFFER_DESCRIPTION,
+        rewards: rewards.length > 0 ? rewards : FALLBACK_REWARDS,
+        image: remoteOffer.coverPhoto || FALLBACK_IMAGE,
+        listings,
+      };
+    }
+
+    if (localOffer) {
+      return {
+        id: localOffer.id,
+        title: localOffer.title,
+        description: localOffer.description || FALLBACK_OFFER_DESCRIPTION,
+        rewards: localOffer.rewards.length > 0 ? localOffer.rewards : FALLBACK_REWARDS,
+        image: localOffer.image || FALLBACK_IMAGE,
+        listings: localOffer.listings.map((listing) => ({
+          id: listing.id,
+          name: listing.name,
+          location: listing.location,
+          rating: listing.rating,
+          price: listing.price,
+          priceUnit: listing.priceUnit,
+          image: listing.image || FALLBACK_IMAGE,
+        })),
+      };
+    }
+
+    return null;
+  }, [localOffer, offerId, remoteOffer]);
 
   const imageTranslate = scrollY.interpolate({
     inputRange: [0, HEADER_HEIGHT],
@@ -41,14 +191,16 @@ export default function OfferDetailScreen() {
     extrapolate: 'clamp',
   });
 
-  if (!category || !offer) {
+  if (!offer) {
+    const title = error
+      ? 'Encountered error while trying to fetch offers.'
+      : 'Offer not found';
+    const description = error ? 'Try again later.' : 'Try another offer from the deals page.';
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-slate-50 px-6">
         <BackButton onPress={() => router.back()} />
-        <Text className="mt-4 text-2xl font-bold text-slate-900">Offer not found</Text>
-        <Text className="mt-2 text-sm text-slate-500">
-          Try another offer from the deals page.
-        </Text>
+        <Text className="mt-4 text-2xl font-bold text-slate-900">{title}</Text>
+        <Text className="mt-2 text-sm text-slate-500">{description}</Text>
       </SafeAreaView>
     );
   }
@@ -70,7 +222,7 @@ export default function OfferDetailScreen() {
         <View className="absolute inset-0 bg-black/40" />
         <View className="absolute bottom-7 left-6 right-6">
           <Text className="text-xs font-semibold uppercase tracking-[0.3em] text-white/70">
-            {category.title}
+            {categoryTitle}
           </Text>
           <Text className="mt-2 text-3xl font-bold text-white">{offer.title}</Text>
         </View>
@@ -120,10 +272,10 @@ export default function OfferDetailScreen() {
         </View>
 
         <View className="mt-4 gap-4">
-          {offer.listings.map((listing) => (
-            <View
-              key={listing.id}
-              className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
+            {offer.listings.map((listing) => (
+              <View
+                key={listing.id}
+                className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
               <View className="flex-row items-center gap-4">
                 <LoadingImage
                   source={{ uri: listing.image }}
@@ -159,7 +311,7 @@ export default function OfferDetailScreen() {
                     router.push({
                       pathname: '/offers/[categoryId]/[offerId]/book',
                       params: {
-                        categoryId: category.id,
+                        categoryId: categoryIdValue,
                         offerId: offer.id,
                         listingId: listing.id,
                       },
