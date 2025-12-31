@@ -598,6 +598,26 @@ export default function BookingScreen() {
                   {formatCurrency(entireApartment?.nightlyRate ?? 0)}
                   <Text className="text-xs font-medium text-slate-500"> / night</Text>
                 </Text>
+                <View className="mt-3 rounded-2xl border border-rose-100 bg-rose-50/50 p-3">
+                  <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-500">
+                    Restrictions
+                  </Text>
+                  <View className="mt-2 flex-row flex-wrap gap-2">
+                    {(entireApartment?.restrictions ?? []).length === 0 ? (
+                      <Text className="text-xs text-slate-500">No restrictions listed.</Text>
+                    ) : (
+                      (entireApartment?.restrictions ?? []).map((restriction) => (
+                        <View
+                          key={`entire-${restriction}`}
+                          className="rounded-full border border-rose-100 bg-white px-3 py-1.5">
+                          <Text className="text-xs font-semibold text-rose-700">
+                            {restriction}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
               </View>
             ) : (
               <View className="mt-4">
