@@ -49,6 +49,8 @@ export default function BookingSummaryScreen() {
       listingName: '4 Bedroom Urban Haven',
       area: 'Lekki Phase 1',
       roomCategory: 'Premium Room',
+      numberOfGuests: 2,
+      bookingPurpose: 'Vacation',
       checkIn: new Date(2026, 0, 12),
       checkOut: new Date(2026, 0, 15),
       nightlyRate: 45000,
@@ -153,6 +155,21 @@ export default function BookingSummaryScreen() {
                 </View>
               </View>
             ) : null}
+
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Guests</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {booking.numberOfGuests}
+                </Text>
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Purpose</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {booking.bookingPurpose}
+                </Text>
+              </View>
+            </View>
 
             <View className="mt-4 flex-row gap-3">
               <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
