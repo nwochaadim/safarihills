@@ -59,6 +59,10 @@ type RemoteListableDetails = {
 
 type NewBookingDetailsResponse = {
   newBookingDetails: {
+    listing: {
+      name: string | null;
+      area: string | null;
+    } | null;
     entireApartment: RemoteListableDetails | null;
     roomCategories: RemoteListableDetails[] | null;
     bookableOptions: string[] | null;
@@ -333,7 +337,8 @@ export default function BookingScreen() {
       ),
     [bookingDetails]
   );
-  const listingName = entireApartment?.name ?? roomCategories[0]?.name ?? 'Listing';
+  const listingName = bookingDetails?.listing?.name ?? entireApartment?.name ?? 'Listing';
+  const listingArea = bookingDetails?.listing?.area ?? '';
 
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [checkIn, setCheckIn] = useState<Date | null>(null);
@@ -555,7 +560,10 @@ export default function BookingScreen() {
         <View className="px-6 pt-4">
           <BackButton onPress={() => router.back()} />
           <Text className="mt-4 text-3xl font-bold text-slate-900">Book your stay</Text>
-          <Text className="mt-2 text-base text-slate-500">{listingName}</Text>
+          <Text className="mt-2 text-base text-slate-500">
+            {listingName}
+            {listingArea ? ` \u00b7 ${listingArea}` : ''}
+          </Text>
         </View>
 
         <View className="mt-6 px-6">
