@@ -1,0 +1,33 @@
+import { gql } from '@apollo/client';
+
+export const NEW_BOOKING_DETAILS = gql`
+  query newBookingDetails($listingId: ID!) {
+    newBookingDetails(listingId: $listingId) {
+      entireApartment {
+        ...listableDetails
+      }
+      roomCategories {
+        ...listableDetails
+      }
+      bookableOptions
+    }
+  }
+
+  fragment listableDetails on ListableBookingDetails {
+    name
+    nightlyRate
+    cautionFee
+    soldOutDays
+    blockedDays
+    priceAdjustments
+    weeklyDiscount
+    monthlyDiscount
+    amenities
+    restrictions
+    maxNumberOfGuestsAllowed
+    propertyPhotos {
+      mediumUrl
+      largeUrl
+    }
+  }
+`;

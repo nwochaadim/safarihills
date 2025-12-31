@@ -1,6 +1,7 @@
+import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
-import { BookingOption, findListingById, RoomCategory } from '@/data/listings';
+import { NEW_BOOKING_DETAILS } from '@/queries/newBookingDetails';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -34,9 +35,51 @@ const PURPOSE_OPTIONS: { label: string; icon: 'moon' | 'sun' | 'briefcase' | 'mo
     { label: 'PhotoShoot', icon: 'camera' },
   ];
 
-const CAUTION_FEES: Record<BookingOption, number> = {
-  room: 30000,
-  entire: 50000,
+type BookingOption = 'room' | 'entire';
+
+type RemotePropertyPhoto = {
+  mediumUrl: string | null;
+  largeUrl: string | null;
+};
+
+type RemoteListableDetails = {
+  name: string | null;
+  nightlyRate: number | null;
+  cautionFee: number | null;
+  soldOutDays: Record<string, boolean> | null;
+  blockedDays: Record<string, boolean> | null;
+  priceAdjustments: Record<string, number> | null;
+  weeklyDiscount: number | null;
+  monthlyDiscount: number | null;
+  amenities: string[] | null;
+  restrictions: string[] | null;
+  maxNumberOfGuestsAllowed: number | null;
+  propertyPhotos: RemotePropertyPhoto[] | null;
+};
+
+type NewBookingDetailsResponse = {
+  newBookingDetails: {
+    entireApartment: RemoteListableDetails | null;
+    roomCategories: RemoteListableDetails[] | null;
+    bookableOptions: string[] | null;
+  } | null;
+};
+
+type BookingListable = {
+  id: string;
+  name: string;
+  nightlyRate: number;
+  cautionFee: number;
+  soldOutDays: Record<string, boolean>;
+  blockedDays: Record<string, boolean>;
+  priceAdjustments: Record<string, number>;
+  weeklyDiscount: number;
+  monthlyDiscount: number;
+  amenities: string[];
+  maxNumberOfGuestsAllowed: number;
+  photos: string[];
+  description: string;
+  restrictions: string[];
 };
 
 const startOfDay = (date: Date) => {
@@ -71,6 +114,58 @@ const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
 const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
 
+const normalizeNumber = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const normalizeDaysMap = (value: Record<string, boolean> | null | undefined) => {
+  if (!value) return {};
+  return Object.entries(value).reduce<Record<string, boolean>>((acc, [key, entry]) => {
+    if (entry) {
+      acc[key] = true;
+    }
+    return acc;
+  }, {});
+};
+
+const normalizePriceAdjustments = (value: Record<string, number> | null | undefined) => {
+  if (!value) return {};
+  return Object.entries(value).reduce<Record<string, number>>((acc, [key, entry]) => {
+    if (typeof entry === 'number' && Number.isFinite(entry)) {
+      acc[key] = entry;
+    }
+    return acc;
+  }, {});
+};
+
+const mapPhotoUrls = (photos: RemotePropertyPhoto[] | null | undefined) =>
+  (photos ?? [])
+    .map((photo) => photo.largeUrl || photo.mediumUrl)
+    .filter((url): url is string => Boolean(url));
+
+const mapBookableOptions = (options: string[] | null | undefined): BookingOption[] => {
+  const mapped: BookingOption[] = [];
+  if (options?.includes('single_room')) mapped.push('room');
+  if (options?.includes('entire_apartment')) mapped.push('entire');
+  return mapped.length ? mapped : ['entire'];
+};
+
+const mapListableDetails = (details: RemoteListableDetails | null, id: string): BookingListable => ({
+  id,
+  name: details?.name ?? 'Listing',
+  nightlyRate: normalizeNumber(details?.nightlyRate),
+  cautionFee: normalizeNumber(details?.cautionFee),
+  soldOutDays: normalizeDaysMap(details?.soldOutDays),
+  blockedDays: normalizeDaysMap(details?.blockedDays),
+  priceAdjustments: normalizePriceAdjustments(details?.priceAdjustments),
+  weeklyDiscount: normalizeNumber(details?.weeklyDiscount),
+  monthlyDiscount: normalizeNumber(details?.monthlyDiscount),
+  amenities: details?.amenities ?? [],
+  restrictions: details?.restrictions ?? [],
+  maxNumberOfGuestsAllowed: Math.max(1, normalizeNumber(details?.maxNumberOfGuestsAllowed)),
+  photos: mapPhotoUrls(details?.propertyPhotos),
+  description: '',
+});
+
 const getCouponAmount = (code: string, subtotal: number) => {
   if (code === 'SAFARI10') {
     return Math.round(subtotal * 0.1);
@@ -86,6 +181,7 @@ type CalendarDay = {
   isCurrentMonth: boolean;
   isPast: boolean;
   isBooked: boolean;
+  isBlocked: boolean;
   isStart: boolean;
   isEnd: boolean;
   isBetween: boolean;
@@ -104,21 +200,25 @@ const formatShortCurrency = (value: number) => {
   return `${value}`;
 };
 
-const getDatePrice = (date: Date, basePrice: number) => {
-  if (basePrice <= 0) return 0;
-  const seed = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
-  const varianceSteps = (seed % 9) - 4;
-  const variance = varianceSteps * 0.03;
-  const price = Math.round((basePrice * (1 + variance)) / 1000) * 1000;
-  return Math.max(price, 0);
+const getDatePrice = (
+  date: Date,
+  basePrice: number,
+  priceAdjustments: Record<string, number>
+) => {
+  const key = formatDateKey(date);
+  const adjusted = priceAdjustments[key];
+  if (typeof adjusted === 'number') return adjusted;
+  return basePrice > 0 ? basePrice : 0;
 };
 
 const buildCalendarDays = (
   calendarMonth: Date,
   checkIn: Date | null,
   checkOut: Date | null,
-  availability: Record<string, boolean>,
-  basePrice: number
+  soldOutDays: Record<string, boolean>,
+  blockedDays: Record<string, boolean>,
+  basePrice: number,
+  priceAdjustments: Record<string, number>
 ): CalendarDay[] => {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
@@ -146,15 +246,19 @@ const buildCalendarDays = (
     const isEnd = endDate ? normalized.getTime() === endDate.getTime() : false;
     const isBetween = startDate && endDate && normalized > startDate && normalized < endDate;
 
+    const isBooked = soldOutDays[key] === true;
+    const isBlocked = blockedDays[key] === true;
+
     days.push({
       date,
       isCurrentMonth: date.getMonth() === month,
       isPast: normalized < today,
-      isBooked: availability[key] === false,
+      isBooked,
+      isBlocked,
       isStart,
       isEnd,
       isBetween: Boolean(isBetween),
-      nightlyPrice: getDatePrice(date, basePrice),
+      nightlyPrice: getDatePrice(date, basePrice, priceAdjustments),
     });
   }
 
@@ -164,7 +268,8 @@ const buildCalendarDays = (
 const isRangeAvailable = (
   start: Date,
   end: Date,
-  availability: Record<string, boolean>
+  soldOutDays: Record<string, boolean>,
+  blockedDays: Record<string, boolean>
 ) => {
   const cursor = new Date(start);
   cursor.setHours(0, 0, 0, 0);
@@ -173,12 +278,31 @@ const isRangeAvailable = (
 
   while (cursor < endDate) {
     const key = formatDateKey(cursor);
-    if (availability[key] === false) {
+    if (soldOutDays[key] === true || blockedDays[key] === true) {
       return false;
     }
     cursor.setDate(cursor.getDate() + 1);
   }
   return true;
+};
+
+const calculateSubtotal = (
+  start: Date | null,
+  end: Date | null,
+  basePrice: number,
+  priceAdjustments: Record<string, number>
+) => {
+  if (!start || !end) return 0;
+  const cursor = startOfDay(start);
+  const endDate = startOfDay(end);
+  let total = 0;
+
+  while (cursor < endDate) {
+    total += getDatePrice(cursor, basePrice, priceAdjustments);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return total;
 };
 
 const getBookingTypeLabel = (option: BookingOption) =>
@@ -190,7 +314,26 @@ export default function BookingScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
-  const listing = useMemo(() => (id ? findListingById(id) : undefined), [id]);
+  const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
+    variables: { listingId: id ?? '' },
+    skip: !id,
+  });
+  const bookingDetails = data?.newBookingDetails ?? null;
+  const entireApartment = useMemo(
+    () =>
+      bookingDetails?.entireApartment
+        ? mapListableDetails(bookingDetails.entireApartment, 'entire')
+        : null,
+    [bookingDetails]
+  );
+  const roomCategories = useMemo(
+    () =>
+      (bookingDetails?.roomCategories ?? []).map((room, index) =>
+        mapListableDetails(room, `${room?.name ?? 'room'}-${index}`)
+      ),
+    [bookingDetails]
+  );
+  const listingName = entireApartment?.name ?? roomCategories[0]?.name ?? 'Listing';
 
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [checkIn, setCheckIn] = useState<Date | null>(null);
@@ -198,9 +341,10 @@ export default function BookingScreen() {
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [guestCount, setGuestCount] = useState(1);
+  const [guestError, setGuestError] = useState<string | null>(null);
   const [purpose, setPurpose] = useState('');
   const [purposeModalVisible, setPurposeModalVisible] = useState(false);
-  const [galleryRoom, setGalleryRoom] = useState<RoomCategory | null>(null);
+  const [galleryRoom, setGalleryRoom] = useState<BookingListable | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
@@ -208,32 +352,53 @@ export default function BookingScreen() {
   const [couponStatus, setCouponStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
   const [couponAmount, setCouponAmount] = useState(0);
 
-  const bookingOptions = listing?.bookingOptions ?? [];
-  const defaultBookingType: BookingOption = bookingOptions.includes('entire')
-    ? 'entire'
-    : bookingOptions[0] ?? 'entire';
-  const [bookingType, setBookingType] = useState<BookingOption>(defaultBookingType);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(
-    listing?.roomCategories?.[0]?.id ?? null
-  );
-
-  const availability = listing?.availability ?? {};
-
+  const bookingOptions = useMemo(() => {
+    if (!bookingDetails) return [];
+    const mapped = mapBookableOptions(bookingDetails.bookableOptions);
+    if (!roomCategories.length) {
+      return mapped.filter((option) => option !== 'room');
+    }
+    return mapped;
+  }, [bookingDetails, roomCategories.length]);
+  const defaultBookingType = useMemo<BookingOption>(() => {
+    if (bookingOptions.includes('entire')) return 'entire';
+    return bookingOptions[0] ?? 'entire';
+  }, [bookingOptions]);
+  const [bookingType, setBookingType] = useState<BookingOption>('entire');
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!listing) return;
     if (bookingOptions.length && !bookingOptions.includes(bookingType)) {
       setBookingType(defaultBookingType);
     }
-  }, [bookingOptions, bookingType, defaultBookingType, listing]);
+  }, [bookingOptions, bookingType, defaultBookingType]);
 
   useEffect(() => {
     if (bookingType !== 'room') return;
-    if (selectedRoomId) return;
-    if (listing?.roomCategories?.length) {
-      setSelectedRoomId(listing.roomCategories[0].id);
+    if (selectedRoomId && roomCategories.some((room) => room.id === selectedRoomId)) return;
+    if (roomCategories.length) {
+      setSelectedRoomId(roomCategories[0].id);
     }
-  }, [bookingType, listing, selectedRoomId]);
+  }, [bookingType, roomCategories, selectedRoomId]);
+
+  const selectedRoom = useMemo<BookingListable | undefined>(
+    () => roomCategories.find((room) => room.id === selectedRoomId),
+    [roomCategories, selectedRoomId]
+  );
+  const activeListable = bookingType === 'room' ? selectedRoom : entireApartment;
+  const baseNightlyRate = activeListable?.nightlyRate ?? 0;
+  const soldOutDays = activeListable?.soldOutDays ?? {};
+  const blockedDays = activeListable?.blockedDays ?? {};
+  const priceAdjustments = activeListable?.priceAdjustments ?? {};
+  const cautionFee = activeListable?.cautionFee ?? 0;
+  const maxGuestsAllowed = activeListable?.maxNumberOfGuestsAllowed ?? 1;
+
+  useEffect(() => {
+    if (guestCount > maxGuestsAllowed) {
+      setGuestCount(maxGuestsAllowed);
+      setGuestError(`Maximum ${maxGuestsAllowed} guests allowed.`);
+    }
+  }, [guestCount, maxGuestsAllowed]);
 
   const nights = useMemo(() => {
     if (!checkIn || !checkOut) return 0;
@@ -241,25 +406,28 @@ export default function BookingScreen() {
     return Math.max(Math.round(diff / (1000 * 60 * 60 * 24)), 0);
   }, [checkIn, checkOut]);
 
-  const selectedRoom = useMemo<RoomCategory | undefined>(
-    () => listing?.roomCategories?.find((room) => room.id === selectedRoomId),
-    [listing, selectedRoomId]
-  );
-
-  const nightlyPrice =
-    bookingType === 'room' ? selectedRoom?.nightlyPrice ?? 0 : listing?.minimumPrice ?? 0;
-
   const calendarDays = useMemo(
-    () => buildCalendarDays(calendarMonth, checkIn, checkOut, availability, nightlyPrice),
-    [calendarMonth, checkIn, checkOut, availability, nightlyPrice]
+    () =>
+      buildCalendarDays(
+        calendarMonth,
+        checkIn,
+        checkOut,
+        soldOutDays,
+        blockedDays,
+        baseNightlyRate,
+        priceAdjustments
+      ),
+    [calendarMonth, checkIn, checkOut, soldOutDays, blockedDays, baseNightlyRate, priceAdjustments]
   );
 
-  const cautionFee = CAUTION_FEES[bookingType] ?? 0;
-  const subtotal = nights > 0 ? nights * nightlyPrice : 0;
+  const subtotal = useMemo(
+    () => calculateSubtotal(checkIn, checkOut, baseNightlyRate, priceAdjustments),
+    [checkIn, checkOut, baseNightlyRate, priceAdjustments]
+  );
   const discount = nights > 0 ? Math.min(couponAmount, subtotal) : 0;
   const total = subtotal - discount + (nights > 0 ? cautionFee : 0);
   const hasDates = nights > 0;
-  const hasPrice = nightlyPrice > 0;
+  const hasPrice = baseNightlyRate > 0;
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay =
     acceptedTerms &&
@@ -307,7 +475,7 @@ export default function BookingScreen() {
     Linking.openURL(TERMS_URL);
   };
 
-  const openGallery = (room: RoomCategory) => {
+  const openGallery = (room: BookingListable) => {
     setGalleryRoom(room);
     setGalleryIndex(0);
   };
@@ -323,6 +491,10 @@ export default function BookingScreen() {
     }
     if (day.isBooked) {
       setSelectionError('This date is already booked.');
+      return;
+    }
+    if (day.isBlocked) {
+      setSelectionError('This date is unavailable.');
       return;
     }
 
@@ -341,9 +513,9 @@ export default function BookingScreen() {
         setSelectionError(null);
         return;
       }
-      const isAvailable = isRangeAvailable(checkIn, normalized, availability);
+      const isAvailable = isRangeAvailable(checkIn, normalized, soldOutDays, blockedDays);
       if (!isAvailable) {
-        setSelectionError('Some dates in that range are already booked.');
+        setSelectionError('Some dates in that range are unavailable.');
         return;
       }
       setCheckOut(normalized);
@@ -353,21 +525,25 @@ export default function BookingScreen() {
   };
 
   const adjustGuestCount = (delta: number) => {
-    const maxGuests = listing?.maxNumberOfGuestsAllowed ?? 1;
-    setGuestCount((prev) => Math.max(1, Math.min(maxGuests, prev + delta)));
+    setGuestCount((prev) => {
+      const next = prev + delta;
+      if (next < 1) {
+        setGuestError(null);
+        return 1;
+      }
+      if (next > maxGuestsAllowed) {
+        setGuestError(`Maximum ${maxGuestsAllowed} guests allowed.`);
+        return prev;
+      }
+      if (guestError) {
+        setGuestError(null);
+      }
+      return next;
+    });
   };
 
-  if (!listing) {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-white">
-        <Stack.Screen options={{ headerShown: false }} />
-        <Pressable
-          className="rounded-full bg-blue-600 px-5 py-3"
-          onPress={() => router.back()}>
-          <Text className="text-base font-semibold text-white">Booking not found. Go back</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
+  if (loading || (!entireApartment && roomCategories.length === 0)) {
+    return null;
   }
 
   return (
@@ -379,9 +555,7 @@ export default function BookingScreen() {
         <View className="px-6 pt-4">
           <BackButton onPress={() => router.back()} />
           <Text className="mt-4 text-3xl font-bold text-slate-900">Book your stay</Text>
-          <Text className="mt-2 text-base text-slate-500">
-            {listing.name} · {listing.area}
-          </Text>
+          <Text className="mt-2 text-base text-slate-500">{listingName}</Text>
         </View>
 
         <View className="mt-6 px-6">
@@ -421,7 +595,7 @@ export default function BookingScreen() {
                   Entire apartment rate
                 </Text>
                 <Text className="mt-1 text-lg font-semibold text-slate-900">
-                  {formatCurrency(listing.minimumPrice)}
+                  {formatCurrency(entireApartment?.nightlyRate ?? 0)}
                   <Text className="text-xs font-medium text-slate-500"> / night</Text>
                 </Text>
               </View>
@@ -430,7 +604,7 @@ export default function BookingScreen() {
                 <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Choose a room category
                 </Text>
-                {listing.roomCategories.length === 0 ? (
+                {roomCategories.length === 0 ? (
                   <View className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4">
                     <Text className="text-sm text-slate-500">
                       Room options will be available soon for this listing.
@@ -438,11 +612,11 @@ export default function BookingScreen() {
                   </View>
                 ) : (
                   <View className="mt-3 space-y-4">
-                    {listing.roomCategories.map((room) => {
+                    {roomCategories.map((room) => {
                       const isSelected = selectedRoomId === room.id;
                       return (
                         <Pressable
-                          key={`${listing.id}-${room.id}`}
+                          key={room.id}
                           onPress={() => setSelectedRoomId(room.id)}
                           className={`rounded-3xl border p-4 ${
                             isSelected
@@ -459,7 +633,7 @@ export default function BookingScreen() {
                               </Text>
                             </View>
                             <Text className="text-base font-semibold text-blue-700">
-                              {formatCurrency(room.nightlyPrice)}
+                              {formatCurrency(room.nightlyRate)}
                               <Text className="text-xs font-medium text-slate-500"> / night</Text>
                             </Text>
                           </View>
@@ -541,6 +715,11 @@ export default function BookingScreen() {
                 </Pressable>
               </View>
             </View>
+            {guestError ? (
+              <View className="mt-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">{guestError}</Text>
+              </View>
+            ) : null}
 
             <Pressable
               className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
@@ -823,7 +1002,9 @@ export default function BookingScreen() {
 
                 <Text className="mt-5 text-base font-semibold text-slate-900">About this room</Text>
                 <Text className="mt-2 text-sm leading-6 text-slate-500">
-                  {galleryRoom?.description ?? 'Room details will be updated soon.'}
+                  {galleryRoom?.description
+                    ? galleryRoom.description
+                    : 'Room details will be updated soon.'}
                 </Text>
 
                 <View className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
@@ -940,7 +1121,8 @@ export default function BookingScreen() {
 
             <View className="mt-3 flex-row flex-wrap">
               {calendarDays.map((day) => {
-                const isDisabled = day.isPast || day.isBooked || !day.isCurrentMonth;
+                const isDisabled =
+                  day.isPast || day.isBooked || day.isBlocked || !day.isCurrentMonth;
                 const isSelected = day.isStart || day.isEnd;
                 const priceLabel =
                   day.isCurrentMonth && day.nightlyPrice > 0
@@ -959,7 +1141,7 @@ export default function BookingScreen() {
                   containerClass += ' border-rose-200 bg-rose-50';
                   textClass += ' text-rose-500';
                   priceClass += ' text-rose-400';
-                } else if (day.isPast) {
+                } else if (day.isPast || day.isBlocked) {
                   containerClass += ' border-slate-100 bg-slate-50';
                   textClass += ' text-slate-300';
                   priceClass += ' text-slate-300';
