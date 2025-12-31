@@ -14,7 +14,6 @@ import {
   SafeAreaView,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
@@ -22,7 +21,6 @@ const { width } = Dimensions.get('window');
 const GALLERY_HORIZONTAL_PADDING = 24;
 const GALLERY_WIDTH = width - GALLERY_HORIZONTAL_PADDING * 2;
 const TERMS_URL = 'https://safarihills.app/terms';
-const WALLET_BALANCE = 120000;
 
 const PURPOSE_OPTIONS: { label: string; icon: 'moon' | 'sun' | 'briefcase' | 'monitor' | 'users' | 'music' | 'camera' }[] =
   [
@@ -116,8 +114,6 @@ const formatDateDisplay = (date: Date | null) =>
 
 const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
-const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
-
 const normalizeNumber = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
@@ -169,16 +165,6 @@ const mapListableDetails = (details: RemoteListableDetails | null, id: string): 
   photos: mapPhotoUrls(details?.propertyPhotos),
   description: '',
 });
-
-const getCouponAmount = (code: string, subtotal: number) => {
-  if (code === 'SAFARI10') {
-    return Math.round(subtotal * 0.1);
-  }
-  if (code === 'WELCOME5') {
-    return 5000;
-  }
-  return 0;
-};
 
 type CalendarDay = {
   date: Date;
@@ -352,10 +338,6 @@ export default function BookingScreen() {
   const [galleryRoom, setGalleryRoom] = useState<BookingListable | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
-  const [couponCode, setCouponCode] = useState('');
-  const [couponStatus, setCouponStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
-  const [couponAmount, setCouponAmount] = useState(0);
 
   const bookingOptions = useMemo(() => {
     if (!bookingDetails) return [];
@@ -429,47 +411,11 @@ export default function BookingScreen() {
     () => calculateSubtotal(checkIn, checkOut, baseNightlyRate, priceAdjustments),
     [checkIn, checkOut, baseNightlyRate, priceAdjustments]
   );
-  const discount = nights > 0 ? Math.min(couponAmount, subtotal) : 0;
+  const discount = 0;
   const total = subtotal - discount + (nights > 0 ? cautionFee : 0);
   const hasDates = nights > 0;
   const hasPrice = baseNightlyRate > 0;
-  const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
-  const canPay =
-    acceptedTerms &&
-    hasDates &&
-    hasPrice &&
-    (paymentMethod === 'paystack' || walletHasFunds);
-
-  const handleApplyCoupon = () => {
-    const normalized = normalizeCouponCode(couponCode);
-    if (!normalized) {
-      setCouponStatus('invalid');
-      setCouponAmount(0);
-      return;
-    }
-    const amount = getCouponAmount(normalized, subtotal);
-    if (amount > 0 || normalized === 'SAFARI10' || normalized === 'WELCOME5') {
-      setCouponAmount(amount);
-      setCouponStatus('valid');
-      return;
-    }
-    setCouponStatus('invalid');
-    setCouponAmount(0);
-  };
-
-  const clearCouponFeedback = () => {
-    if (couponStatus !== 'idle') {
-      setCouponStatus('idle');
-    }
-  };
-
-  useEffect(() => {
-    if (couponStatus !== 'valid') return;
-    const normalized = normalizeCouponCode(couponCode);
-    if (!normalized) return;
-    const amount = getCouponAmount(normalized, subtotal);
-    setCouponAmount(amount);
-  }, [couponCode, couponStatus, subtotal]);
+  const canReview = acceptedTerms && hasDates && hasPrice;
 
   const openCalendar = () => {
     setSelectionError(null);
@@ -822,120 +768,6 @@ export default function BookingScreen() {
 
         <View className="mt-6 px-6">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Coupon
-            </Text>
-            <Text className="mt-2 text-sm text-slate-500">
-              Apply a promo code to unlock savings on your stay.
-            </Text>
-            <View className="mt-4 flex-row items-center gap-3">
-              <TextInput
-                className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
-                placeholder="Enter coupon code"
-                placeholderTextColor="#94a3b8"
-                autoCapitalize="characters"
-                value={couponCode}
-                onChangeText={(value) => {
-                  setCouponCode(value);
-                  clearCouponFeedback();
-                }}
-              />
-              <Pressable className="rounded-2xl bg-blue-600 px-4 py-3" onPress={handleApplyCoupon}>
-                <Text className="text-sm font-semibold text-white">Apply</Text>
-              </Pressable>
-            </View>
-            {couponStatus === 'valid' ? (
-              <View className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-emerald-600">
-                  {discount > 0
-                    ? `Coupon applied. You saved ${formatCurrency(discount)}.`
-                    : 'Coupon applied. Select dates to see savings.'}
-                </Text>
-              </View>
-            ) : null}
-            {couponStatus === 'invalid' ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">
-                  That coupon code is invalid.
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Payment method
-            </Text>
-            <View className="mt-4 flex-row gap-3">
-              <Pressable
-                className={`flex-1 rounded-2xl border px-4 py-3 ${
-                  paymentMethod === 'paystack'
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-                onPress={() => setPaymentMethod('paystack')}>
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        paymentMethod === 'paystack' ? 'text-blue-700' : 'text-slate-700'
-                      }`}>
-                      Pay Online
-                    </Text>
-                    <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
-                  </View>
-                  <View
-                    className={`h-5 w-5 items-center justify-center rounded-full border ${
-                      paymentMethod === 'paystack'
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
-                    {paymentMethod === 'paystack' ? (
-                      <View className="h-2 w-2 rounded-full bg-white" />
-                    ) : null}
-                  </View>
-                </View>
-              </Pressable>
-              <Pressable
-                className={`flex-1 rounded-2xl border px-4 py-3 ${
-                  paymentMethod === 'wallet' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
-                }`}
-                onPress={() => setPaymentMethod('wallet')}>
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        paymentMethod === 'wallet' ? 'text-blue-700' : 'text-slate-700'
-                      }`}>
-                      Pay via wallet
-                    </Text>
-                    <Text className="mt-1 text-xs text-slate-500">
-                      Balance {formatCurrency(WALLET_BALANCE)}
-                    </Text>
-                  </View>
-                  <View
-                    className={`h-5 w-5 items-center justify-center rounded-full border ${
-                      paymentMethod === 'wallet'
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
-                    {paymentMethod === 'wallet' ? (
-                      <View className="h-2 w-2 rounded-full bg-white" />
-                    ) : null}
-                  </View>
-                </View>
-              </Pressable>
-            </View>
-            {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">
-                  Wallet balance is lower than the booking total.
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
             <View className="flex-row items-start gap-3">
               <Pressable
                 className={`mt-0.5 h-5 w-5 items-center justify-center rounded border ${
@@ -954,20 +786,22 @@ export default function BookingScreen() {
 
             <Pressable
               className={`mt-5 items-center justify-center rounded-full py-4 ${
-                canPay ? 'bg-blue-600' : 'bg-slate-200'
+                canReview ? 'bg-blue-600' : 'bg-slate-200'
               }`}
-              disabled={!canPay}
-              onPress={() => {}}>
+              disabled={!canReview}
+              onPress={() =>
+                router.push({ pathname: '/booking/summary/[id]', params: { id: id ?? 'demo' } })
+              }>
               <View className="items-center">
                 <Text
                   className={`text-base font-semibold ${
-                    canPay ? 'text-white' : 'text-slate-500'
+                    canReview ? 'text-white' : 'text-slate-500'
                   }`}>
-                  Pay Now · {formatCurrency(total)}
+                  Review & Pay · {formatCurrency(total)}
                 </Text>
                 <Text
                   className={`text-xs font-semibold ${
-                    canPay ? 'text-blue-100' : 'text-slate-400'
+                    canReview ? 'text-blue-100' : 'text-slate-400'
                   }`}>
                   Booking total
                 </Text>
