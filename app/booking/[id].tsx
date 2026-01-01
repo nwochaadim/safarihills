@@ -1,6 +1,7 @@
-import { useQuery } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
+import { CREATE_BOOKING_WITHOUT_OFFER } from '@/mutations/createBookingWithoutOffer';
 import { NEW_BOOKING_DETAILS } from '@/queries/newBookingDetails';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -82,6 +83,28 @@ type BookingListable = {
   photos: string[];
   description: string;
   restrictions: string[];
+};
+
+type CreateBookingResponse = {
+  createBookingV3: {
+    id: string | null;
+    referenceNumber: string | null;
+    errors: string[] | string | null;
+  } | null;
+};
+
+type CreateBookingVariables = {
+  checkIn: string;
+  checkOut: string;
+  listingId: number;
+  roomCategoryName?: string | null;
+  bookingPurpose: string;
+  referenceNumber: string;
+  bookingTotal: number;
+  cautionFee: number;
+  numberOfGuests: number;
+  entireProperty: boolean;
+  extending?: boolean | null;
 };
 
 const startOfDay = (date: Date) => {
@@ -308,6 +331,10 @@ export default function BookingScreen() {
     variables: { listingId: id ?? '' },
     skip: !id,
   });
+  const [createBooking, { loading: isCreating }] = useMutation<
+    CreateBookingResponse,
+    CreateBookingVariables
+  >(CREATE_BOOKING_WITHOUT_OFFER);
   const bookingDetails = data?.newBookingDetails ?? null;
   const entireApartment = useMemo(
     () =>
@@ -338,6 +365,7 @@ export default function BookingScreen() {
   const [galleryRoom, setGalleryRoom] = useState<BookingListable | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   const bookingOptions = useMemo(() => {
     if (!bookingDetails) return [];
@@ -415,7 +443,58 @@ export default function BookingScreen() {
   const total = subtotal - discount + (nights > 0 ? cautionFee : 0);
   const hasDates = nights > 0;
   const hasPrice = baseNightlyRate > 0;
-  const canReview = acceptedTerms && hasDates && hasPrice;
+  const canReview = acceptedTerms && hasDates && hasPrice && !isCreating;
+
+  const handleCreateBooking = async () => {
+    if (!checkIn || !checkOut) return;
+    const listingId = id ? Number.parseInt(id, 10) : NaN;
+    if (!Number.isFinite(listingId)) {
+      setBookingError('Listing is unavailable right now.');
+      return;
+    }
+
+    setBookingError(null);
+
+    try {
+      const { data: response } = await createBooking({
+        variables: {
+          checkIn: formatDateKey(checkIn),
+          checkOut: formatDateKey(checkOut),
+          listingId,
+          roomCategoryName: bookingType === 'room' ? selectedRoom?.name ?? null : null,
+          bookingPurpose: purpose,
+          referenceNumber: `BK-${Date.now()}`,
+          bookingTotal: Math.round(total),
+          cautionFee: Math.round(cautionFee),
+          numberOfGuests: guestCount,
+          entireProperty: bookingType === 'entire',
+          extending: null,
+        },
+      });
+
+      const result = response?.createBookingV3;
+      const errors = result?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setBookingError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setBookingError(errors);
+        return;
+      }
+      if (result?.id) {
+        router.push({
+          pathname: '/booking/summary/[id]',
+          params: { id: result.id },
+        });
+        return;
+      }
+      setBookingError('Unable to create booking right now.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create booking right now.';
+      setBookingError(message);
+    }
+  };
 
   const openCalendar = () => {
     setSelectionError(null);
@@ -784,14 +863,17 @@ export default function BookingScreen() {
               </Text>
             </View>
 
+            {bookingError ? (
+              <View className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">{bookingError}</Text>
+              </View>
+            ) : null}
             <Pressable
               className={`mt-5 items-center justify-center rounded-full py-4 ${
                 canReview ? 'bg-blue-600' : 'bg-slate-200'
               }`}
               disabled={!canReview}
-              onPress={() =>
-                router.push({ pathname: '/booking/summary/[id]', params: { id: id ?? 'demo' } })
-              }>
+              onPress={handleCreateBooking}>
               <View className="items-center">
                 <Text
                   className={`text-base font-semibold ${
