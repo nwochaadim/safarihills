@@ -1,17 +1,32 @@
+import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetails';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 const WALLET_BALANCE = 120000;
 
-const formatDateDisplay = (date: Date) =>
-  date.toLocaleDateString(undefined, {
+const formatDateDisplay = (value: string | null | undefined) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
+};
 
 const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
@@ -27,43 +42,67 @@ const getCouponAmount = (code: string, subtotal: number) => {
   return 0;
 };
 
-const startOfDay = (date: Date) => {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
+type BookingSummaryResponse = {
+  findBookingSummaryDetails: {
+    id: string;
+    referenceNumber: string | null;
+    listing: {
+      name: string | null;
+      area: string | null;
+    } | null;
+    roomCategory: {
+      name: string | null;
+    } | null;
+    numberOfGuests: number | null;
+    bookingPurpose: string | null;
+    checkIn: string | null;
+    checkOut: string | null;
+    numberOfNights: number | null;
+    subtotal: number | null;
+    cautionFee: number | null;
+    bookingTotal: number | null;
+  } | null;
 };
 
-const getNights = (checkIn: Date, checkOut: Date) => {
-  const diff = startOfDay(checkOut).getTime() - startOfDay(checkIn).getTime();
-  return Math.max(Math.round(diff / (1000 * 60 * 60 * 24)), 0);
+type BookingSummaryVariables = {
+  bookingId: string;
 };
 
 export default function BookingSummaryScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
   const bookingId = Array.isArray(idParam) ? idParam[0] : idParam;
-
-  const booking = useMemo(
-    () => ({
-      id: bookingId ?? 'BK-1024',
-      listingName: '4 Bedroom Urban Haven',
-      area: 'Lekki Phase 1',
-      roomCategory: 'Premium Room',
-      numberOfGuests: 2,
-      bookingPurpose: 'Vacation',
-      checkIn: new Date(2026, 0, 12),
-      checkOut: new Date(2026, 0, 15),
-      nightlyRate: 45000,
-      cautionFee: 30000,
-    }),
-    [bookingId]
+  const { data, loading, refetch, error } = useQuery<
+    BookingSummaryResponse,
+    BookingSummaryVariables
+  >(
+    FIND_BOOKING_SUMMARY_DETAILS,
+    {
+      variables: { bookingId: bookingId ?? '' },
+      skip: !bookingId,
+    }
   );
 
-  const nights = useMemo(
-    () => getNights(booking.checkIn, booking.checkOut),
-    [booking.checkIn, booking.checkOut]
+  useFocusEffect(
+    useCallback(() => {
+      if (!bookingId) return;
+      refetch({ bookingId });
+    }, [bookingId, refetch])
   );
-  const subtotal = nights * booking.nightlyRate;
+
+  const booking = data?.findBookingSummaryDetails ?? null;
+  const bookingLabel = booking?.referenceNumber ?? booking?.id ?? bookingId ?? 'Booking';
+  const listingName = booking?.listing?.name ?? 'Listing';
+  const listingArea = booking?.listing?.area ?? '';
+  const roomCategory = booking?.roomCategory?.name ?? null;
+  const numberOfGuests = booking?.numberOfGuests ?? 0;
+  const bookingPurpose = booking?.bookingPurpose ?? '';
+  const checkIn = booking?.checkIn ?? null;
+  const checkOut = booking?.checkOut ?? null;
+  const nights = booking?.numberOfNights ?? 0;
+  const subtotal = booking?.subtotal ?? 0;
+  const cautionFee = booking?.cautionFee ?? 0;
+  const baseTotal = booking?.bookingTotal ?? subtotal + cautionFee;
 
   const [couponCode, setCouponCode] = useState('');
   const [couponStatus, setCouponStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
@@ -71,7 +110,7 @@ export default function BookingSummaryScreen() {
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
 
   const discount = Math.min(couponAmount, subtotal);
-  const total = subtotal - discount + booking.cautionFee;
+  const total = Math.max(baseTotal - discount, 0);
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
 
@@ -98,6 +137,62 @@ export default function BookingSummaryScreen() {
     }
   };
 
+  if (!bookingId) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center px-6">
+          <View className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-100">
+            <Text className="text-lg font-semibold text-slate-900">Booking unavailable</Text>
+            <Text className="mt-2 text-sm text-slate-500">
+              We couldn&apos;t find a booking reference for this screen.
+            </Text>
+            <Pressable
+              className="mt-4 items-center justify-center rounded-full bg-blue-600 px-5 py-3"
+              onPress={() => router.back()}>
+              <Text className="text-sm font-semibold text-white">Go back</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading && !booking) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text className="mt-3 text-sm text-slate-500">Loading booking summary...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center px-6">
+          <View className="w-full rounded-3xl border border-rose-200 bg-rose-50/70 p-6">
+            <Text className="text-lg font-semibold text-rose-700">
+              Booking summary not available
+            </Text>
+            <Text className="mt-2 text-sm text-rose-600">
+              {error?.message ?? 'We could not load this booking right now.'}
+            </Text>
+            <Pressable
+              className="mt-4 items-center justify-center rounded-full bg-blue-600 px-5 py-3"
+              onPress={() => refetch({ bookingId })}>
+              <Text className="text-sm font-semibold text-white">Try again</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
       <Stack.Screen options={{ headerShown: false }} />
@@ -111,7 +206,7 @@ export default function BookingSummaryScreen() {
             <View className="mt-3 flex-row items-center gap-2">
               <View className="rounded-full bg-blue-100 px-3 py-1">
                 <Text className="text-xs font-semibold text-blue-700">
-                  Booking #{booking.id}
+                  Booking #{bookingLabel}
                 </Text>
               </View>
               <View className="flex-row items-center gap-1 rounded-full bg-white px-3 py-1 shadow-sm shadow-slate-100">
@@ -132,22 +227,22 @@ export default function BookingSummaryScreen() {
                 Listing
               </Text>
               <Text className="mt-2 text-lg font-semibold text-slate-900">
-                {booking.listingName}
+                {listingName}
               </Text>
               <View className="mt-2 flex-row items-center gap-2">
                 <Feather name="map-pin" size={14} color="#1d4ed8" />
-                <Text className="text-sm text-slate-600">{booking.area}</Text>
+                <Text className="text-sm text-slate-600">{listingArea || '—'}</Text>
               </View>
             </View>
 
-            {booking.roomCategory ? (
+            {roomCategory ? (
               <View className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
                 <View>
                   <Text className="text-xs font-semibold uppercase text-slate-400">
                     Room category
                   </Text>
                   <Text className="mt-1 text-base font-semibold text-slate-900">
-                    {booking.roomCategory}
+                    {roomCategory}
                   </Text>
                 </View>
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-blue-50">
@@ -160,13 +255,13 @@ export default function BookingSummaryScreen() {
               <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <Text className="text-xs font-semibold uppercase text-slate-500">Guests</Text>
                 <Text className="mt-1 text-base font-semibold text-slate-900">
-                  {booking.numberOfGuests}
+                  {numberOfGuests}
                 </Text>
               </View>
               <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <Text className="text-xs font-semibold uppercase text-slate-500">Purpose</Text>
                 <Text className="mt-1 text-base font-semibold text-slate-900">
-                  {booking.bookingPurpose}
+                  {bookingPurpose || '—'}
                 </Text>
               </View>
             </View>
@@ -175,13 +270,13 @@ export default function BookingSummaryScreen() {
               <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
                 <Text className="mt-1 text-base font-semibold text-slate-900">
-                  {formatDateDisplay(booking.checkIn)}
+                  {formatDateDisplay(checkIn)}
                 </Text>
               </View>
               <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
                 <Text className="mt-1 text-base font-semibold text-slate-900">
-                  {formatDateDisplay(booking.checkOut)}
+                  {formatDateDisplay(checkOut)}
                 </Text>
               </View>
             </View>
@@ -215,7 +310,7 @@ export default function BookingSummaryScreen() {
               <View className="flex-row items-center justify-between">
                 <Text className="text-sm text-slate-500">Caution fee</Text>
                 <Text className="text-sm font-semibold text-slate-900">
-                  {formatCurrency(booking.cautionFee)}
+                  {formatCurrency(cautionFee)}
                 </Text>
               </View>
               <View className="mt-2 flex-row items-center justify-between border-t border-slate-200 pt-3">
