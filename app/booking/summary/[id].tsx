@@ -52,6 +52,7 @@ type BookingSummaryResponse = {
     subtotal: number | null;
     cautionFee: number | null;
     bookingTotal: number | null;
+    couponAppliedAmount: number | null;
   } | null;
 };
 
@@ -110,7 +111,8 @@ export default function BookingSummaryScreen() {
   const nights = booking?.numberOfNights ?? 0;
   const subtotal = booking?.subtotal ?? 0;
   const cautionFee = booking?.cautionFee ?? 0;
-  const baseTotal = booking?.bookingTotal ?? subtotal + cautionFee;
+  const serverCouponAmount = booking?.couponAppliedAmount ?? 0;
+  const baseTotal = subtotal + cautionFee;
 
   const [couponCode, setCouponCode] = useState('');
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
@@ -118,7 +120,8 @@ export default function BookingSummaryScreen() {
   const [appliedAmount, setAppliedAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
 
-  const discount = appliedAmount;
+  const effectiveCouponAmount = serverCouponAmount > 0 ? serverCouponAmount : appliedAmount;
+  const discount = Math.min(effectiveCouponAmount, baseTotal);
   const total = Math.max(baseTotal - discount, 0);
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
@@ -133,6 +136,12 @@ export default function BookingSummaryScreen() {
     }
     if (!bookingId) {
       setCouponError('Booking reference is missing.');
+      setCouponMessage(null);
+      setAppliedAmount(0);
+      return;
+    }
+    if (serverCouponAmount > 0) {
+      setCouponError('A coupon has already been applied to this booking.');
       setCouponMessage(null);
       setAppliedAmount(0);
       return;
@@ -175,6 +184,14 @@ export default function BookingSummaryScreen() {
     setCouponError(null);
     setAppliedAmount(0);
   }, [bookingId]);
+
+  useEffect(() => {
+    if (serverCouponAmount > 0) {
+      setCouponMessage(null);
+      setCouponError(null);
+      setAppliedAmount(0);
+    }
+  }, [serverCouponAmount]);
 
   if (!bookingId) {
     return (
@@ -367,7 +384,19 @@ export default function BookingSummaryScreen() {
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Apply coupon
             </Text>
-            {couponMessage ? (
+            {serverCouponAmount > 0 ? (
+              <View className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                  Discount already applied
+                </Text>
+                <Text className="mt-2 text-sm font-semibold text-blue-700">
+                  A coupon discount is already active for this booking.
+                </Text>
+                <Text className="mt-1 text-xs text-blue-600">
+                  Discount: {formatCurrency(serverCouponAmount)}
+                </Text>
+              </View>
+            ) : couponMessage ? (
               <View className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
                 <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
                   Coupon applied

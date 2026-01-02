@@ -20,6 +20,7 @@ export const FIND_BOOKING_SUMMARY_DETAILS = gql`
       subtotal
       cautionFee
       bookingTotal
+      couponAppliedAmount
     }
   }
 `;
