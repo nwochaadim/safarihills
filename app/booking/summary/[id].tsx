@@ -1,10 +1,11 @@
-import { useQuery } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
 import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetails';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -32,16 +33,6 @@ const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
 const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
 
-const getCouponAmount = (code: string, subtotal: number) => {
-  if (code === 'SAFARI10') {
-    return Math.round(subtotal * 0.1);
-  }
-  if (code === 'WELCOME5') {
-    return 5000;
-  }
-  return 0;
-};
-
 type BookingSummaryResponse = {
   findBookingSummaryDetails: {
     id: string;
@@ -68,6 +59,19 @@ type BookingSummaryVariables = {
   bookingId: string;
 };
 
+type ApplyCouponResponse = {
+  applyCouponToBooking: {
+    errors: string[] | string | null;
+    appliedAmount: number | null;
+    successMessage: string | null;
+  } | null;
+};
+
+type ApplyCouponVariables = {
+  bookingId: string;
+  couponCode: string;
+};
+
 export default function BookingSummaryScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
@@ -82,6 +86,10 @@ export default function BookingSummaryScreen() {
       skip: !bookingId,
     }
   );
+  const [applyCoupon, { loading: isApplyingCoupon }] = useMutation<
+    ApplyCouponResponse,
+    ApplyCouponVariables
+  >(APPLY_COUPON_TO_BOOKING);
 
   useFocusEffect(
     useCallback(() => {
@@ -105,11 +113,12 @@ export default function BookingSummaryScreen() {
   const baseTotal = booking?.bookingTotal ?? subtotal + cautionFee;
 
   const [couponCode, setCouponCode] = useState('');
-  const [couponStatus, setCouponStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
-  const [couponAmount, setCouponAmount] = useState(0);
+  const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedAmount, setAppliedAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
 
-  const discount = Math.min(couponAmount, subtotal);
+  const discount = appliedAmount;
   const total = Math.max(baseTotal - discount, 0);
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
@@ -117,25 +126,55 @@ export default function BookingSummaryScreen() {
   const handleApplyCoupon = () => {
     const normalized = normalizeCouponCode(couponCode);
     if (!normalized) {
-      setCouponStatus('invalid');
-      setCouponAmount(0);
+      setCouponError('Enter a coupon code to apply.');
+      setCouponMessage(null);
+      setAppliedAmount(0);
       return;
     }
-    const amount = getCouponAmount(normalized, subtotal);
-    if (amount > 0 || normalized === 'SAFARI10' || normalized === 'WELCOME5') {
-      setCouponAmount(amount);
-      setCouponStatus('valid');
+    if (!bookingId) {
+      setCouponError('Booking reference is missing.');
+      setCouponMessage(null);
+      setAppliedAmount(0);
       return;
     }
-    setCouponStatus('invalid');
-    setCouponAmount(0);
+    setCouponError(null);
+    setCouponMessage(null);
+    setAppliedAmount(0);
+    applyCoupon({
+      variables: { bookingId, couponCode: normalized },
+    })
+      .then(({ data: response }) => {
+        const result = response?.applyCouponToBooking;
+        const errors = result?.errors;
+        if (Array.isArray(errors) && errors.length) {
+          setCouponError(errors.join(' '));
+          return;
+        }
+        if (typeof errors === 'string' && errors.trim()) {
+          setCouponError(errors);
+          return;
+        }
+        const amount = result?.appliedAmount ?? 0;
+        setAppliedAmount(amount);
+        setCouponMessage(result?.successMessage ?? 'Coupon applied successfully.');
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Unable to apply coupon right now.';
+        setCouponError(message);
+      });
   };
 
   const clearCouponFeedback = () => {
-    if (couponStatus !== 'idle') {
-      setCouponStatus('idle');
-    }
+    if (couponMessage) setCouponMessage(null);
+    if (couponError) setCouponError(null);
+    if (appliedAmount) setAppliedAmount(0);
   };
+
+  useEffect(() => {
+    setCouponMessage(null);
+    setCouponError(null);
+    setAppliedAmount(0);
+  }, [bookingId]);
 
   if (!bookingId) {
     return (
@@ -343,23 +382,28 @@ export default function BookingSummaryScreen() {
                   clearCouponFeedback();
                 }}
               />
-              <Pressable className="rounded-2xl bg-blue-600 px-4 py-3" onPress={handleApplyCoupon}>
-                <Text className="text-sm font-semibold text-white">Apply</Text>
+              <Pressable
+                className={`rounded-2xl px-4 py-3 ${
+                  isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
+                }`}
+                disabled={isApplyingCoupon}
+                onPress={handleApplyCoupon}>
+                <Text className="text-sm font-semibold text-white">
+                  {isApplyingCoupon ? 'Applying' : 'Apply'}
+                </Text>
               </Pressable>
             </View>
-            {couponStatus === 'valid' ? (
+            {couponMessage ? (
               <View className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
                 <Text className="text-xs font-semibold text-emerald-600">
-                  {discount > 0
-                    ? `Coupon applied. You saved ${formatCurrency(discount)}.`
-                    : 'Coupon applied. Savings will show in the total.'}
+                  {couponMessage}
                 </Text>
               </View>
             ) : null}
-            {couponStatus === 'invalid' ? (
+            {couponError ? (
               <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
                 <Text className="text-xs font-semibold text-rose-600">
-                  That coupon code is invalid.
+                  {couponError}
                 </Text>
               </View>
             ) : null}
