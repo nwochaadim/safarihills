@@ -137,6 +137,15 @@ const formatDateDisplay = (date: Date | null) =>
 
 const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
+const generateBookingReference = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let value = 'BK-';
+  for (let i = 0; i < 6; i += 1) {
+    value += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return value;
+};
+
 const normalizeNumber = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
@@ -325,8 +334,12 @@ const getBookingTypeIcon = (option: BookingOption) => (option === 'room' ? 'key'
 
 export default function BookingScreen() {
   const router = useRouter();
-  const { id: idParam } = useLocalSearchParams<{ id?: string }>();
+  const { id: idParam, referenceNumber: referenceParam } = useLocalSearchParams<{
+    id?: string;
+    referenceNumber?: string;
+  }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
   const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
     variables: { listingId: id ?? '' },
     skip: !id,
@@ -366,6 +379,9 @@ export default function BookingScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingReference, setBookingReference] = useState(
+    () => referenceNumber ?? generateBookingReference()
+  );
 
   const bookingOptions = useMemo(() => {
     if (!bookingDetails) return [];
@@ -395,6 +411,14 @@ export default function BookingScreen() {
       setSelectedRoomId(roomCategories[0].id);
     }
   }, [bookingType, roomCategories, selectedRoomId]);
+
+  useEffect(() => {
+    if (referenceNumber) {
+      setBookingReference(referenceNumber);
+      return;
+    }
+    setBookingReference(generateBookingReference());
+  }, [id, referenceNumber]);
 
   const selectedRoom = useMemo<BookingListable | undefined>(
     () => roomCategories.find((room) => room.id === selectedRoomId),
@@ -463,7 +487,7 @@ export default function BookingScreen() {
           listingId,
           roomCategoryName: bookingType === 'room' ? selectedRoom?.name ?? null : null,
           bookingPurpose: purpose,
-          referenceNumber: `BK-${Date.now()}`,
+          referenceNumber: bookingReference,
           bookingTotal: Math.round(total),
           cautionFee: Math.round(cautionFee),
           numberOfGuests: guestCount,

@@ -367,46 +367,55 @@ export default function BookingSummaryScreen() {
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Apply coupon
             </Text>
-            <Text className="mt-2 text-sm text-slate-500">
-              Add a promo code to unlock extra savings.
-            </Text>
-            <View className="mt-4 flex-row items-center gap-3">
-              <TextInput
-                className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
-                placeholder="Enter coupon code"
-                placeholderTextColor="#94a3b8"
-                autoCapitalize="characters"
-                value={couponCode}
-                onChangeText={(value) => {
-                  setCouponCode(value);
-                  clearCouponFeedback();
-                }}
-              />
-              <Pressable
-                className={`rounded-2xl px-4 py-3 ${
-                  isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
-                }`}
-                disabled={isApplyingCoupon}
-                onPress={handleApplyCoupon}>
-                <Text className="text-sm font-semibold text-white">
-                  {isApplyingCoupon ? 'Applying' : 'Apply'}
-                </Text>
-              </Pressable>
-            </View>
             {couponMessage ? (
-              <View className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-emerald-600">
+              <View className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                  Coupon applied
+                </Text>
+                <Text className="mt-2 text-sm font-semibold text-emerald-700">
                   {couponMessage}
                 </Text>
-              </View>
-            ) : null}
-            {couponError ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">
-                  {couponError}
+                <Text className="mt-1 text-xs text-emerald-600">
+                  Discount: {formatCurrency(discount)}
                 </Text>
               </View>
-            ) : null}
+            ) : (
+              <>
+                <Text className="mt-2 text-sm text-slate-500">
+                  Add a promo code to unlock extra savings.
+                </Text>
+                <View className="mt-4 flex-row items-center gap-3">
+                  <TextInput
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
+                    placeholder="Enter coupon code"
+                    placeholderTextColor="#94a3b8"
+                    autoCapitalize="characters"
+                    value={couponCode}
+                    onChangeText={(value) => {
+                      setCouponCode(value);
+                      clearCouponFeedback();
+                    }}
+                  />
+                  <Pressable
+                    className={`rounded-2xl px-4 py-3 ${
+                      isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
+                    }`}
+                    disabled={isApplyingCoupon}
+                    onPress={handleApplyCoupon}>
+                    <Text className="text-sm font-semibold text-white">
+                      {isApplyingCoupon ? 'Applying' : 'Apply'}
+                    </Text>
+                  </Pressable>
+                </View>
+                {couponError ? (
+                  <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                    <Text className="text-xs font-semibold text-rose-600">
+                      {couponError}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
           </View>
 
           <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
