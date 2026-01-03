@@ -24,9 +24,6 @@ export const NEW_BOOKING_DETAILS_FOR_OFFER = gql`
           id
           rewardType
           name
-          description
-          numberOfNightsToApply
-          percentDiscount
         }
       }
       entireApartment {
@@ -38,19 +35,17 @@ export const NEW_BOOKING_DETAILS_FOR_OFFER = gql`
     }
   }
 
-  fragment listableDetails on ListableBookingDetails {
+  fragment listableDetails on OfferListableBookingDetails {
     id
     name
     nightlyRate
     cautionFee
-    soldOutDays
     blockedDays
-    priceAdjustments
-    weeklyDiscount
-    monthlyDiscount
     amenities
     restrictions
+    offerPriceAdjustments
     maxNumberOfGuestsAllowed
+    checkInTimeSlots
     propertyPhotos {
       mediumUrl
       largeUrl

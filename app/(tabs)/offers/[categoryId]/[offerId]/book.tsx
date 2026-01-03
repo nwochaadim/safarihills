@@ -34,10 +34,6 @@ const PURPOSE_OPTIONS: { label: string; icon: 'moon' | 'sun' | 'briefcase' | 'mo
     { label: 'PhotoShoot', icon: 'camera' },
   ];
 
-const DEFAULT_TIME_START_MINUTES = 6 * 60;
-const DEFAULT_TIME_END_MINUTES = 23 * 60;
-const TIME_STEP_MINUTES = 60;
-
 type BookingOption = 'room' | 'entire';
 
 type BookableOption = 'day_based' | 'time_based';
@@ -52,14 +48,12 @@ type RemoteListableDetails = {
   name: string | null;
   nightlyRate: number | null;
   cautionFee: number | null;
-  soldOutDays: Record<string, boolean> | null;
   blockedDays: Record<string, boolean> | null;
-  priceAdjustments: Record<string, number> | null;
-  weeklyDiscount: number | null;
-  monthlyDiscount: number | null;
   amenities: string[] | null;
   restrictions: string[] | null;
+  offerPriceAdjustments: Record<string, number> | null;
   maxNumberOfGuestsAllowed: number | null;
+  checkInTimeSlots: string[] | null;
   propertyPhotos: RemotePropertyPhoto[] | null;
 };
 
@@ -77,9 +71,6 @@ type OfferCampaignReward = {
   id: string | null;
   rewardType: string | null;
   name: string | null;
-  description: string | null;
-  numberOfNightsToApply: number | null;
-  percentDiscount: number | null;
 };
 
 type OfferNewBookingDetailsResponse = {
@@ -105,16 +96,14 @@ type BookingListable = {
   name: string;
   nightlyRate: number;
   cautionFee: number;
-  soldOutDays: Record<string, boolean>;
   blockedDays: Record<string, boolean>;
-  priceAdjustments: Record<string, number>;
-  weeklyDiscount: number;
-  monthlyDiscount: number;
+  offerPriceAdjustments: Record<string, number>;
   amenities: string[];
   maxNumberOfGuestsAllowed: number;
   photos: string[];
   description: string;
   restrictions: string[];
+  checkInTimeSlots: string[];
 };
 
 type CreateBookingResponse = {
@@ -143,7 +132,6 @@ type CalendarDay = {
   date: Date;
   isCurrentMonth: boolean;
   isPast: boolean;
-  isBooked: boolean;
   isBlocked: boolean;
   isStart: boolean;
   isEnd: boolean;
@@ -199,8 +187,6 @@ const formatShortCurrency = (value: number) => {
   return `${value}`;
 };
 
-const formatDurationHours = (value: number) => (value % 1 === 0 ? value.toFixed(0) : value.toFixed(1));
-
 const formatTimeLabel = (value: string) => {
   const [hourValue, minuteValue] = value.split(':');
   const hours = Number.parseInt(hourValue, 10);
@@ -231,15 +217,54 @@ const normalizeTimeValue = (value: string | null | undefined) => {
   return `${hours}:${minutes}`;
 };
 
-const buildTimeOptions = (startMinutes: number, endMinutes: number) => {
-  const options: TimeOption[] = [];
-  for (let minutes = startMinutes; minutes <= endMinutes; minutes += TIME_STEP_MINUTES) {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    const value = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-    options.push({ value, label: formatTimeLabel(value), minutes });
+const normalizeSlotTimeValue = (value: string | null | undefined) => {
+  if (!value) return null;
+  const trimmed = value.trim().toLowerCase();
+  const ampmMatch = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]m)$/i);
+  if (ampmMatch) {
+    const hoursValue = Number.parseInt(ampmMatch[1], 10);
+    const minutesValue = Number.parseInt(ampmMatch[2] ?? '0', 10);
+    if (!Number.isFinite(hoursValue) || !Number.isFinite(minutesValue)) return null;
+    const normalizedHours = hoursValue % 12 + (ampmMatch[3] === 'pm' ? 12 : 0);
+    if (normalizedHours < 0 || normalizedHours > 23 || minutesValue < 0 || minutesValue > 59) {
+      return null;
+    }
+    return `${String(normalizedHours).padStart(2, '0')}:${String(minutesValue).padStart(
+      2,
+      '0'
+    )}`;
   }
-  return options;
+  const timeMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (timeMatch) {
+    const hoursValue = Number.parseInt(timeMatch[1], 10);
+    const minutesValue = Number.parseInt(timeMatch[2], 10);
+    if (
+      !Number.isFinite(hoursValue) ||
+      !Number.isFinite(minutesValue) ||
+      hoursValue < 0 ||
+      hoursValue > 23 ||
+      minutesValue < 0 ||
+      minutesValue > 59
+    ) {
+      return null;
+    }
+    return `${String(hoursValue).padStart(2, '0')}:${String(minutesValue).padStart(2, '0')}`;
+  }
+  return null;
+};
+
+const buildTimeOptionsFromSlots = (slots: string[]) => {
+  const options: TimeOption[] = [];
+  const seen = new Set<string>();
+  slots.forEach((slot) => {
+    const normalized = normalizeSlotTimeValue(slot);
+    if (!normalized || seen.has(normalized)) return;
+    const minutes = parseTimeToMinutes(normalized);
+    if (minutes === null) return;
+    options.push({ value: normalized, label: formatTimeLabel(normalized), minutes });
+    seen.add(normalized);
+  });
+  return options.sort((a, b) => a.minutes - b.minutes);
 };
 
 const generateBookingReference = () => {
@@ -284,25 +309,23 @@ const mapListableDetails = (details: RemoteListableDetails | null, fallbackId: s
   name: details?.name ?? 'Listing',
   nightlyRate: normalizeNumber(details?.nightlyRate),
   cautionFee: normalizeNumber(details?.cautionFee),
-  soldOutDays: normalizeDaysMap(details?.soldOutDays),
   blockedDays: normalizeDaysMap(details?.blockedDays),
-  priceAdjustments: normalizePriceAdjustments(details?.priceAdjustments),
-  weeklyDiscount: normalizeNumber(details?.weeklyDiscount),
-  monthlyDiscount: normalizeNumber(details?.monthlyDiscount),
+  offerPriceAdjustments: normalizePriceAdjustments(details?.offerPriceAdjustments),
   amenities: details?.amenities ?? [],
   restrictions: details?.restrictions ?? [],
   maxNumberOfGuestsAllowed: Math.max(1, normalizeNumber(details?.maxNumberOfGuestsAllowed)),
   photos: mapPhotoUrls(details?.propertyPhotos),
   description: '',
+  checkInTimeSlots: details?.checkInTimeSlots ?? [],
 });
 
 const getDatePrice = (
   date: Date,
   basePrice: number,
-  priceAdjustments: Record<string, number>
+  offerPriceAdjustments: Record<string, number>
 ) => {
   const key = formatDateKey(date);
-  const adjusted = priceAdjustments[key];
+  const adjusted = offerPriceAdjustments[key];
   if (typeof adjusted === 'number') return adjusted;
   return basePrice > 0 ? basePrice : 0;
 };
@@ -311,10 +334,9 @@ const buildCalendarDays = (
   calendarMonth: Date,
   checkIn: Date | null,
   checkOut: Date | null,
-  soldOutDays: Record<string, boolean>,
   blockedDays: Record<string, boolean>,
   basePrice: number,
-  priceAdjustments: Record<string, number>
+  offerPriceAdjustments: Record<string, number>
 ): CalendarDay[] => {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
@@ -342,19 +364,17 @@ const buildCalendarDays = (
     const isEnd = endDate ? normalized.getTime() === endDate.getTime() : false;
     const isBetween = startDate && endDate && normalized > startDate && normalized < endDate;
 
-    const isBooked = soldOutDays[key] === true;
     const isBlocked = blockedDays[key] === true;
 
     days.push({
       date,
       isCurrentMonth: date.getMonth() === month,
       isPast: normalized < today,
-      isBooked,
       isBlocked,
       isStart,
       isEnd,
       isBetween: Boolean(isBetween),
-      nightlyPrice: getDatePrice(date, basePrice, priceAdjustments),
+      nightlyPrice: getDatePrice(date, basePrice, offerPriceAdjustments),
     });
   }
 
@@ -364,7 +384,6 @@ const buildCalendarDays = (
 const isRangeAvailable = (
   start: Date,
   end: Date,
-  soldOutDays: Record<string, boolean>,
   blockedDays: Record<string, boolean>
 ) => {
   const cursor = new Date(start);
@@ -374,7 +393,7 @@ const isRangeAvailable = (
 
   while (cursor < endDate) {
     const key = formatDateKey(cursor);
-    if (soldOutDays[key] === true || blockedDays[key] === true) {
+    if (blockedDays[key] === true) {
       return false;
     }
     cursor.setDate(cursor.getDate() + 1);
@@ -386,7 +405,7 @@ const calculateSubtotal = (
   start: Date | null,
   end: Date | null,
   basePrice: number,
-  priceAdjustments: Record<string, number>
+  offerPriceAdjustments: Record<string, number>
 ) => {
   if (!start || !end) return 0;
   const cursor = startOfDay(start);
@@ -394,7 +413,7 @@ const calculateSubtotal = (
   let total = 0;
 
   while (cursor < endDate) {
-    total += getDatePrice(cursor, basePrice, priceAdjustments);
+    total += getDatePrice(cursor, basePrice, offerPriceAdjustments);
     cursor.setDate(cursor.getDate() + 1);
   }
 
@@ -413,12 +432,9 @@ const getRewardIcon = (rewardType: string | null) => {
 };
 
 const getRewardTag = (reward: OfferCampaignReward) => {
-  if (reward.percentDiscount) return `${reward.percentDiscount}% off`;
-  if (reward.numberOfNightsToApply) {
-    const nights = reward.numberOfNightsToApply;
-    return `${nights} night${nights > 1 ? 's' : ''}`;
-  }
+  if (reward.rewardType?.includes('Discount')) return 'Discount';
   if (reward.rewardType?.includes('Perk')) return 'Perk';
+  if (reward.name?.trim()) return reward.name.trim();
   return 'Reward';
 };
 
@@ -432,6 +448,35 @@ const formatDateTime = (date: Date, timeValue: string) => {
   const dateKey = formatDateKey(date);
   const timeKey = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   return `${dateKey}T${timeKey}:00`;
+};
+
+const formatTodayLabel = () =>
+  new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+const buildDerivedCheckOutTime = (
+  checkInTime: string,
+  maxHours: number | null,
+  ruleCheckOutTime: string | null
+) => {
+  const startMinutes = parseTimeToMinutes(checkInTime);
+  if (startMinutes === null) return null;
+  let endMinutes: number | null = null;
+  if (typeof maxHours === 'number' && Number.isFinite(maxHours) && maxHours > 0) {
+    endMinutes = startMinutes + maxHours * 60;
+  }
+  const ruleEndMinutes = parseTimeToMinutes(ruleCheckOutTime);
+  if (ruleEndMinutes !== null) {
+    endMinutes =
+      endMinutes === null ? ruleEndMinutes : Math.min(endMinutes, ruleEndMinutes);
+  }
+  if (endMinutes === null) {
+    endMinutes = startMinutes;
+  }
+  endMinutes = Math.max(endMinutes, startMinutes);
+  endMinutes = Math.min(endMinutes, 23 * 60 + 59);
+  const hours = Math.floor(endMinutes / 60);
+  const minutes = endMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
 export default function OfferBookingScreen() {
@@ -489,27 +534,15 @@ export default function OfferBookingScreen() {
   const offerRules = bookingDetails?.offer?.offerCampaignRules ?? [];
   const offerRule = offerRules[0] ?? null;
   const maxHours = offerRule?.maxHours ?? null;
-  const validCheckInTime = normalizeTimeValue(offerRule?.validCheckInTime);
   const validCheckOutTime = normalizeTimeValue(offerRule?.validCheckOutTime);
-
-  const timeOptions = useMemo(() => {
-    const minMinutes =
-      parseTimeToMinutes(validCheckInTime) ?? DEFAULT_TIME_START_MINUTES;
-    const maxMinutes =
-      parseTimeToMinutes(validCheckOutTime) ?? DEFAULT_TIME_END_MINUTES;
-    const startMinutes = Math.min(minMinutes, maxMinutes);
-    const endMinutes = Math.max(minMinutes, maxMinutes);
-    return buildTimeOptions(startMinutes, endMinutes);
-  }, [validCheckInTime, validCheckOutTime]);
 
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [checkIn, setCheckIn] = useState<Date | null>(null);
   const [checkOut, setCheckOut] = useState<Date | null>(null);
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
-  const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [timePickerVisible, setTimePickerVisible] = useState<'checkIn' | 'checkOut' | null>(null);
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [guestCount, setGuestCount] = useState(1);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [purpose, setPurpose] = useState('');
@@ -521,6 +554,7 @@ export default function OfferBookingScreen() {
   const [bookingReference, setBookingReference] = useState(
     () => referenceNumber ?? generateBookingReference()
   );
+  const todayLabel = useMemo(() => formatTodayLabel(), []);
 
   const bookingOptions = useMemo<BookingOption[]>(() => {
     const options: BookingOption[] = [];
@@ -564,8 +598,7 @@ export default function OfferBookingScreen() {
       setCalendarVisible(false);
     } else {
       setCheckInTime(null);
-      setCheckOutTime(null);
-      setTimePickerVisible(null);
+      setTimePickerVisible(false);
     }
     setSelectionError(null);
   }, [isTimeBased]);
@@ -576,24 +609,35 @@ export default function OfferBookingScreen() {
   );
   const activeListable = bookingType === 'room' ? selectedRoom : entireApartment;
   const baseNightlyRate = activeListable?.nightlyRate ?? 0;
-  const soldOutDays = activeListable?.soldOutDays ?? {};
   const blockedDays = activeListable?.blockedDays ?? {};
-  const priceAdjustments = activeListable?.priceAdjustments ?? {};
+  const offerPriceAdjustments = activeListable?.offerPriceAdjustments ?? {};
+  const checkInTimeSlots = activeListable?.checkInTimeSlots ?? [];
   const cautionFee = activeListable?.cautionFee ?? 0;
   const maxGuestsAllowed = activeListable?.maxNumberOfGuestsAllowed ?? 1;
 
-  const checkInMinutes = parseTimeToMinutes(checkInTime);
-  const maxCheckoutMinutes =
-    maxHours && checkInMinutes !== null ? checkInMinutes + maxHours * 60 : null;
+  const checkInSlotOptions = useMemo(
+    () => buildTimeOptionsFromSlots(checkInTimeSlots),
+    [checkInTimeSlots]
+  );
+  const hasTimeSlots = checkInSlotOptions.length > 0;
+  const derivedCheckOutTime = useMemo(() => {
+    if (!isTimeBased || !checkInTime) return null;
+    return buildDerivedCheckOutTime(checkInTime, maxHours, validCheckOutTime);
+  }, [checkInTime, isTimeBased, maxHours, validCheckOutTime]);
 
-  const timeDurationHours = useMemo(() => {
-    if (!checkInTime || !checkOutTime) return 0;
-    const startMinutes = parseTimeToMinutes(checkInTime);
-    const endMinutes = parseTimeToMinutes(checkOutTime);
-    if (startMinutes === null || endMinutes === null) return 0;
-    const durationMinutes = endMinutes - startMinutes;
-    return durationMinutes > 0 ? durationMinutes / 60 : 0;
-  }, [checkInTime, checkOutTime]);
+  useEffect(() => {
+    if (!isTimeBased || !checkInTime) return;
+    const hasSelected = checkInSlotOptions.some((option) => option.value === checkInTime);
+    if (!hasSelected) {
+      setCheckInTime(null);
+    }
+  }, [checkInSlotOptions, checkInTime, isTimeBased]);
+
+  useEffect(() => {
+    if (isTimeBased && !hasTimeSlots) {
+      setTimePickerVisible(false);
+    }
+  }, [hasTimeSlots, isTimeBased]);
 
   useEffect(() => {
     if (guestCount > maxGuestsAllowed) {
@@ -616,45 +660,43 @@ export default function OfferBookingScreen() {
             calendarMonth,
             checkIn,
             checkOut,
-            soldOutDays,
             blockedDays,
             baseNightlyRate,
-            priceAdjustments
+            offerPriceAdjustments
           ),
     [
       isTimeBased,
       calendarMonth,
       checkIn,
       checkOut,
-      soldOutDays,
       blockedDays,
       baseNightlyRate,
-      priceAdjustments,
+      offerPriceAdjustments,
     ]
   );
 
   const subtotal = useMemo(
-    () => calculateSubtotal(checkIn, checkOut, baseNightlyRate, priceAdjustments),
-    [checkIn, checkOut, baseNightlyRate, priceAdjustments]
+    () => calculateSubtotal(checkIn, checkOut, baseNightlyRate, offerPriceAdjustments),
+    [checkIn, checkOut, baseNightlyRate, offerPriceAdjustments]
   );
 
-  const timeSubtotal = useMemo(() => {
-    if (!isTimeBased || timeDurationHours <= 0) return 0;
-    return Math.round(baseNightlyRate * timeDurationHours);
-  }, [isTimeBased, baseNightlyRate, timeDurationHours]);
-
   const discount = 0;
-  const staySubtotal = isTimeBased ? timeSubtotal : subtotal;
-  const stayUnits = isTimeBased ? timeDurationHours : nights;
+  const staySubtotal = isTimeBased ? (checkInTime ? baseNightlyRate : 0) : subtotal;
+  const stayUnits = isTimeBased ? (checkInTime ? 1 : 0) : nights;
   const total = staySubtotal - discount + (stayUnits > 0 ? cautionFee : 0);
-  const hasStaySelection = isTimeBased ? timeDurationHours > 0 : nights > 0;
+  const hasStaySelection = isTimeBased ? Boolean(checkInTime) : nights > 0;
   const hasPrice = baseNightlyRate > 0;
-  const canReview = acceptedTerms && hasStaySelection && hasPrice && !isCreating;
-  const rateUnitLabel = isTimeBased ? ' / hour' : ' / night';
+  const canReview =
+    acceptedTerms && hasStaySelection && hasPrice && !isCreating && (!isTimeBased || hasTimeSlots);
+  const rateUnitLabel = isTimeBased ? ' / stay' : ' / night';
 
   const handleCreateBooking = async () => {
     if (isTimeBased) {
-      if (!checkInTime || !checkOutTime) return;
+      if (!checkInTime) return;
+      if (!derivedCheckOutTime) {
+        setBookingError('Select a valid check-in time.');
+        return;
+      }
     } else if (!checkIn || !checkOut) {
       return;
     }
@@ -672,7 +714,7 @@ export default function OfferBookingScreen() {
       ? formatDateTime(bookingDate, checkInTime ?? '')
       : formatDateKey(checkIn ?? bookingDate);
     const checkOutValue = isTimeBased
-      ? formatDateTime(bookingDate, checkOutTime ?? '')
+      ? formatDateTime(bookingDate, derivedCheckOutTime ?? checkInTime ?? '')
       : formatDateKey(checkOut ?? bookingDate);
 
     try {
@@ -722,9 +764,12 @@ export default function OfferBookingScreen() {
     setCalendarVisible(true);
   };
 
-  const openTimePicker = (type: 'checkIn' | 'checkOut') => {
+  const openTimePicker = () => {
+    if (!hasTimeSlots) {
+      return;
+    }
     setSelectionError(null);
-    setTimePickerVisible(type);
+    setTimePickerVisible(true);
   };
 
   const handleOpenTerms = () => {
@@ -743,10 +788,6 @@ export default function OfferBookingScreen() {
   const handleSelectDate = (day: CalendarDay) => {
     if (day.isPast) {
       setSelectionError('Past dates are unavailable.');
-      return;
-    }
-    if (day.isBooked) {
-      setSelectionError('This date is already booked.');
       return;
     }
     if (day.isBlocked) {
@@ -769,7 +810,7 @@ export default function OfferBookingScreen() {
         setSelectionError(null);
         return;
       }
-      const isAvailable = isRangeAvailable(checkIn, normalized, soldOutDays, blockedDays);
+      const isAvailable = isRangeAvailable(checkIn, normalized, blockedDays);
       if (!isAvailable) {
         setSelectionError('Some dates in that range are unavailable.');
         return;
@@ -781,42 +822,9 @@ export default function OfferBookingScreen() {
   };
 
   const handleSelectTime = (value: string) => {
-    if (timePickerVisible === 'checkIn') {
-      setCheckInTime(value);
-      if (checkOutTime) {
-        const startMinutes = parseTimeToMinutes(value);
-        const endMinutes = parseTimeToMinutes(checkOutTime);
-        if (startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes) {
-          setCheckOutTime(null);
-        }
-      }
-      setSelectionError(null);
-      setTimePickerVisible(null);
-      return;
-    }
-
-    if (!checkInTime) {
-      setSelectionError('Select a check-in time first.');
-      return;
-    }
-    const startMinutes = parseTimeToMinutes(checkInTime);
-    const endMinutes = parseTimeToMinutes(value);
-    if (startMinutes === null || endMinutes === null) {
-      setSelectionError('Select a valid time.');
-      return;
-    }
-    if (endMinutes <= startMinutes) {
-      setSelectionError('Check-out time must be after check-in.');
-      return;
-    }
-    if (maxHours && (endMinutes - startMinutes) / 60 > maxHours) {
-      setSelectionError(`Stay duration cannot exceed ${maxHours} hours.`);
-      return;
-    }
-
-    setCheckOutTime(value);
+    setCheckInTime(value);
     setSelectionError(null);
-    setTimePickerVisible(null);
+    setTimePickerVisible(false);
   };
 
   const adjustGuestCount = (delta: number) => {
@@ -877,9 +885,6 @@ export default function OfferBookingScreen() {
                     id: null,
                     rewardType: null,
                     name: null,
-                    description: null,
-                    numberOfNightsToApply: null,
-                    percentDiscount: null,
                   };
                   return (
                     <View
@@ -890,11 +895,6 @@ export default function OfferBookingScreen() {
                           <Text className="text-sm font-semibold text-slate-900">
                             {safeReward.name?.trim() || 'Offer reward'}
                           </Text>
-                          {safeReward.description?.trim() ? (
-                            <Text className="mt-1 text-xs text-emerald-700">
-                              {safeReward.description}
-                            </Text>
-                          ) : null}
                         </View>
                         <View className="flex-row items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1">
                           <Feather
@@ -1067,28 +1067,26 @@ export default function OfferBookingScreen() {
                 <View className="flex-row gap-3">
                   <Pressable
                     className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
-                    onPress={() => openTimePicker('checkIn')}>
+                    disabled={!hasTimeSlots}
+                    onPress={openTimePicker}>
                     <Text className="text-xs font-semibold uppercase text-slate-500">
-                      Check-in time
+                      Check-in time (Today · {todayLabel})
                     </Text>
                     <Text className="mt-1 text-base font-semibold text-slate-900">
                       {formatTimeDisplay(checkInTime)}
                     </Text>
                   </Pressable>
-                  <Pressable
-                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
-                    onPress={() => openTimePicker('checkOut')}>
-                    <Text className="text-xs font-semibold uppercase text-slate-500">
-                      Check-out time
-                    </Text>
-                    <Text className="mt-1 text-base font-semibold text-slate-900">
-                      {formatTimeDisplay(checkOutTime)}
-                    </Text>
-                  </Pressable>
                 </View>
                 <Text className="mt-2 text-xs text-slate-400">
-                  Select your check-in and check-out times for this offer.
+                  Select your check-in time for this offer.
                 </Text>
+                {!hasTimeSlots ? (
+                  <View className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2">
+                    <Text className="text-xs font-semibold text-amber-700">
+                      This option is unavailable for the selected listing.
+                    </Text>
+                  </View>
+                ) : null}
                 {selectionError ? (
                   <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
                     <Text className="text-xs font-semibold text-rose-600">
@@ -1176,18 +1174,27 @@ export default function OfferBookingScreen() {
             </Text>
             {hasStaySelection ? (
               <View className="mt-4 space-y-3">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-sm text-slate-500">{isTimeBased ? 'Hours' : 'Nights'}</Text>
-                  <Text className="text-sm font-semibold text-slate-900">
-                    {isTimeBased ? formatDurationHours(timeDurationHours) : nights}
-                  </Text>
-                </View>
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-sm text-slate-500">Subtotal</Text>
-                  <Text className="text-sm font-semibold text-slate-900">
-                    {formatCurrency(staySubtotal)}
-                  </Text>
-                </View>
+                {isTimeBased ? (
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-sm text-slate-500">Offer price</Text>
+                    <Text className="text-sm font-semibold text-slate-900">
+                      {formatCurrency(staySubtotal)}
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-slate-500">Nights</Text>
+                      <Text className="text-sm font-semibold text-slate-900">{nights}</Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-slate-500">Subtotal</Text>
+                      <Text className="text-sm font-semibold text-slate-900">
+                        {formatCurrency(staySubtotal)}
+                      </Text>
+                    </View>
+                  </>
+                )}
                 {discount > 0 ? (
                   <View className="flex-row items-center justify-between">
                     <Text className="text-sm text-emerald-600">Coupon discount</Text>
@@ -1215,7 +1222,7 @@ export default function OfferBookingScreen() {
             ) : (
               <Text className="mt-3 text-sm text-slate-500">
                 {isTimeBased
-                  ? 'Select your times to see a detailed price breakdown.'
+                  ? 'Select your check-in time to see a detailed price breakdown.'
                   : 'Select your dates to see a detailed price breakdown.'}
               </Text>
             )}
@@ -1446,7 +1453,7 @@ export default function OfferBookingScreen() {
               <View className="mt-3 flex-row flex-wrap">
                 {calendarDays.map((day) => {
                   const isDisabled =
-                    day.isPast || day.isBooked || day.isBlocked || !day.isCurrentMonth;
+                    day.isPast || day.isBlocked || !day.isCurrentMonth;
                   const isSelected = day.isStart || day.isEnd;
                   const priceLabel =
                     day.isCurrentMonth && day.nightlyPrice > 0
@@ -1461,10 +1468,6 @@ export default function OfferBookingScreen() {
                     containerClass += ' border-transparent bg-transparent';
                     textClass += ' text-slate-300';
                     priceClass += ' text-slate-300';
-                  } else if (day.isBooked) {
-                    containerClass += ' border-rose-200 bg-rose-50';
-                    textClass += ' text-rose-500';
-                    priceClass += ' text-rose-400';
                   } else if (day.isPast || day.isBlocked) {
                     containerClass += ' border-slate-100 bg-slate-50';
                     textClass += ' text-slate-300';
@@ -1514,10 +1517,6 @@ export default function OfferBookingScreen() {
                   <Text className="text-xs text-slate-500">In range</Text>
                 </View>
                 <View className="flex-row items-center gap-2">
-                  <View className="h-2.5 w-6 rounded-full bg-rose-200" />
-                  <Text className="text-xs text-slate-500">Booked</Text>
-                </View>
-                <View className="flex-row items-center gap-2">
                   <View className="h-2.5 w-6 rounded-full bg-slate-200" />
                   <Text className="text-xs text-slate-500">Unavailable</Text>
                 </View>
@@ -1548,50 +1547,37 @@ export default function OfferBookingScreen() {
         <Modal
           transparent
           animationType="slide"
-          visible={Boolean(timePickerVisible)}
-          onRequestClose={() => setTimePickerVisible(null)}>
+          visible={timePickerVisible}
+          onRequestClose={() => setTimePickerVisible(false)}>
           <View className="flex-1 justify-end bg-black/40">
             <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
               <View className="mb-4 h-1 w-12 self-center rounded-full bg-slate-200" />
               <View className="flex-row items-center justify-between">
                 <Text className="text-lg font-semibold text-slate-900">
-                  {timePickerVisible === 'checkOut' ? 'Select check-out time' : 'Select check-in time'}
+                  Select check-in time
                 </Text>
-                <Pressable onPress={() => setTimePickerVisible(null)}>
+                <Pressable onPress={() => setTimePickerVisible(false)}>
                   <Feather name="x" size={20} color="#0f172a" />
                 </Pressable>
               </View>
               <Text className="mt-2 text-sm text-slate-500">
-                Pick a time that fits the offer rules for this stay.
+                Pick a time for today that fits the offer schedule.
               </Text>
               <View className="mt-4 flex-row flex-wrap gap-3">
-                {timeOptions.map((option) => {
-                  const isActive =
-                    (timePickerVisible === 'checkIn' ? checkInTime : checkOutTime) ===
-                    option.value;
-                  const isCheckOut = timePickerVisible === 'checkOut';
-                  const minCheckOut = checkInMinutes !== null ? checkInMinutes + 1 : null;
-                  const maxCheckOut = maxCheckoutMinutes ?? null;
-                  const isDisabled =
-                    (isCheckOut && minCheckOut !== null && option.minutes <= minCheckOut) ||
-                    (isCheckOut && maxCheckOut !== null && option.minutes > maxCheckOut);
+                {checkInSlotOptions.map((option) => {
+                  const isActive = checkInTime === option.value;
                   return (
                     <Pressable
                       key={option.value}
-                      disabled={isDisabled}
                       onPress={() => handleSelectTime(option.value)}
                       className={`rounded-full border px-4 py-2 ${
-                        isDisabled
-                          ? 'border-slate-100 bg-slate-50'
-                          : isActive
+                        isActive
                           ? 'border-blue-600 bg-blue-50'
                           : 'border-slate-200 bg-white'
                       }`}>
                       <Text
                         className={`text-sm font-semibold ${
-                          isDisabled
-                            ? 'text-slate-300'
-                            : isActive
+                          isActive
                             ? 'text-blue-700'
                             : 'text-slate-600'
                         }`}>
