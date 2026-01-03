@@ -36,6 +36,7 @@ export const FIND_OFFERS_FOR_CAMPAIGN_CATEGORY = gql`
       offerCampaignListings {
         id
         listing {
+          id
           name
           rating
           coverPhoto

@@ -1,72 +1,1662 @@
+import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
-import { OFFER_CATEGORIES } from '@/data/offers';
+import { CREATE_BOOKING_WITHOUT_OFFER } from '@/mutations/createBookingWithoutOffer';
+import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { SafeAreaView, Text, View } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Dimensions,
+  FlatList,
+  Linking,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
+
+const { width } = Dimensions.get('window');
+const GALLERY_HORIZONTAL_PADDING = 24;
+const GALLERY_WIDTH = width - GALLERY_HORIZONTAL_PADDING * 2;
+const TERMS_URL = 'https://safarihills.app/terms';
+
+const PURPOSE_OPTIONS: { label: string; icon: 'moon' | 'sun' | 'briefcase' | 'monitor' | 'users' | 'music' | 'camera' }[] =
+  [
+    { label: 'Sleep over', icon: 'moon' },
+    { label: 'Vacation', icon: 'sun' },
+    { label: 'Business', icon: 'briefcase' },
+    { label: 'Work related', icon: 'monitor' },
+    { label: 'Get Together', icon: 'users' },
+    { label: 'Parties', icon: 'music' },
+    { label: 'PhotoShoot', icon: 'camera' },
+  ];
+
+const DEFAULT_TIME_START_MINUTES = 6 * 60;
+const DEFAULT_TIME_END_MINUTES = 23 * 60;
+const TIME_STEP_MINUTES = 60;
+
+type BookingOption = 'room' | 'entire';
+
+type BookableOption = 'day_based' | 'time_based';
+
+type RemotePropertyPhoto = {
+  mediumUrl: string | null;
+  largeUrl: string | null;
+};
+
+type RemoteListableDetails = {
+  id: string | null;
+  name: string | null;
+  nightlyRate: number | null;
+  cautionFee: number | null;
+  soldOutDays: Record<string, boolean> | null;
+  blockedDays: Record<string, boolean> | null;
+  priceAdjustments: Record<string, number> | null;
+  weeklyDiscount: number | null;
+  monthlyDiscount: number | null;
+  amenities: string[] | null;
+  restrictions: string[] | null;
+  maxNumberOfGuestsAllowed: number | null;
+  propertyPhotos: RemotePropertyPhoto[] | null;
+};
+
+type OfferCampaignRule = {
+  id: string | null;
+  ruleType: string | null;
+  minNights: number | null;
+  maxHours: number | null;
+  validDays: number[] | null;
+  validCheckInTime: string | null;
+  validCheckOutTime: string | null;
+};
+
+type OfferCampaignReward = {
+  id: string | null;
+  rewardType: string | null;
+  name: string | null;
+  description: string | null;
+  numberOfNightsToApply: number | null;
+  percentDiscount: number | null;
+};
+
+type OfferNewBookingDetailsResponse = {
+  offerNewBookingDetails: {
+    listing: {
+      name: string | null;
+      area: string | null;
+    } | null;
+    offer: {
+      id: string | null;
+      name: string | null;
+      bookableOption: BookableOption | null;
+      offerCampaignRules: OfferCampaignRule[] | null;
+      offerCampaignRewards: OfferCampaignReward[] | null;
+    } | null;
+    entireApartment: RemoteListableDetails | null;
+    roomCategories: RemoteListableDetails[] | null;
+  } | null;
+};
+
+type BookingListable = {
+  id: string;
+  name: string;
+  nightlyRate: number;
+  cautionFee: number;
+  soldOutDays: Record<string, boolean>;
+  blockedDays: Record<string, boolean>;
+  priceAdjustments: Record<string, number>;
+  weeklyDiscount: number;
+  monthlyDiscount: number;
+  amenities: string[];
+  maxNumberOfGuestsAllowed: number;
+  photos: string[];
+  description: string;
+  restrictions: string[];
+};
+
+type CreateBookingResponse = {
+  createBookingV3: {
+    id: string | null;
+    referenceNumber: string | null;
+    errors: string[] | string | null;
+  } | null;
+};
+
+type CreateBookingVariables = {
+  checkIn: string;
+  checkOut: string;
+  listingId: number;
+  roomCategoryName?: string | null;
+  bookingPurpose: string;
+  referenceNumber: string;
+  bookingTotal: number;
+  cautionFee: number;
+  numberOfGuests: number;
+  entireProperty: boolean;
+  extending?: boolean | null;
+};
+
+type CalendarDay = {
+  date: Date;
+  isCurrentMonth: boolean;
+  isPast: boolean;
+  isBooked: boolean;
+  isBlocked: boolean;
+  isStart: boolean;
+  isEnd: boolean;
+  isBetween: boolean;
+  nightlyPrice: number;
+};
+
+type TimeOption = {
+  value: string;
+  label: string;
+  minutes: number;
+};
+
+const startOfDay = (date: Date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const startOfMonth = (date: Date) => {
+  const next = new Date(date);
+  next.setDate(1);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateDisplay = (date: Date | null) =>
+  date
+    ? date.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+      })
+    : 'Add date';
+
+const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
+
+const formatShortCurrency = (value: number) => {
+  if (value >= 1000000) {
+    const millions = value / 1000000;
+    const label = millions % 1 === 0 ? millions.toFixed(0) : millions.toFixed(1);
+    return `${label}m`;
+  }
+  if (value >= 1000) {
+    return `${Math.round(value / 1000)}k`;
+  }
+  return `${value}`;
+};
+
+const formatDurationHours = (value: number) => (value % 1 === 0 ? value.toFixed(0) : value.toFixed(1));
+
+const formatTimeLabel = (value: string) => {
+  const [hourValue, minuteValue] = value.split(':');
+  const hours = Number.parseInt(hourValue, 10);
+  const minutes = Number.parseInt(minuteValue, 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return value;
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+};
+
+const formatTimeDisplay = (value: string | null) => (value ? formatTimeLabel(value) : 'Add time');
+
+const parseTimeToMinutes = (value: string | null | undefined) => {
+  if (!value) return null;
+  const [hourValue, minuteValue] = value.split(':');
+  const hours = Number.parseInt(hourValue, 10);
+  const minutes = Number.parseInt(minuteValue, 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const normalizeTimeValue = (value: string | null | undefined) => {
+  if (!value) return null;
+  const match = value.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = match[1].padStart(2, '0');
+  const minutes = match[2];
+  return `${hours}:${minutes}`;
+};
+
+const buildTimeOptions = (startMinutes: number, endMinutes: number) => {
+  const options: TimeOption[] = [];
+  for (let minutes = startMinutes; minutes <= endMinutes; minutes += TIME_STEP_MINUTES) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const value = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    options.push({ value, label: formatTimeLabel(value), minutes });
+  }
+  return options;
+};
+
+const generateBookingReference = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let value = 'BK-';
+  for (let i = 0; i < 6; i += 1) {
+    value += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return value;
+};
+
+const normalizeNumber = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const normalizeDaysMap = (value: Record<string, boolean> | null | undefined) => {
+  if (!value) return {};
+  return Object.entries(value).reduce<Record<string, boolean>>((acc, [key, entry]) => {
+    if (entry) {
+      acc[key] = true;
+    }
+    return acc;
+  }, {});
+};
+
+const normalizePriceAdjustments = (value: Record<string, number> | null | undefined) => {
+  if (!value) return {};
+  return Object.entries(value).reduce<Record<string, number>>((acc, [key, entry]) => {
+    if (typeof entry === 'number' && Number.isFinite(entry)) {
+      acc[key] = entry;
+    }
+    return acc;
+  }, {});
+};
+
+const mapPhotoUrls = (photos: RemotePropertyPhoto[] | null | undefined) =>
+  (photos ?? [])
+    .map((photo) => photo.largeUrl || photo.mediumUrl)
+    .filter((url): url is string => Boolean(url));
+
+const mapListableDetails = (details: RemoteListableDetails | null, fallbackId: string): BookingListable => ({
+  id: details?.id ?? fallbackId,
+  name: details?.name ?? 'Listing',
+  nightlyRate: normalizeNumber(details?.nightlyRate),
+  cautionFee: normalizeNumber(details?.cautionFee),
+  soldOutDays: normalizeDaysMap(details?.soldOutDays),
+  blockedDays: normalizeDaysMap(details?.blockedDays),
+  priceAdjustments: normalizePriceAdjustments(details?.priceAdjustments),
+  weeklyDiscount: normalizeNumber(details?.weeklyDiscount),
+  monthlyDiscount: normalizeNumber(details?.monthlyDiscount),
+  amenities: details?.amenities ?? [],
+  restrictions: details?.restrictions ?? [],
+  maxNumberOfGuestsAllowed: Math.max(1, normalizeNumber(details?.maxNumberOfGuestsAllowed)),
+  photos: mapPhotoUrls(details?.propertyPhotos),
+  description: '',
+});
+
+const getDatePrice = (
+  date: Date,
+  basePrice: number,
+  priceAdjustments: Record<string, number>
+) => {
+  const key = formatDateKey(date);
+  const adjusted = priceAdjustments[key];
+  if (typeof adjusted === 'number') return adjusted;
+  return basePrice > 0 ? basePrice : 0;
+};
+
+const buildCalendarDays = (
+  calendarMonth: Date,
+  checkIn: Date | null,
+  checkOut: Date | null,
+  soldOutDays: Record<string, boolean>,
+  blockedDays: Record<string, boolean>,
+  basePrice: number,
+  priceAdjustments: Record<string, number>
+): CalendarDay[] => {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  const gridStart = new Date(start);
+  gridStart.setDate(start.getDate() - start.getDay());
+  const gridEnd = new Date(end);
+  gridEnd.setDate(end.getDate() + (6 - end.getDay()));
+
+  const days: CalendarDay[] = [];
+  const today = startOfDay(new Date());
+  const startDate = checkIn ? startOfDay(checkIn) : null;
+  const endDate = checkOut ? startOfDay(checkOut) : null;
+
+  for (
+    let cursor = new Date(gridStart);
+    cursor <= gridEnd;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const date = new Date(cursor);
+    const normalized = startOfDay(date);
+    const key = formatDateKey(date);
+    const isStart = startDate ? normalized.getTime() === startDate.getTime() : false;
+    const isEnd = endDate ? normalized.getTime() === endDate.getTime() : false;
+    const isBetween = startDate && endDate && normalized > startDate && normalized < endDate;
+
+    const isBooked = soldOutDays[key] === true;
+    const isBlocked = blockedDays[key] === true;
+
+    days.push({
+      date,
+      isCurrentMonth: date.getMonth() === month,
+      isPast: normalized < today,
+      isBooked,
+      isBlocked,
+      isStart,
+      isEnd,
+      isBetween: Boolean(isBetween),
+      nightlyPrice: getDatePrice(date, basePrice, priceAdjustments),
+    });
+  }
+
+  return days;
+};
+
+const isRangeAvailable = (
+  start: Date,
+  end: Date,
+  soldOutDays: Record<string, boolean>,
+  blockedDays: Record<string, boolean>
+) => {
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const endDate = new Date(end);
+  endDate.setHours(0, 0, 0, 0);
+
+  while (cursor < endDate) {
+    const key = formatDateKey(cursor);
+    if (soldOutDays[key] === true || blockedDays[key] === true) {
+      return false;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return true;
+};
+
+const calculateSubtotal = (
+  start: Date | null,
+  end: Date | null,
+  basePrice: number,
+  priceAdjustments: Record<string, number>
+) => {
+  if (!start || !end) return 0;
+  const cursor = startOfDay(start);
+  const endDate = startOfDay(end);
+  let total = 0;
+
+  while (cursor < endDate) {
+    total += getDatePrice(cursor, basePrice, priceAdjustments);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return total;
+};
+
+const getBookingTypeLabel = (option: BookingOption) =>
+  option === 'room' ? 'Single room' : 'Entire apartment';
+
+const getBookingTypeIcon = (option: BookingOption) => (option === 'room' ? 'key' : 'home');
+
+const getRewardIcon = (rewardType: string | null) => {
+  if (rewardType === 'DiscountOfferReward') return 'percent';
+  if (rewardType === 'PerkOfferReward') return 'gift';
+  return 'award';
+};
+
+const getRewardTag = (reward: OfferCampaignReward) => {
+  if (reward.percentDiscount) return `${reward.percentDiscount}% off`;
+  if (reward.numberOfNightsToApply) {
+    const nights = reward.numberOfNightsToApply;
+    return `${nights} night${nights > 1 ? 's' : ''}`;
+  }
+  if (reward.rewardType?.includes('Perk')) return 'Perk';
+  return 'Reward';
+};
+
+const formatDateTime = (date: Date, timeValue: string) => {
+  const [hourValue, minuteValue] = timeValue.split(':');
+  const hours = Number.parseInt(hourValue, 10);
+  const minutes = Number.parseInt(minuteValue, 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return formatDateKey(date);
+  }
+  const dateKey = formatDateKey(date);
+  const timeKey = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  return `${dateKey}T${timeKey}:00`;
+};
 
 export default function OfferBookingScreen() {
   const router = useRouter();
   const {
-    categoryId: categoryParam,
     offerId: offerParam,
     listingId: listingParam,
+    referenceNumber: referenceParam,
   } = useLocalSearchParams<{
-    categoryId?: string | string[];
     offerId?: string | string[];
     listingId?: string | string[];
+    referenceNumber?: string | string[];
   }>();
-  const categoryId = Array.isArray(categoryParam) ? categoryParam[0] : categoryParam;
   const offerId = Array.isArray(offerParam) ? offerParam[0] : offerParam;
   const listingId = Array.isArray(listingParam) ? listingParam[0] : listingParam;
+  const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
 
-  const { offer, listing } = useMemo(() => {
-    const category = OFFER_CATEGORIES.find((item) => item.id === categoryId);
-    const foundOffer = category?.offers.find((item) => item.id === offerId);
-    const foundListing = foundOffer?.listings.find((item) => item.id === listingId);
-    return { offer: foundOffer, listing: foundListing };
-  }, [categoryId, offerId, listingId]);
+  const { data, loading } = useQuery<OfferNewBookingDetailsResponse>(
+    NEW_BOOKING_DETAILS_FOR_OFFER,
+    {
+      variables: { offerId: offerId ?? '', listingId: listingId ?? '' },
+      skip: !offerId || !listingId,
+    }
+  );
+  const [createBooking, { loading: isCreating }] = useMutation<
+    CreateBookingResponse,
+    CreateBookingVariables
+  >(CREATE_BOOKING_WITHOUT_OFFER);
+
+  const bookingDetails = data?.offerNewBookingDetails ?? null;
+  const entireApartment = useMemo(
+    () =>
+      bookingDetails?.entireApartment
+        ? mapListableDetails(bookingDetails.entireApartment, 'entire')
+        : null,
+    [bookingDetails]
+  );
+  const roomCategories = useMemo(
+    () =>
+      (bookingDetails?.roomCategories ?? []).map((room, index) =>
+        mapListableDetails(room, room?.id ?? `${room?.name ?? 'room'}-${index}`)
+      ),
+    [bookingDetails]
+  );
+  const listingName = bookingDetails?.listing?.name ?? entireApartment?.name ?? 'Listing';
+  const listingArea = bookingDetails?.listing?.area ?? '';
+  const offerName = bookingDetails?.offer?.name ?? 'Offer';
+
+  const offerBookableOption =
+    bookingDetails?.offer?.bookableOption?.toLowerCase() === 'time_based'
+      ? 'time_based'
+      : 'day_based';
+  const isTimeBased = offerBookableOption === 'time_based';
+
+  const offerRules = bookingDetails?.offer?.offerCampaignRules ?? [];
+  const offerRule = offerRules[0] ?? null;
+  const maxHours = offerRule?.maxHours ?? null;
+  const validCheckInTime = normalizeTimeValue(offerRule?.validCheckInTime);
+  const validCheckOutTime = normalizeTimeValue(offerRule?.validCheckOutTime);
+
+  const timeOptions = useMemo(() => {
+    const minMinutes =
+      parseTimeToMinutes(validCheckInTime) ?? DEFAULT_TIME_START_MINUTES;
+    const maxMinutes =
+      parseTimeToMinutes(validCheckOutTime) ?? DEFAULT_TIME_END_MINUTES;
+    const startMinutes = Math.min(minMinutes, maxMinutes);
+    const endMinutes = Math.max(minMinutes, maxMinutes);
+    return buildTimeOptions(startMinutes, endMinutes);
+  }, [validCheckInTime, validCheckOutTime]);
+
+  const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
+  const [checkIn, setCheckIn] = useState<Date | null>(null);
+  const [checkOut, setCheckOut] = useState<Date | null>(null);
+  const [checkInTime, setCheckInTime] = useState<string | null>(null);
+  const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [timePickerVisible, setTimePickerVisible] = useState<'checkIn' | 'checkOut' | null>(null);
+  const [guestCount, setGuestCount] = useState(1);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [purpose, setPurpose] = useState('');
+  const [purposeModalVisible, setPurposeModalVisible] = useState(false);
+  const [galleryRoom, setGalleryRoom] = useState<BookingListable | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingReference, setBookingReference] = useState(
+    () => referenceNumber ?? generateBookingReference()
+  );
+
+  const bookingOptions = useMemo<BookingOption[]>(() => {
+    const options: BookingOption[] = [];
+    if (entireApartment) options.push('entire');
+    if (roomCategories.length) options.push('room');
+    return options.length ? options : ['entire'];
+  }, [entireApartment, roomCategories.length]);
+  const defaultBookingType = useMemo<BookingOption>(() => {
+    if (bookingOptions.includes('entire')) return 'entire';
+    return bookingOptions[0] ?? 'entire';
+  }, [bookingOptions]);
+  const [bookingType, setBookingType] = useState<BookingOption>('entire');
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (bookingOptions.length && !bookingOptions.includes(bookingType)) {
+      setBookingType(defaultBookingType);
+    }
+  }, [bookingOptions, bookingType, defaultBookingType]);
+
+  useEffect(() => {
+    if (bookingType !== 'room') return;
+    if (selectedRoomId && roomCategories.some((room) => room.id === selectedRoomId)) return;
+    if (roomCategories.length) {
+      setSelectedRoomId(roomCategories[0].id);
+    }
+  }, [bookingType, roomCategories, selectedRoomId]);
+
+  useEffect(() => {
+    if (referenceNumber) {
+      setBookingReference(referenceNumber);
+      return;
+    }
+    setBookingReference(generateBookingReference());
+  }, [listingId, referenceNumber]);
+
+  useEffect(() => {
+    if (isTimeBased) {
+      setCheckIn(null);
+      setCheckOut(null);
+      setCalendarVisible(false);
+    } else {
+      setCheckInTime(null);
+      setCheckOutTime(null);
+      setTimePickerVisible(null);
+    }
+    setSelectionError(null);
+  }, [isTimeBased]);
+
+  const selectedRoom = useMemo<BookingListable | undefined>(
+    () => roomCategories.find((room) => room.id === selectedRoomId),
+    [roomCategories, selectedRoomId]
+  );
+  const activeListable = bookingType === 'room' ? selectedRoom : entireApartment;
+  const baseNightlyRate = activeListable?.nightlyRate ?? 0;
+  const soldOutDays = activeListable?.soldOutDays ?? {};
+  const blockedDays = activeListable?.blockedDays ?? {};
+  const priceAdjustments = activeListable?.priceAdjustments ?? {};
+  const cautionFee = activeListable?.cautionFee ?? 0;
+  const maxGuestsAllowed = activeListable?.maxNumberOfGuestsAllowed ?? 1;
+
+  const checkInMinutes = parseTimeToMinutes(checkInTime);
+  const maxCheckoutMinutes =
+    maxHours && checkInMinutes !== null ? checkInMinutes + maxHours * 60 : null;
+
+  const timeDurationHours = useMemo(() => {
+    if (!checkInTime || !checkOutTime) return 0;
+    const startMinutes = parseTimeToMinutes(checkInTime);
+    const endMinutes = parseTimeToMinutes(checkOutTime);
+    if (startMinutes === null || endMinutes === null) return 0;
+    const durationMinutes = endMinutes - startMinutes;
+    return durationMinutes > 0 ? durationMinutes / 60 : 0;
+  }, [checkInTime, checkOutTime]);
+
+  useEffect(() => {
+    if (guestCount > maxGuestsAllowed) {
+      setGuestCount(maxGuestsAllowed);
+      setGuestError(`Maximum ${maxGuestsAllowed} guests allowed.`);
+    }
+  }, [guestCount, maxGuestsAllowed]);
+
+  const nights = useMemo(() => {
+    if (!checkIn || !checkOut) return 0;
+    const diff = startOfDay(checkOut).getTime() - startOfDay(checkIn).getTime();
+    return Math.max(Math.round(diff / (1000 * 60 * 60 * 24)), 0);
+  }, [checkIn, checkOut]);
+
+  const calendarDays = useMemo(
+    () =>
+      isTimeBased
+        ? []
+        : buildCalendarDays(
+            calendarMonth,
+            checkIn,
+            checkOut,
+            soldOutDays,
+            blockedDays,
+            baseNightlyRate,
+            priceAdjustments
+          ),
+    [
+      isTimeBased,
+      calendarMonth,
+      checkIn,
+      checkOut,
+      soldOutDays,
+      blockedDays,
+      baseNightlyRate,
+      priceAdjustments,
+    ]
+  );
+
+  const subtotal = useMemo(
+    () => calculateSubtotal(checkIn, checkOut, baseNightlyRate, priceAdjustments),
+    [checkIn, checkOut, baseNightlyRate, priceAdjustments]
+  );
+
+  const timeSubtotal = useMemo(() => {
+    if (!isTimeBased || timeDurationHours <= 0) return 0;
+    return Math.round(baseNightlyRate * timeDurationHours);
+  }, [isTimeBased, baseNightlyRate, timeDurationHours]);
+
+  const discount = 0;
+  const staySubtotal = isTimeBased ? timeSubtotal : subtotal;
+  const stayUnits = isTimeBased ? timeDurationHours : nights;
+  const total = staySubtotal - discount + (stayUnits > 0 ? cautionFee : 0);
+  const hasStaySelection = isTimeBased ? timeDurationHours > 0 : nights > 0;
+  const hasPrice = baseNightlyRate > 0;
+  const canReview = acceptedTerms && hasStaySelection && hasPrice && !isCreating;
+  const rateUnitLabel = isTimeBased ? ' / hour' : ' / night';
+
+  const handleCreateBooking = async () => {
+    if (isTimeBased) {
+      if (!checkInTime || !checkOutTime) return;
+    } else if (!checkIn || !checkOut) {
+      return;
+    }
+
+    const listingValue = listingId ? Number.parseInt(listingId, 10) : NaN;
+    if (!Number.isFinite(listingValue)) {
+      setBookingError('Listing is unavailable right now.');
+      return;
+    }
+
+    setBookingError(null);
+
+    const bookingDate = new Date();
+    const checkInValue = isTimeBased
+      ? formatDateTime(bookingDate, checkInTime ?? '')
+      : formatDateKey(checkIn ?? bookingDate);
+    const checkOutValue = isTimeBased
+      ? formatDateTime(bookingDate, checkOutTime ?? '')
+      : formatDateKey(checkOut ?? bookingDate);
+
+    try {
+      const { data: response } = await createBooking({
+        variables: {
+          checkIn: checkInValue,
+          checkOut: checkOutValue,
+          listingId: listingValue,
+          roomCategoryName: bookingType === 'room' ? selectedRoom?.name ?? null : null,
+          bookingPurpose: purpose,
+          referenceNumber: bookingReference,
+          bookingTotal: Math.round(total),
+          cautionFee: Math.round(cautionFee),
+          numberOfGuests: guestCount,
+          entireProperty: bookingType === 'entire',
+          extending: null,
+        },
+      });
+
+      const result = response?.createBookingV3;
+      const errors = result?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setBookingError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setBookingError(errors);
+        return;
+      }
+      if (result?.id) {
+        router.push({
+          pathname: '/booking/summary/[id]',
+          params: { id: result.id },
+        });
+        return;
+      }
+      setBookingError('Unable to create booking right now.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create booking right now.';
+      setBookingError(message);
+    }
+  };
+
+  const openCalendar = () => {
+    if (isTimeBased) return;
+    setSelectionError(null);
+    setCalendarVisible(true);
+  };
+
+  const openTimePicker = (type: 'checkIn' | 'checkOut') => {
+    setSelectionError(null);
+    setTimePickerVisible(type);
+  };
+
+  const handleOpenTerms = () => {
+    Linking.openURL(TERMS_URL);
+  };
+
+  const openGallery = (room: BookingListable) => {
+    setGalleryRoom(room);
+    setGalleryIndex(0);
+  };
+
+  const closeGallery = () => {
+    setGalleryRoom(null);
+  };
+
+  const handleSelectDate = (day: CalendarDay) => {
+    if (day.isPast) {
+      setSelectionError('Past dates are unavailable.');
+      return;
+    }
+    if (day.isBooked) {
+      setSelectionError('This date is already booked.');
+      return;
+    }
+    if (day.isBlocked) {
+      setSelectionError('This date is unavailable.');
+      return;
+    }
+
+    const normalized = startOfDay(day.date);
+    if (!checkIn || (checkIn && checkOut)) {
+      setCheckIn(normalized);
+      setCheckOut(null);
+      setSelectionError(null);
+      return;
+    }
+
+    if (checkIn && !checkOut) {
+      if (normalized <= checkIn) {
+        setCheckIn(normalized);
+        setCheckOut(null);
+        setSelectionError(null);
+        return;
+      }
+      const isAvailable = isRangeAvailable(checkIn, normalized, soldOutDays, blockedDays);
+      if (!isAvailable) {
+        setSelectionError('Some dates in that range are unavailable.');
+        return;
+      }
+      setCheckOut(normalized);
+      setSelectionError(null);
+      setCalendarVisible(false);
+    }
+  };
+
+  const handleSelectTime = (value: string) => {
+    if (timePickerVisible === 'checkIn') {
+      setCheckInTime(value);
+      if (checkOutTime) {
+        const startMinutes = parseTimeToMinutes(value);
+        const endMinutes = parseTimeToMinutes(checkOutTime);
+        if (startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes) {
+          setCheckOutTime(null);
+        }
+      }
+      setSelectionError(null);
+      setTimePickerVisible(null);
+      return;
+    }
+
+    if (!checkInTime) {
+      setSelectionError('Select a check-in time first.');
+      return;
+    }
+    const startMinutes = parseTimeToMinutes(checkInTime);
+    const endMinutes = parseTimeToMinutes(value);
+    if (startMinutes === null || endMinutes === null) {
+      setSelectionError('Select a valid time.');
+      return;
+    }
+    if (endMinutes <= startMinutes) {
+      setSelectionError('Check-out time must be after check-in.');
+      return;
+    }
+    if (maxHours && (endMinutes - startMinutes) / 60 > maxHours) {
+      setSelectionError(`Stay duration cannot exceed ${maxHours} hours.`);
+      return;
+    }
+
+    setCheckOutTime(value);
+    setSelectionError(null);
+    setTimePickerVisible(null);
+  };
+
+  const adjustGuestCount = (delta: number) => {
+    setGuestCount((prev) => {
+      const next = prev + delta;
+      if (next < 1) {
+        setGuestError(null);
+        return 1;
+      }
+      if (next > maxGuestsAllowed) {
+        setGuestError(`Maximum ${maxGuestsAllowed} guests allowed.`);
+        return prev;
+      }
+      if (guestError) {
+        setGuestError(null);
+      }
+      return next;
+    });
+  };
+
+  if (loading || (!entireApartment && roomCategories.length === 0)) {
+    return null;
+  }
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-50 px-6">
-      <View className="pt-2">
-        <BackButton onPress={() => router.back()} />
-        <Text className="mt-6 text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
-          Offer booking
-        </Text>
-        <Text className="mt-2 text-3xl font-bold text-slate-900">Coming soon</Text>
-        <Text className="mt-2 text-sm text-slate-500">
-          We’re preparing a smooth booking flow for this offer.
-        </Text>
-      </View>
-
-      {offer ? (
-        <View className="mt-8 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm shadow-slate-100">
-          <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Selected offer
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}>
+        <View className="px-6 pt-4">
+          <BackButton onPress={() => router.back()} />
+          <Text className="mt-4 text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
+            Offer booking
           </Text>
-          <Text className="mt-2 text-lg font-semibold text-slate-900">{offer.title}</Text>
-          <Text className="mt-2 text-sm text-slate-500">{offer.description}</Text>
+          <Text className="mt-2 text-3xl font-bold text-slate-900">Book your stay</Text>
+          <Text className="mt-2 text-base text-slate-500">
+            {listingName}
+            {listingArea ? ` \u00b7 ${listingArea}` : ''}
+          </Text>
+          <View className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+            <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">
+              Offer
+            </Text>
+            <Text className="mt-1 text-lg font-semibold text-slate-900">{offerName}</Text>
+          </View>
+        </View>
 
-          {listing ? (
-            <View className="mt-4 flex-row items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3">
-              <LoadingImage
-                source={{ uri: listing.image }}
-                style={{ height: 54, width: 54 }}
-                className="rounded-2xl"
-              />
-              <View className="flex-1">
-                <Text className="text-base font-semibold text-slate-900">{listing.name}</Text>
-                <View className="mt-1 flex-row items-center gap-2">
-                  <Feather name="map-pin" size={14} color="#94a3b8" />
-                  <Text className="text-sm text-slate-500">{listing.location}</Text>
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Rewards
+            </Text>
+            {(bookingDetails?.offer?.offerCampaignRewards ?? []).length > 0 ? (
+              <View className="mt-4 space-y-3">
+                {(bookingDetails?.offer?.offerCampaignRewards ?? []).map((reward, index) => {
+                  const safeReward: OfferCampaignReward = reward ?? {
+                    id: null,
+                    rewardType: null,
+                    name: null,
+                    description: null,
+                    numberOfNightsToApply: null,
+                    percentDiscount: null,
+                  };
+                  return (
+                    <View
+                      key={safeReward.id ?? `reward-${index}`}
+                      className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                      <View className="flex-row items-start justify-between">
+                        <View className="flex-1 pr-3">
+                          <Text className="text-sm font-semibold text-slate-900">
+                            {safeReward.name?.trim() || 'Offer reward'}
+                          </Text>
+                          {safeReward.description?.trim() ? (
+                            <Text className="mt-1 text-xs text-emerald-700">
+                              {safeReward.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View className="flex-row items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1">
+                          <Feather
+                            name={getRewardIcon(safeReward.rewardType)}
+                            size={12}
+                            color="#047857"
+                          />
+                          <Text className="text-xs font-semibold text-emerald-700">
+                            {getRewardTag(safeReward)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text className="mt-3 text-sm text-slate-500">
+                No rewards listed for this offer.
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Booking type
+            </Text>
+            <View className="mt-4 flex-row flex-wrap gap-3">
+              {bookingOptions.map((option) => {
+                const isActive = bookingType === option;
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => setBookingType(option)}
+                    className={`flex-row items-center gap-2 rounded-full border px-4 py-2 ${
+                      isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                    }`}>
+                    <Feather
+                      name={getBookingTypeIcon(option)}
+                      size={14}
+                      color={isActive ? '#1d4ed8' : '#94a3b8'}
+                    />
+                    <Text
+                      className={`text-sm font-semibold ${
+                        isActive ? 'text-blue-700' : 'text-slate-600'
+                      }`}>
+                      {getBookingTypeLabel(option)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {bookingType === 'entire' ? (
+              <View className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+                  Entire apartment rate
+                </Text>
+                <Text className="mt-1 text-lg font-semibold text-slate-900">
+                  {formatCurrency(entireApartment?.nightlyRate ?? 0)}
+                  <Text className="text-xs font-medium text-slate-500">{rateUnitLabel}</Text>
+                </Text>
+                <View className="mt-3 rounded-2xl border border-rose-100 bg-rose-50/50 p-3">
+                  <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-500">
+                    Restrictions
+                  </Text>
+                  <View className="mt-2 flex-row flex-wrap gap-2">
+                    {(entireApartment?.restrictions ?? []).length === 0 ? (
+                      <Text className="text-xs text-slate-500">No restrictions listed.</Text>
+                    ) : (
+                      (entireApartment?.restrictions ?? []).map((restriction) => (
+                        <View
+                          key={`entire-${restriction}`}
+                          className="rounded-full border border-rose-100 bg-white px-3 py-1.5">
+                          <Text className="text-xs font-semibold text-rose-700">
+                            {restriction}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
                 </View>
               </View>
-            </View>
-          ) : null}
+            ) : (
+              <View className="mt-4">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Choose a room category
+                </Text>
+                {roomCategories.length === 0 ? (
+                  <View className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4">
+                    <Text className="text-sm text-slate-500">
+                      Room options will be available soon for this listing.
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="mt-3 space-y-4">
+                    {roomCategories.map((room) => {
+                      const isSelected = selectedRoomId === room.id;
+                      return (
+                        <Pressable
+                          key={room.id}
+                          onPress={() => setSelectedRoomId(room.id)}
+                          className={`rounded-3xl border p-4 ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50/40'
+                              : 'border-slate-200 bg-white'
+                          }`}>
+                          <View className="flex-row items-start justify-between">
+                            <View className="flex-1 pr-3">
+                              <Text className="text-base font-semibold text-slate-900">
+                                {room.name}
+                              </Text>
+                              <Text className="mt-1 text-sm text-slate-500">
+                                {room.description}
+                              </Text>
+                            </View>
+                            <Text className="text-base font-semibold text-blue-700">
+                              {formatCurrency(room.nightlyRate)}
+                              <Text className="text-xs font-medium text-slate-500">
+                                {rateUnitLabel}
+                              </Text>
+                            </Text>
+                          </View>
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            className="mt-4"
+                            contentContainerStyle={{ paddingRight: 8 }}>
+                            {room.photos.map((photo, index) => (
+                              <LoadingImage
+                                key={`${room.id}-${index}`}
+                                source={{ uri: photo }}
+                                className="mr-3 h-28 w-44 rounded-2xl"
+                                resizeMode="cover"
+                              />
+                            ))}
+                          </ScrollView>
+                          <View className="mt-3 flex-row items-center justify-between">
+                            <Text className="text-xs text-slate-500">
+                              {room.photos.length} photos
+                            </Text>
+                            <Pressable
+                              className="flex-row items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5"
+                              onPress={() => openGallery(room)}>
+                              <Feather name="image" size={14} color="#1d4ed8" />
+                              <Text className="text-xs font-semibold text-blue-700">
+                                View all
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Stay details
+            </Text>
+            {isTimeBased ? (
+              <View className="mt-4">
+                <View className="flex-row gap-3">
+                  <Pressable
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                    onPress={() => openTimePicker('checkIn')}>
+                    <Text className="text-xs font-semibold uppercase text-slate-500">
+                      Check-in time
+                    </Text>
+                    <Text className="mt-1 text-base font-semibold text-slate-900">
+                      {formatTimeDisplay(checkInTime)}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                    onPress={() => openTimePicker('checkOut')}>
+                    <Text className="text-xs font-semibold uppercase text-slate-500">
+                      Check-out time
+                    </Text>
+                    <Text className="mt-1 text-base font-semibold text-slate-900">
+                      {formatTimeDisplay(checkOutTime)}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text className="mt-2 text-xs text-slate-400">
+                  Select your check-in and check-out times for this offer.
+                </Text>
+                {selectionError ? (
+                  <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                    <Text className="text-xs font-semibold text-rose-600">
+                      {selectionError}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <View className="mt-4">
+                <View className="flex-row gap-3">
+                  <Pressable
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                    onPress={openCalendar}>
+                    <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                    <Text className="mt-1 text-base font-semibold text-slate-900">
+                      {formatDateDisplay(checkIn)}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+                    onPress={openCalendar}>
+                    <Text className="text-xs font-semibold uppercase text-slate-500">
+                      Check-out
+                    </Text>
+                    <Text className="mt-1 text-base font-semibold text-slate-900">
+                      {formatDateDisplay(checkOut)}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text className="mt-2 text-xs text-slate-400">
+                  Tap a date to open the calendar.
+                </Text>
+              </View>
+            )}
+
+            <View className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <Text className="text-sm font-semibold text-slate-700">Guests</Text>
+              <View className="flex-row items-center gap-3">
+                <Pressable
+                  className="h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white"
+                  onPress={() => adjustGuestCount(-1)}>
+                  <Feather name="minus" size={16} color="#475569" />
+                </Pressable>
+                <Text className="text-base font-semibold text-slate-900">{guestCount}</Text>
+                <Pressable
+                  className="h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white"
+                  onPress={() => adjustGuestCount(1)}>
+                  <Feather name="plus" size={16} color="#475569" />
+                </Pressable>
+              </View>
+            </View>
+            {guestError ? (
+              <View className="mt-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">{guestError}</Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
+              onPress={() => setPurposeModalVisible(true)}>
+              <View className="flex-1 pr-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Purpose</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {purpose || 'Select purpose of stay'}
+                </Text>
+                <Text className="mt-1 text-xs text-slate-400">
+                  This helps us tailor your stay experience.
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2 rounded-full bg-white px-3 py-1.5">
+                <Feather name="sliders" size={14} color="#1d4ed8" />
+                <Text className="text-xs font-semibold text-blue-700">
+                  {purpose ? 'Change' : 'Choose'}
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Price summary
+            </Text>
+            {hasStaySelection ? (
+              <View className="mt-4 space-y-3">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">{isTimeBased ? 'Hours' : 'Nights'}</Text>
+                  <Text className="text-sm font-semibold text-slate-900">
+                    {isTimeBased ? formatDurationHours(timeDurationHours) : nights}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">Subtotal</Text>
+                  <Text className="text-sm font-semibold text-slate-900">
+                    {formatCurrency(staySubtotal)}
+                  </Text>
+                </View>
+                {discount > 0 ? (
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-sm text-emerald-600">Coupon discount</Text>
+                    <Text className="text-sm font-semibold text-emerald-600">
+                      -{formatCurrency(discount)}
+                    </Text>
+                  </View>
+                ) : null}
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">Caution fee</Text>
+                  <Text className="text-sm font-semibold text-slate-900">
+                    {formatCurrency(cautionFee)}
+                  </Text>
+                </View>
+                <View className="mt-2 flex-row items-center justify-between border-t border-slate-200 pt-3">
+                  <Text className="text-base font-semibold text-slate-900">Total</Text>
+                  <Text className="text-base font-semibold text-blue-700">
+                    {formatCurrency(total)}
+                  </Text>
+                </View>
+                <Text className="text-xs text-slate-500">
+                  Discounts apply for weekly stays and above.
+                </Text>
+              </View>
+            ) : (
+              <Text className="mt-3 text-sm text-slate-500">
+                {isTimeBased
+                  ? 'Select your times to see a detailed price breakdown.'
+                  : 'Select your dates to see a detailed price breakdown.'}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <View className="flex-row items-start gap-3">
+              <Pressable
+                className={`mt-0.5 h-5 w-5 items-center justify-center rounded border ${
+                  acceptedTerms ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
+                }`}
+                onPress={() => setAcceptedTerms((prev) => !prev)}>
+                {acceptedTerms ? <Feather name="check" size={12} color="#ffffff" /> : null}
+              </Pressable>
+              <Text className="flex-1 text-sm text-slate-600">
+                I have read and accepted the{' '}
+                <Text className="font-semibold text-blue-600" onPress={handleOpenTerms}>
+                  Terms of use
+                </Text>
+              </Text>
+            </View>
+
+            {bookingError ? (
+              <View className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">{bookingError}</Text>
+              </View>
+            ) : null}
+            <Pressable
+              className={`mt-5 items-center justify-center rounded-full py-4 ${
+                canReview ? 'bg-blue-600' : 'bg-slate-200'
+              }`}
+              disabled={!canReview}
+              onPress={handleCreateBooking}>
+              <View className="items-center">
+                <Text
+                  className={`text-base font-semibold ${
+                    canReview ? 'text-white' : 'text-slate-500'
+                  }`}>
+                  Review & Pay · {formatCurrency(total)}
+                </Text>
+                <Text
+                  className={`text-xs font-semibold ${
+                    canReview ? 'text-blue-100' : 'text-slate-400'
+                  }`}>
+                  Booking total
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+
+      <Modal transparent animationType="slide" visible={Boolean(galleryRoom)} onRequestClose={closeGallery}>
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="max-h-[85%] rounded-t-[32px] bg-white">
+            <View className="flex-row items-start justify-between px-6 pt-6">
+              <View>
+                <Text className="text-lg font-semibold text-slate-900">
+                  {galleryRoom?.name ?? 'Room gallery'}
+                </Text>
+                <Text className="mt-1 text-sm text-slate-500">
+                  {galleryRoom?.photos.length ?? 0} photos
+                </Text>
+              </View>
+              <Pressable onPress={closeGallery} className="rounded-full border border-slate-200 p-2">
+                <Feather name="x" size={18} color="#0f172a" />
+              </Pressable>
+            </View>
+            <ScrollView className="mt-4" contentContainerStyle={{ paddingBottom: 24 }}>
+              <View className="px-6">
+                <FlatList
+                  data={galleryRoom?.photos ?? []}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(photo, index) => `${galleryRoom?.id ?? 'room'}-${index}`}
+                  snapToInterval={GALLERY_WIDTH}
+                  decelerationRate="fast"
+                  onMomentumScrollEnd={(event) => {
+                    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / GALLERY_WIDTH);
+                    setGalleryIndex(nextIndex);
+                  }}
+                  renderItem={({ item }) => (
+                    <View style={{ width: GALLERY_WIDTH }}>
+                      <LoadingImage
+                        source={{ uri: item }}
+                        className="h-64 w-full rounded-3xl"
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
+                />
+                <View className="mt-3 flex-row items-center justify-center gap-2">
+                  {(galleryRoom?.photos ?? []).map((_, index) => (
+                    <View
+                      key={`${galleryRoom?.id ?? 'room'}-dot-${index}`}
+                      className={`h-1.5 rounded-full ${
+                        index === galleryIndex ? 'w-8 bg-slate-900' : 'w-3 bg-slate-300'
+                      }`}
+                    />
+                  ))}
+                </View>
+
+                <Text className="mt-5 text-base font-semibold text-slate-900">About this room</Text>
+                <Text className="mt-2 text-sm leading-6 text-slate-500">
+                  {galleryRoom?.description
+                    ? galleryRoom.description
+                    : 'Room details will be updated soon.'}
+                </Text>
+
+                <View className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+                    Amenities
+                  </Text>
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {(galleryRoom?.amenities ?? []).length === 0 ? (
+                      <Text className="text-sm text-slate-500">Amenities coming soon.</Text>
+                    ) : (
+                      (galleryRoom?.amenities ?? []).map((amenity) => (
+                        <View
+                          key={`${galleryRoom?.id ?? 'room'}-${amenity}`}
+                          className="rounded-full border border-blue-100 bg-white px-3 py-1.5">
+                          <Text className="text-xs font-semibold text-blue-700">{amenity}</Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+
+                <View className="mt-4 rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-500">
+                    Restrictions
+                  </Text>
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {(galleryRoom?.restrictions ?? []).length === 0 ? (
+                      <Text className="text-sm text-slate-500">No restrictions listed.</Text>
+                    ) : (
+                      (galleryRoom?.restrictions ?? []).map((restriction) => (
+                        <View
+                          key={`${galleryRoom?.id ?? 'room'}-${restriction}`}
+                          className="rounded-full border border-rose-100 bg-white px-3 py-1.5">
+                          <Text className="text-xs font-semibold text-rose-700">
+                            {restriction}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {!isTimeBased ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={calendarVisible}
+          onRequestClose={() => setCalendarVisible(false)}>
+          <View className="flex-1 justify-end bg-black/40">
+            <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
+              <View className="mb-4 h-1 w-12 self-center rounded-full bg-slate-200" />
+              <View className="flex-row items-center justify-between">
+                <Text className="text-lg font-semibold text-slate-900">Select dates</Text>
+                <Pressable onPress={() => setCalendarVisible(false)}>
+                  <Feather name="x" size={20} color="#0f172a" />
+                </Pressable>
+              </View>
+
+              <View className="mt-3 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <View>
+                  <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                  <Text className="mt-1 text-sm font-semibold text-slate-900">
+                    {formatDateDisplay(checkIn)}
+                  </Text>
+                </View>
+                <Feather name="arrow-right" size={16} color="#94a3b8" />
+                <View>
+                  <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
+                  <Text className="mt-1 text-sm font-semibold text-slate-900">
+                    {formatDateDisplay(checkOut)}
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mt-4 flex-row items-center justify-between">
+                <Pressable
+                  className="rounded-full border border-slate-200 p-2"
+                  onPress={() =>
+                    setCalendarMonth((prev) => {
+                      const next = new Date(prev);
+                      next.setMonth(prev.getMonth() - 1, 1);
+                      return startOfMonth(next);
+                    })
+                  }>
+                  <Feather name="chevron-left" size={18} color="#0f172a" />
+                </Pressable>
+                <Text className="text-base font-semibold text-slate-900">
+                  {calendarMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </Text>
+                <Pressable
+                  className="rounded-full border border-slate-200 p-2"
+                  onPress={() =>
+                    setCalendarMonth((prev) => {
+                      const next = new Date(prev);
+                      next.setMonth(prev.getMonth() + 1, 1);
+                      return startOfMonth(next);
+                    })
+                  }>
+                  <Feather name="chevron-right" size={18} color="#0f172a" />
+                </Pressable>
+              </View>
+
+              <View className="mt-4 flex-row justify-between">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                  <Text
+                    key={day}
+                    className="w-[13%] text-center text-xs font-semibold uppercase text-slate-400">
+                    {day}
+                  </Text>
+                ))}
+              </View>
+
+              <View className="mt-3 flex-row flex-wrap">
+                {calendarDays.map((day) => {
+                  const isDisabled =
+                    day.isPast || day.isBooked || day.isBlocked || !day.isCurrentMonth;
+                  const isSelected = day.isStart || day.isEnd;
+                  const priceLabel =
+                    day.isCurrentMonth && day.nightlyPrice > 0
+                      ? formatShortCurrency(day.nightlyPrice)
+                      : '';
+                  let containerClass =
+                    'm-[1.3%] h-14 w-[13%] items-center justify-center rounded-2xl border';
+                  let textClass = 'text-sm font-semibold';
+                  let priceClass = 'text-[10px] font-semibold';
+
+                  if (!day.isCurrentMonth) {
+                    containerClass += ' border-transparent bg-transparent';
+                    textClass += ' text-slate-300';
+                    priceClass += ' text-slate-300';
+                  } else if (day.isBooked) {
+                    containerClass += ' border-rose-200 bg-rose-50';
+                    textClass += ' text-rose-500';
+                    priceClass += ' text-rose-400';
+                  } else if (day.isPast || day.isBlocked) {
+                    containerClass += ' border-slate-100 bg-slate-50';
+                    textClass += ' text-slate-300';
+                    priceClass += ' text-slate-300';
+                  } else if (isSelected) {
+                    containerClass += ' border-blue-600 bg-blue-600';
+                    textClass += ' text-white';
+                    priceClass += ' text-white/80';
+                  } else if (day.isBetween) {
+                    containerClass += ' border-blue-100 bg-blue-50';
+                    textClass += ' text-blue-700';
+                    priceClass += ' text-blue-600';
+                  } else {
+                    containerClass += ' border-slate-200 bg-white';
+                    textClass += ' text-slate-700';
+                    priceClass += ' text-slate-500';
+                  }
+
+                  return (
+                    <Pressable
+                      key={day.date.toDateString()}
+                      disabled={isDisabled}
+                      className={containerClass}
+                      onPress={() => handleSelectDate(day)}>
+                      <View className="items-center">
+                        <Text className={textClass}>{day.date.getDate()}</Text>
+                        {priceLabel ? <Text className={priceClass}>{priceLabel}</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {selectionError ? (
+                <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                  <Text className="text-xs font-semibold text-rose-600">{selectionError}</Text>
+                </View>
+              ) : null}
+
+              <View className="mt-4 flex-row flex-wrap items-center gap-4">
+                <View className="flex-row items-center gap-2">
+                  <View className="h-2.5 w-6 rounded-full bg-blue-500" />
+                  <Text className="text-xs text-slate-500">Selected</Text>
+                </View>
+                <View className="flex-row items-center gap-2">
+                  <View className="h-2.5 w-6 rounded-full bg-blue-100" />
+                  <Text className="text-xs text-slate-500">In range</Text>
+                </View>
+                <View className="flex-row items-center gap-2">
+                  <View className="h-2.5 w-6 rounded-full bg-rose-200" />
+                  <Text className="text-xs text-slate-500">Booked</Text>
+                </View>
+                <View className="flex-row items-center gap-2">
+                  <View className="h-2.5 w-6 rounded-full bg-slate-200" />
+                  <Text className="text-xs text-slate-500">Unavailable</Text>
+                </View>
+              </View>
+
+              <View className="mt-4 flex-row items-center justify-between">
+                <Pressable
+                  className="rounded-full border border-slate-200 px-4 py-2"
+                  onPress={() => {
+                    setCheckIn(null);
+                    setCheckOut(null);
+                    setSelectionError(null);
+                  }}>
+                  <Text className="text-xs font-semibold text-slate-600">Clear dates</Text>
+                </Pressable>
+                <Pressable
+                  className="rounded-full bg-blue-600 px-5 py-2.5"
+                  onPress={() => setCalendarVisible(false)}>
+                  <Text className="text-xs font-semibold text-white">Done</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       ) : null}
+
+      {isTimeBased ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={Boolean(timePickerVisible)}
+          onRequestClose={() => setTimePickerVisible(null)}>
+          <View className="flex-1 justify-end bg-black/40">
+            <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
+              <View className="mb-4 h-1 w-12 self-center rounded-full bg-slate-200" />
+              <View className="flex-row items-center justify-between">
+                <Text className="text-lg font-semibold text-slate-900">
+                  {timePickerVisible === 'checkOut' ? 'Select check-out time' : 'Select check-in time'}
+                </Text>
+                <Pressable onPress={() => setTimePickerVisible(null)}>
+                  <Feather name="x" size={20} color="#0f172a" />
+                </Pressable>
+              </View>
+              <Text className="mt-2 text-sm text-slate-500">
+                Pick a time that fits the offer rules for this stay.
+              </Text>
+              <View className="mt-4 flex-row flex-wrap gap-3">
+                {timeOptions.map((option) => {
+                  const isActive =
+                    (timePickerVisible === 'checkIn' ? checkInTime : checkOutTime) ===
+                    option.value;
+                  const isCheckOut = timePickerVisible === 'checkOut';
+                  const minCheckOut = checkInMinutes !== null ? checkInMinutes + 1 : null;
+                  const maxCheckOut = maxCheckoutMinutes ?? null;
+                  const isDisabled =
+                    (isCheckOut && minCheckOut !== null && option.minutes <= minCheckOut) ||
+                    (isCheckOut && maxCheckOut !== null && option.minutes > maxCheckOut);
+                  return (
+                    <Pressable
+                      key={option.value}
+                      disabled={isDisabled}
+                      onPress={() => handleSelectTime(option.value)}
+                      className={`rounded-full border px-4 py-2 ${
+                        isDisabled
+                          ? 'border-slate-100 bg-slate-50'
+                          : isActive
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-slate-200 bg-white'
+                      }`}>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          isDisabled
+                            ? 'text-slate-300'
+                            : isActive
+                            ? 'text-blue-700'
+                            : 'text-slate-600'
+                        }`}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      <Modal transparent animationType="slide" visible={purposeModalVisible}>
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
+            <View className="mb-4 h-1 w-12 self-center rounded-full bg-slate-200" />
+            <View className="flex-row items-center justify-between">
+              <Text className="text-lg font-semibold text-slate-900">Purpose of stay</Text>
+              <Pressable onPress={() => setPurposeModalVisible(false)}>
+                <Feather name="x" size={20} color="#0f172a" />
+              </Pressable>
+            </View>
+            <Text className="mt-2 text-sm text-slate-500">
+              Let us know why you are visiting so we can personalize your experience.
+            </Text>
+            <View className="mt-4 flex-row flex-wrap gap-3">
+              {PURPOSE_OPTIONS.map((option) => {
+                const isSelected = purpose === option.label;
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => {
+                      setPurpose(option.label);
+                      setPurposeModalVisible(false);
+                    }}
+                    className={`w-[48%] rounded-2xl border px-4 py-3 ${
+                      isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                    }`}>
+                    <View className="flex-row items-center gap-2">
+                      <View
+                        className={`h-8 w-8 items-center justify-center rounded-full ${
+                          isSelected ? 'bg-blue-600' : 'bg-slate-100'
+                        }`}>
+                        <Feather
+                          name={option.icon}
+                          size={16}
+                          color={isSelected ? '#ffffff' : '#64748b'}
+                        />
+                      </View>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          isSelected ? 'text-blue-700' : 'text-slate-700'
+                        }`}>
+                        {option.label}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
