@@ -1,8 +1,7 @@
-import { useQuery } from '@apollo/client';
+import { useLazyQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { ComponentProps, useEffect, useMemo, useState } from 'react';
+import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,8 +16,9 @@ import {
 } from 'react-native';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { BookingOption, LISTINGS } from '@/data/listings';
 import { V2_EXPLORE_LISTINGS } from '@/queries/v2ExploreListings';
+
+type BookingOption = 'room' | 'entire';
 
 const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
 
@@ -225,6 +225,27 @@ type V2ExploreListingsVariables = {
   offset: number;
 };
 
+const buildQueryVariables = (filters: FilterState): V2ExploreListingsVariables => {
+  const minBudget = parseCurrencyInput(filters.minBudget);
+  const maxBudget = parseCurrencyInput(filters.maxBudget);
+  const numberOfGuests = filters.guests
+    ? filters.guests === '6+'
+      ? 6
+      : Number(filters.guests)
+    : null;
+
+  return {
+    minBudget,
+    maxBudget,
+    checkIn: filters.checkIn ? formatQueryDate(filters.checkIn) : null,
+    checkOut: filters.checkOut ? formatQueryDate(filters.checkOut) : null,
+    numberOfGuests,
+    amenities: filters.amenities.length > 0 ? filters.amenities : null,
+    limit: PAGE_SIZE,
+    offset: 0,
+  };
+};
+
 const mapBookableOptions = (options: string[] | null | undefined): BookingOption[] => {
   const mapped: BookingOption[] = [];
   if (options?.includes('single_room')) mapped.push('room');
@@ -247,71 +268,26 @@ const mapExploreListing = (listing: ExploreListingResponse): ExploreListing => (
   bookingOptions: mapBookableOptions(listing.bookableOptions),
 });
 
-const filterListings = (filter: FilterState) => {
-  const minBudget = parseCurrencyInput(filter.minBudget);
-  const maxBudget = parseCurrencyInput(filter.maxBudget);
-  const numberOfGuests = filter.guests
-    ? filter.guests === '6+'
-      ? 6
-      : Number(filter.guests)
-    : null;
-
-  return LISTINGS.filter((listing) => {
-    if (filter.type && listing.apartmentType !== filter.type) return false;
-    if (minBudget !== null && listing.minimumPrice < minBudget) return false;
-    if (maxBudget !== null && listing.minimumPrice > maxBudget) return false;
-    if (numberOfGuests && listing.maxNumberOfGuestsAllowed < numberOfGuests) return false;
-    if (filter.amenities.length > 0) {
-      const hasAll = filter.amenities.every((amenity) => listing.amenities.includes(amenity));
-      if (!hasAll) return false;
-    }
-    return true;
-  });
-};
-
 export default function ExploreScreen() {
   const router = useRouter();
-  const isFocused = useIsFocused();
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
-  const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [remoteHasMore, setRemoteHasMore] = useState(true);
+  const queryVariablesRef = useRef<V2ExploreListingsVariables | null>(null);
+  const hasLoadedRef = useRef(false);
 
-  const queryVariables = useMemo<V2ExploreListingsVariables>(() => {
-    const minBudget = parseCurrencyInput(appliedFilters.minBudget);
-    const maxBudget = parseCurrencyInput(appliedFilters.maxBudget);
-    const numberOfGuests = appliedFilters.guests
-      ? appliedFilters.guests === '6+'
-        ? 6
-        : Number(appliedFilters.guests)
-      : null;
-
-    return {
-      minBudget,
-      maxBudget,
-      checkIn: appliedFilters.checkIn ? formatQueryDate(appliedFilters.checkIn) : null,
-      checkOut: appliedFilters.checkOut ? formatQueryDate(appliedFilters.checkOut) : null,
-      numberOfGuests,
-      amenities: appliedFilters.amenities.length > 0 ? appliedFilters.amenities : null,
-      limit: PAGE_SIZE,
-      offset: 0,
-    };
-  }, [appliedFilters]);
-
-  const { data, error, fetchMore, refetch } = useQuery<
+  const [loadListings, { data, error, fetchMore, refetch, loading }] = useLazyQuery<
     ProfileWithListingsResponse,
     V2ExploreListingsVariables
   >(
     V2_EXPLORE_LISTINGS,
     {
-      variables: queryVariables,
       notifyOnNetworkStatusChange: true,
-      skip: !isFocused,
     }
   );
 
@@ -320,98 +296,103 @@ export default function ExploreScreen() {
     [calendarMonth, filters.checkIn, filters.checkOut]
   );
 
-  const filteredListings = useMemo(() => filterListings(appliedFilters), [appliedFilters]);
-
-  const remoteListings = useMemo(() => {
+  const remoteListings = useMemo<ExploreListing[]>(() => {
     const items = data?.v2ExploreListings ?? [];
-    const mapped = items.map(mapExploreListing);
-    if (appliedFilters.type) {
-      return mapped.filter((listing) => listing.apartmentType === appliedFilters.type);
-    }
-    return mapped;
-  }, [data, appliedFilters.type]);
+    return items.map(mapExploreListing);
+  }, [data]);
+
+  const filteredListings = useMemo(() => {
+    const minBudget = parseCurrencyInput(appliedFilters.minBudget);
+    const maxBudget = parseCurrencyInput(appliedFilters.maxBudget);
+    const numberOfGuests = appliedFilters.guests
+      ? appliedFilters.guests === '6+'
+        ? 6
+        : Number(appliedFilters.guests)
+      : null;
+
+    return remoteListings.filter((listing) => {
+      if (appliedFilters.type && listing.apartmentType !== appliedFilters.type) return false;
+      if (minBudget !== null && listing.minimumPrice < minBudget) return false;
+      if (maxBudget !== null && listing.minimumPrice > maxBudget) return false;
+      if (numberOfGuests && listing.maxNumberOfGuestsAllowed < numberOfGuests) return false;
+      return true;
+    });
+  }, [remoteListings, appliedFilters]);
 
   const remoteListingCount = data?.v2ExploreListings?.length ?? 0;
-  const useRemoteListings = Boolean(data?.v2ExploreListings) && !error;
-
-  const listings = useMemo<ExploreListing[]>(
-    () =>
-      useRemoteListings
-        ? remoteListings
-        : (filteredListings.slice(0, page * PAGE_SIZE) as ExploreListing[]),
-    [useRemoteListings, remoteListings, filteredListings, page]
-  );
-
-  const hasMore = useRemoteListings
-    ? remoteHasMore
-    : listings.length < filteredListings.length;
+  const listings = filteredListings;
+  const hasMore = !error && remoteHasMore;
+  const isNetworkError = Boolean(error?.networkError);
 
   const profileName = data?.profile?.firstName ?? '';
   const profileInitials = data?.profile?.initials ?? 'SH';
   const welcomeMessage = profileName ? `Welcome back, ${profileName}` : 'Welcome back';
 
   useEffect(() => {
-    setPage(1);
-    setRemoteHasMore(true);
-  }, [appliedFilters]);
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    const initialVariables = buildQueryVariables(createInitialFilters());
+    queryVariablesRef.current = initialVariables;
+    loadListings({ variables: initialVariables });
+  }, [loadListings]);
 
   useEffect(() => {
-    if (useRemoteListings && data?.v2ExploreListings && data.v2ExploreListings.length < PAGE_SIZE) {
+    if (data?.v2ExploreListings && data.v2ExploreListings.length < PAGE_SIZE) {
       setRemoteHasMore(false);
     }
-  }, [data, useRemoteListings]);
+  }, [data]);
 
   const handleLoadMore = async () => {
-    if (!hasMore || loadingMore) return;
-    setLoadingMore(true);
-    if (useRemoteListings) {
-      try {
-        const result = await fetchMore({
-          variables: {
-            ...queryVariables,
-            offset: remoteListingCount,
-          },
-          updateQuery: (previous, { fetchMoreResult }) => {
-            if (!fetchMoreResult?.v2ExploreListings) return previous;
-            return {
-              profile: fetchMoreResult.profile ?? previous?.profile,
-              v2ExploreListings: [
-                ...(previous?.v2ExploreListings ?? []),
-                ...fetchMoreResult.v2ExploreListings,
-              ],
-            };
-          },
-        });
-        const fetched = result.data?.v2ExploreListings ?? [];
-        if (fetched.length < PAGE_SIZE) {
-          setRemoteHasMore(false);
-        }
-      } finally {
-        setLoadingMore(false);
-      }
+    if (!hasMore || loadingMore || loading || remoteListingCount === 0 || listings.length === 0)
       return;
-    }
-    setTimeout(() => {
-      setPage((prev) => prev + 1);
+    setLoadingMore(true);
+    try {
+      const variables = queryVariablesRef.current ?? buildQueryVariables(appliedFilters);
+      queryVariablesRef.current = variables;
+      const result = await fetchMore({
+        variables: {
+          ...variables,
+          offset: remoteListingCount,
+        },
+        updateQuery: (previous, { fetchMoreResult }) => {
+          if (!fetchMoreResult?.v2ExploreListings) return previous;
+          return {
+            profile: fetchMoreResult.profile ?? previous?.profile,
+            v2ExploreListings: [
+              ...(previous?.v2ExploreListings ?? []),
+              ...fetchMoreResult.v2ExploreListings,
+            ],
+          };
+        },
+      });
+      const fetched = result.data?.v2ExploreListings ?? [];
+      if (fetched.length < PAGE_SIZE) {
+        setRemoteHasMore(false);
+      }
+    } finally {
       setLoadingMore(false);
-    }, 300);
+    }
+  };
+
+  const runSearch = async (nextVariables: V2ExploreListingsVariables) => {
+    queryVariablesRef.current = nextVariables;
+    setRemoteHasMore(true);
+    await loadListings({
+      variables: nextVariables,
+      fetchPolicy: 'network-only',
+    });
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    if (useRemoteListings) {
-      try {
-        await refetch({ ...queryVariables, offset: 0 });
-        setRemoteHasMore(true);
-      } finally {
-        setRefreshing(false);
-      }
-      return;
-    }
-    setTimeout(() => {
-      setPage(1);
+    try {
+      const variables = queryVariablesRef.current ?? buildQueryVariables(appliedFilters);
+      queryVariablesRef.current = variables;
+      await refetch({ ...variables, offset: 0 });
+      setRemoteHasMore(true);
+    } finally {
       setRefreshing(false);
-    }, 350);
+    }
   };
 
   const toggleAmenity = (amenity: string) => {
@@ -429,12 +410,14 @@ export default function ExploreScreen() {
     setFilters(nextFilters);
     setAppliedFilters(nextFilters);
     setFilterSheetOpen(false);
+    runSearch(buildQueryVariables(nextFilters)).catch(() => undefined);
   };
 
   const applyFilters = () => {
     const nextApplied = { ...filters };
     setFilterSheetOpen(false);
     setAppliedFilters(nextApplied);
+    runSearch(buildQueryVariables(nextApplied)).catch(() => undefined);
   };
 
   const handleSelectDate = (date: Date) => {
@@ -458,6 +441,11 @@ export default function ExploreScreen() {
 
   const clearDates = () => {
     setFilters((prev) => ({ ...prev, checkIn: null, checkOut: null }));
+  };
+
+  const handleRetry = () => {
+    const variables = queryVariablesRef.current ?? buildQueryVariables(appliedFilters);
+    runSearch(variables).catch(() => undefined);
   };
 
   const renderApartment = ({ item }: { item: ExploreListing }) => {
@@ -726,10 +714,28 @@ export default function ExploreScreen() {
         )}
       </View>
 
+      {error && listings.length > 0 ? (
+        <View className="mx-6 mt-4 rounded-3xl border border-rose-200 bg-rose-50/70 px-4 py-3">
+          <Text className="text-sm font-semibold text-rose-700">
+            {isNetworkError ? 'Network error' : 'Unable to load listings'}
+          </Text>
+          <Text className="mt-1 text-xs text-rose-600">
+            {isNetworkError
+              ? 'Check your connection and try again.'
+              : 'Something went wrong while fetching listings.'}
+          </Text>
+          <Pressable
+            className="mt-3 self-start rounded-full bg-rose-600 px-4 py-2"
+            onPress={handleRetry}>
+            <Text className="text-xs font-semibold text-white">Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <FlatList
         data={listings}
         renderItem={renderApartment}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id || 'listing'}-${index}`}
         contentContainerStyle={{ padding: 24, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -760,7 +766,23 @@ export default function ExploreScreen() {
         }
         ListEmptyComponent={
           <View className="py-24">
-            {refreshing ? (
+            {error ? (
+              <View className="items-center justify-center px-6">
+                <Text className="text-base font-semibold text-slate-900">
+                  {isNetworkError ? 'Network error' : 'Unable to load listings'}
+                </Text>
+                <Text className="mt-2 text-center text-sm text-slate-500">
+                  {isNetworkError
+                    ? 'Check your connection and try again.'
+                    : 'Something went wrong while fetching listings.'}
+                </Text>
+                <Pressable
+                  className="mt-4 rounded-full bg-blue-600 px-5 py-2.5"
+                  onPress={handleRetry}>
+                  <Text className="text-sm font-semibold text-white">Retry</Text>
+                </Pressable>
+              </View>
+            ) : refreshing || loading ? (
               <View className="items-center justify-center">
                 <ActivityIndicator color="#1d4ed8" size="large" />
                 <Text className="mt-3 text-sm font-semibold text-slate-500">
