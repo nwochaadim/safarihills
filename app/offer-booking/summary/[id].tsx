@@ -1,0 +1,657 @@
+import { useMutation, useQuery } from '@apollo/client';
+import { BackButton } from '@/components/BackButton';
+import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
+import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetails';
+import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
+import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+
+const WALLET_BALANCE = 120000;
+
+const formatDateDisplay = (value: string | null | undefined) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
+
+const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
+
+type BookingSummaryResponse = {
+  findBookingSummaryDetails: {
+    id: string;
+    referenceNumber: string | null;
+    listing: {
+      name: string | null;
+      area: string | null;
+    } | null;
+    roomCategory: {
+      name: string | null;
+    } | null;
+    numberOfGuests: number | null;
+    bookingPurpose: string | null;
+    checkIn: string | null;
+    checkOut: string | null;
+    numberOfNights: number | null;
+    subtotal: number | null;
+    cautionFee: number | null;
+    bookingTotal: number | null;
+    couponAppliedAmount: number | null;
+  } | null;
+};
+
+type BookingSummaryVariables = {
+  bookingId: string;
+};
+
+type OfferCampaignReward = {
+  id: string | null;
+  rewardType: string | null;
+  name: string | null;
+};
+
+type OfferNewBookingDetailsResponse = {
+  offerNewBookingDetails: {
+    offer: {
+      id: string | null;
+      name: string | null;
+      offerCampaignRewards: OfferCampaignReward[] | null;
+    } | null;
+  } | null;
+};
+
+type OfferNewBookingDetailsVariables = {
+  offerId: string;
+  listingId: string;
+};
+
+type ApplyCouponResponse = {
+  applyCouponToBooking: {
+    errors: string[] | string | null;
+    appliedAmount: number | null;
+    successMessage: string | null;
+  } | null;
+};
+
+type ApplyCouponVariables = {
+  bookingId: string;
+  couponCode: string;
+};
+
+const getRewardIcon = (rewardType: string | null) => {
+  if (rewardType === 'DiscountOfferReward') return 'percent';
+  if (rewardType === 'PerkOfferReward') return 'gift';
+  return 'award';
+};
+
+const getRewardTag = (reward: OfferCampaignReward) => {
+  if (reward.rewardType?.includes('Discount')) return 'Discount';
+  if (reward.rewardType?.includes('Perk')) return 'Perk';
+  if (reward.name?.trim()) return reward.name.trim();
+  return 'Reward';
+};
+
+export default function OfferBookingSummaryScreen() {
+  const router = useRouter();
+  const { id: idParam, offerId: offerIdParam, listingId: listingIdParam } = useLocalSearchParams<{
+    id?: string;
+    offerId?: string;
+    listingId?: string;
+  }>();
+  const bookingId = Array.isArray(idParam) ? idParam[0] : idParam;
+  const offerId = Array.isArray(offerIdParam) ? offerIdParam[0] : offerIdParam;
+  const listingId = Array.isArray(listingIdParam) ? listingIdParam[0] : listingIdParam;
+  const { data, loading, refetch, error } = useQuery<
+    BookingSummaryResponse,
+    BookingSummaryVariables
+  >(
+    FIND_BOOKING_SUMMARY_DETAILS,
+    {
+      variables: { bookingId: bookingId ?? '' },
+      skip: !bookingId,
+    }
+  );
+  const {
+    data: offerData,
+    loading: offerLoading,
+    refetch: refetchOffer,
+  } = useQuery<OfferNewBookingDetailsResponse, OfferNewBookingDetailsVariables>(
+    NEW_BOOKING_DETAILS_FOR_OFFER,
+    {
+      variables: { offerId: offerId ?? '', listingId: listingId ?? '' },
+      skip: !offerId || !listingId,
+    }
+  );
+  const [applyCoupon, { loading: isApplyingCoupon }] = useMutation<
+    ApplyCouponResponse,
+    ApplyCouponVariables
+  >(APPLY_COUPON_TO_BOOKING);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (bookingId) {
+        refetch({ bookingId });
+      }
+      if (offerId && listingId) {
+        refetchOffer({ offerId, listingId });
+      }
+    }, [bookingId, offerId, listingId, refetch, refetchOffer])
+  );
+
+  const booking = data?.findBookingSummaryDetails ?? null;
+  const rewards = offerData?.offerNewBookingDetails?.offer?.offerCampaignRewards ?? [];
+  const bookingLabel = booking?.referenceNumber ?? booking?.id ?? bookingId ?? 'Booking';
+  const listingName = booking?.listing?.name ?? 'Listing';
+  const listingArea = booking?.listing?.area ?? '';
+  const roomCategory = booking?.roomCategory?.name ?? null;
+  const numberOfGuests = booking?.numberOfGuests ?? 0;
+  const bookingPurpose = booking?.bookingPurpose ?? '';
+  const checkIn = booking?.checkIn ?? null;
+  const checkOut = booking?.checkOut ?? null;
+  const nights = booking?.numberOfNights ?? 0;
+  const subtotal = booking?.subtotal ?? 0;
+  const cautionFee = booking?.cautionFee ?? 0;
+  const serverCouponAmount = booking?.couponAppliedAmount ?? 0;
+  const baseTotal = subtotal + cautionFee;
+
+  const [couponCode, setCouponCode] = useState('');
+  const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedAmount, setAppliedAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
+
+  const effectiveCouponAmount = serverCouponAmount > 0 ? serverCouponAmount : appliedAmount;
+  const discount = Math.min(effectiveCouponAmount, baseTotal);
+  const total = Math.max(baseTotal - discount, 0);
+  const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
+  const canPay = paymentMethod === 'paystack' || walletHasFunds;
+
+  const handleApplyCoupon = () => {
+    const normalized = normalizeCouponCode(couponCode);
+    if (!normalized) {
+      setCouponError('Enter a coupon code to apply.');
+      setCouponMessage(null);
+      setAppliedAmount(0);
+      return;
+    }
+    if (!bookingId) {
+      setCouponError('Booking reference is missing.');
+      setCouponMessage(null);
+      setAppliedAmount(0);
+      return;
+    }
+    if (serverCouponAmount > 0) {
+      setCouponError('A coupon has already been applied to this booking.');
+      setCouponMessage(null);
+      setAppliedAmount(0);
+      return;
+    }
+    setCouponError(null);
+    setCouponMessage(null);
+    setAppliedAmount(0);
+    applyCoupon({
+      variables: { bookingId, couponCode: normalized },
+    })
+      .then(({ data: response }) => {
+        const result = response?.applyCouponToBooking;
+        const errors = result?.errors;
+        if (Array.isArray(errors) && errors.length) {
+          setCouponError(errors.join(' '));
+          return;
+        }
+        if (typeof errors === 'string' && errors.trim()) {
+          setCouponError(errors);
+          return;
+        }
+        const amount = result?.appliedAmount ?? 0;
+        setAppliedAmount(amount);
+        setCouponMessage(result?.successMessage ?? 'Coupon applied successfully.');
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Unable to apply coupon right now.';
+        setCouponError(message);
+      });
+  };
+
+  const clearCouponFeedback = () => {
+    if (couponMessage) setCouponMessage(null);
+    if (couponError) setCouponError(null);
+    if (appliedAmount) setAppliedAmount(0);
+  };
+
+  useEffect(() => {
+    setCouponMessage(null);
+    setCouponError(null);
+    setAppliedAmount(0);
+  }, [bookingId]);
+
+  useEffect(() => {
+    if (serverCouponAmount > 0) {
+      setCouponMessage(null);
+      setCouponError(null);
+      setAppliedAmount(0);
+    }
+  }, [serverCouponAmount]);
+
+  if (!bookingId) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center px-6">
+          <View className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-100">
+            <Text className="text-lg font-semibold text-slate-900">Booking unavailable</Text>
+            <Text className="mt-2 text-sm text-slate-500">
+              We couldn&apos;t find a booking reference for this screen.
+            </Text>
+            <Pressable
+              className="mt-4 items-center justify-center rounded-full bg-blue-600 px-5 py-3"
+              onPress={() => router.back()}>
+              <Text className="text-sm font-semibold text-white">Go back</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading && !booking) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text className="mt-3 text-sm text-slate-500">Loading booking summary...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center px-6">
+          <View className="w-full rounded-3xl border border-rose-200 bg-rose-50/70 p-6">
+            <Text className="text-lg font-semibold text-rose-700">
+              Booking summary not available
+            </Text>
+            <Text className="mt-2 text-sm text-rose-600">
+              {error?.message ?? 'We could not load this booking right now.'}
+            </Text>
+            <Pressable
+              className="mt-4 items-center justify-center rounded-full bg-blue-600 px-5 py-3"
+              onPress={() => refetch({ bookingId })}>
+              <Text className="text-sm font-semibold text-white">Try again</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}>
+        <View className="px-6 pt-4">
+          <BackButton onPress={() => router.back()} />
+          <View className="mt-4">
+            <Text className="text-3xl font-bold text-slate-900">Booking summary</Text>
+            <View className="mt-3 flex-row items-center gap-2">
+              <View className="rounded-full bg-blue-100 px-3 py-1">
+                <Text className="text-xs font-semibold text-blue-700">
+                  Booking #{bookingLabel}
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-1 rounded-full bg-white px-3 py-1 shadow-sm shadow-slate-100">
+                <Feather name="shield" size={12} color="#1d4ed8" />
+                <Text className="text-xs font-semibold text-slate-500">Secure checkout</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Booking details
+            </Text>
+            <View className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+                Listing
+              </Text>
+              <Text className="mt-2 text-lg font-semibold text-slate-900">
+                {listingName}
+              </Text>
+              <View className="mt-2 flex-row items-center gap-2">
+                <Feather name="map-pin" size={14} color="#1d4ed8" />
+                <Text className="text-sm text-slate-600">{listingArea || '—'}</Text>
+              </View>
+            </View>
+
+            {roomCategory ? (
+              <View className="mt-4 flex-row items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <View>
+                  <Text className="text-xs font-semibold uppercase text-slate-400">
+                    Room category
+                  </Text>
+                  <Text className="mt-1 text-base font-semibold text-slate-900">
+                    {roomCategory}
+                  </Text>
+                </View>
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-blue-50">
+                  <Feather name="key" size={16} color="#1d4ed8" />
+                </View>
+              </View>
+            ) : null}
+
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Guests</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {numberOfGuests}
+                </Text>
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Purpose</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {bookingPurpose || '—'}
+                </Text>
+              </View>
+            </View>
+
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {formatDateDisplay(checkIn)}
+                </Text>
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-900">
+                  {formatDateDisplay(checkOut)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Rewards
+            </Text>
+            {offerLoading && !offerData ? (
+              <Text className="mt-3 text-sm text-slate-500">Loading rewards...</Text>
+            ) : rewards.length ? (
+              <View className="mt-4 space-y-3">
+                {rewards.map((reward, index) => {
+                  const safeReward: OfferCampaignReward = reward ?? {
+                    id: null,
+                    rewardType: null,
+                    name: null,
+                  };
+                  return (
+                    <View
+                      key={safeReward.id ?? `reward-${index}`}
+                      className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                      <View className="flex-row items-start justify-between">
+                        <View className="flex-1 pr-3">
+                          <Text className="text-sm font-semibold text-slate-900">
+                            {safeReward.name?.trim() || 'Offer reward'}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1">
+                          <Feather
+                            name={getRewardIcon(safeReward.rewardType)}
+                            size={12}
+                            color="#047857"
+                          />
+                          <Text className="text-xs font-semibold text-emerald-700">
+                            {getRewardTag(safeReward)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text className="mt-3 text-sm text-slate-500">
+                Rewards will appear here once available.
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Price summary
+            </Text>
+            <View className="mt-4 space-y-3">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm text-slate-500">Nights</Text>
+                <Text className="text-sm font-semibold text-slate-900">{nights}</Text>
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm text-slate-500">Subtotal</Text>
+                <Text className="text-sm font-semibold text-slate-900">
+                  {formatCurrency(subtotal)}
+                </Text>
+              </View>
+              {discount > 0 ? (
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-emerald-600">Coupon discount</Text>
+                  <Text className="text-sm font-semibold text-emerald-600">
+                    -{formatCurrency(discount)}
+                  </Text>
+                </View>
+              ) : null}
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm text-slate-500">Caution fee</Text>
+                <Text className="text-sm font-semibold text-slate-900">
+                  {formatCurrency(cautionFee)}
+                </Text>
+              </View>
+              <View className="mt-2 flex-row items-center justify-between border-t border-slate-200 pt-3">
+                <Text className="text-base font-semibold text-slate-900">Total</Text>
+                <Text className="text-base font-semibold text-blue-700">
+                  {formatCurrency(total)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Apply coupon
+            </Text>
+            {serverCouponAmount > 0 ? (
+              <View className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                  Discount already applied
+                </Text>
+                <Text className="mt-2 text-sm font-semibold text-blue-700">
+                  A coupon discount is already active for this booking.
+                </Text>
+                <Text className="mt-1 text-xs text-blue-600">
+                  Discount: {formatCurrency(serverCouponAmount)}
+                </Text>
+              </View>
+            ) : couponMessage ? (
+              <View className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                  Coupon applied
+                </Text>
+                <Text className="mt-2 text-sm font-semibold text-emerald-700">
+                  {couponMessage}
+                </Text>
+                <Text className="mt-1 text-xs text-emerald-600">
+                  Discount: {formatCurrency(discount)}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text className="mt-2 text-sm text-slate-500">
+                  Add a promo code to unlock extra savings.
+                </Text>
+                <View className="mt-4 flex-row items-center gap-3">
+                  <TextInput
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
+                    placeholder="Enter coupon code"
+                    placeholderTextColor="#94a3b8"
+                    autoCapitalize="characters"
+                    value={couponCode}
+                    onChangeText={(value) => {
+                      setCouponCode(value);
+                      clearCouponFeedback();
+                    }}
+                  />
+                  <Pressable
+                    className={`rounded-2xl px-4 py-3 ${
+                      isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
+                    }`}
+                    disabled={isApplyingCoupon}
+                    onPress={handleApplyCoupon}>
+                    <Text className="text-sm font-semibold text-white">
+                      {isApplyingCoupon ? 'Applying' : 'Apply'}
+                    </Text>
+                  </Pressable>
+                </View>
+                {couponError ? (
+                  <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                    <Text className="text-xs font-semibold text-rose-600">
+                      {couponError}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </View>
+
+          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Payment method
+            </Text>
+            <View className="mt-4 flex-row gap-3">
+              <Pressable
+                className={`flex-1 rounded-2xl border px-4 py-3 ${
+                  paymentMethod === 'paystack'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-slate-200 bg-white'
+                }`}
+                onPress={() => setPaymentMethod('paystack')}>
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text
+                      className={`text-sm font-semibold ${
+                        paymentMethod === 'paystack' ? 'text-blue-700' : 'text-slate-700'
+                      }`}>
+                      Pay Online
+                    </Text>
+                    <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
+                  </View>
+                  <View
+                    className={`h-5 w-5 items-center justify-center rounded-full border ${
+                      paymentMethod === 'paystack'
+                        ? 'border-blue-600 bg-blue-600'
+                        : 'border-slate-300'
+                    }`}>
+                    {paymentMethod === 'paystack' ? (
+                      <View className="h-2 w-2 rounded-full bg-white" />
+                    ) : null}
+                  </View>
+                </View>
+              </Pressable>
+              <Pressable
+                className={`flex-1 rounded-2xl border px-4 py-3 ${
+                  paymentMethod === 'wallet'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-slate-200 bg-white'
+                }`}
+                onPress={() => setPaymentMethod('wallet')}>
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text
+                      className={`text-sm font-semibold ${
+                        paymentMethod === 'wallet' ? 'text-blue-700' : 'text-slate-700'
+                      }`}>
+                      Pay via wallet
+                    </Text>
+                    <Text className="mt-1 text-xs text-slate-500">
+                      Balance {formatCurrency(WALLET_BALANCE)}
+                    </Text>
+                  </View>
+                  <View
+                    className={`h-5 w-5 items-center justify-center rounded-full border ${
+                      paymentMethod === 'wallet'
+                        ? 'border-blue-600 bg-blue-600'
+                        : 'border-slate-300'
+                    }`}>
+                    {paymentMethod === 'wallet' ? (
+                      <View className="h-2 w-2 rounded-full bg-white" />
+                    ) : null}
+                  </View>
+                </View>
+              </Pressable>
+            </View>
+            {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">
+                  Wallet balance is lower than the booking total.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <Pressable
+              className={`items-center justify-center rounded-full py-4 ${
+                canPay ? 'bg-blue-600' : 'bg-slate-200'
+              }`}
+              disabled={!canPay}
+              onPress={() => {}}>
+              <View className="items-center">
+                <Text
+                  className={`text-base font-semibold ${
+                    canPay ? 'text-white' : 'text-slate-500'
+                  }`}>
+                  Pay Now · {formatCurrency(total)}
+                </Text>
+                <Text
+                  className={`text-xs font-semibold ${
+                    canPay ? 'text-blue-100' : 'text-slate-400'
+                  }`}>
+                  Final total
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

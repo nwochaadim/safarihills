@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
-import { CREATE_BOOKING_WITHOUT_OFFER } from '@/mutations/createBookingWithoutOffer';
+import { CREATE_OFFER_BOOKING } from '@/mutations/createOfferBooking';
 import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -106,26 +106,31 @@ type BookingListable = {
   checkInTimeSlots: string[];
 };
 
-type CreateBookingResponse = {
-  createBookingV3: {
-    id: string | null;
-    referenceNumber: string | null;
+type CreateOfferBookingResponse = {
+  createOfferBooking: {
+    booking: {
+      id: string | null;
+      referenceNumber: string | null;
+      checkIn: string | null;
+      checkOut: string | null;
+    } | null;
     errors: string[] | string | null;
   } | null;
 };
 
-type CreateBookingVariables = {
-  checkIn: string;
-  checkOut: string;
-  listingId: number;
-  roomCategoryName?: string | null;
-  bookingPurpose: string;
-  referenceNumber: string;
-  bookingTotal: number;
-  cautionFee: number;
-  numberOfGuests: number;
-  entireProperty: boolean;
-  extending?: boolean | null;
+type CreateOfferBookingVariables = {
+  inputOfferId: string;
+  inputListingId: string;
+  inputRoomCategoryName?: string | null;
+  inputReferenceNumber: string;
+  inputBookingTotal: number;
+  inputCautionFee: number;
+  inputBookingPurpose: string;
+  inputNumberOfGuests: number;
+  inputCheckIn?: string | null;
+  inputCheckOut?: string | null;
+  inputCheckInTime?: string | null;
+  inputCheckOutTime?: string | null;
 };
 
 type CalendarDay = {
@@ -438,18 +443,6 @@ const getRewardTag = (reward: OfferCampaignReward) => {
   return 'Reward';
 };
 
-const formatDateTime = (date: Date, timeValue: string) => {
-  const [hourValue, minuteValue] = timeValue.split(':');
-  const hours = Number.parseInt(hourValue, 10);
-  const minutes = Number.parseInt(minuteValue, 10);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return formatDateKey(date);
-  }
-  const dateKey = formatDateKey(date);
-  const timeKey = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  return `${dateKey}T${timeKey}:00`;
-};
-
 const formatTodayLabel = () =>
   new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
@@ -501,10 +494,10 @@ export default function OfferBookingScreen() {
       skip: !offerId || !listingId,
     }
   );
-  const [createBooking, { loading: isCreating }] = useMutation<
-    CreateBookingResponse,
-    CreateBookingVariables
-  >(CREATE_BOOKING_WITHOUT_OFFER);
+  const [createOfferBooking, { loading: isCreating }] = useMutation<
+    CreateOfferBookingResponse,
+    CreateOfferBookingVariables
+  >(CREATE_OFFER_BOOKING);
 
   const bookingDetails = data?.offerNewBookingDetails ?? null;
   const entireApartment = useMemo(
@@ -701,40 +694,42 @@ export default function OfferBookingScreen() {
       return;
     }
 
-    const listingValue = listingId ? Number.parseInt(listingId, 10) : NaN;
-    if (!Number.isFinite(listingValue)) {
-      setBookingError('Listing is unavailable right now.');
+    if (!offerId || !listingId) {
+      setBookingError('Offer is unavailable right now.');
       return;
     }
 
     setBookingError(null);
 
     const bookingDate = new Date();
-    const checkInValue = isTimeBased
-      ? formatDateTime(bookingDate, checkInTime ?? '')
+    const checkInDate = isTimeBased
+      ? formatDateKey(bookingDate)
       : formatDateKey(checkIn ?? bookingDate);
-    const checkOutValue = isTimeBased
-      ? formatDateTime(bookingDate, derivedCheckOutTime ?? checkInTime ?? '')
+    const checkOutDate = isTimeBased
+      ? formatDateKey(bookingDate)
       : formatDateKey(checkOut ?? bookingDate);
+    const checkInTimeValue = isTimeBased ? checkInTime : null;
+    const checkOutTimeValue = isTimeBased ? derivedCheckOutTime ?? checkInTime : null;
 
     try {
-      const { data: response } = await createBooking({
+      const { data: response } = await createOfferBooking({
         variables: {
-          checkIn: checkInValue,
-          checkOut: checkOutValue,
-          listingId: listingValue,
-          roomCategoryName: bookingType === 'room' ? selectedRoom?.name ?? null : null,
-          bookingPurpose: purpose,
-          referenceNumber: bookingReference,
-          bookingTotal: Math.round(total),
-          cautionFee: Math.round(cautionFee),
-          numberOfGuests: guestCount,
-          entireProperty: bookingType === 'entire',
-          extending: null,
+          inputOfferId: offerId,
+          inputListingId: listingId,
+          inputRoomCategoryName: bookingType === 'room' ? selectedRoom?.name ?? null : null,
+          inputBookingPurpose: purpose,
+          inputReferenceNumber: bookingReference,
+          inputBookingTotal: Math.round(total),
+          inputCautionFee: Math.round(cautionFee),
+          inputNumberOfGuests: guestCount,
+          inputCheckIn: checkInDate,
+          inputCheckOut: checkOutDate,
+          inputCheckInTime: checkInTimeValue,
+          inputCheckOutTime: checkOutTimeValue,
         },
       });
 
-      const result = response?.createBookingV3;
+      const result = response?.createOfferBooking;
       const errors = result?.errors;
       if (Array.isArray(errors) && errors.length) {
         setBookingError(errors.join(' '));
@@ -744,10 +739,15 @@ export default function OfferBookingScreen() {
         setBookingError(errors);
         return;
       }
-      if (result?.id) {
+      const bookingId = result?.booking?.id;
+      if (bookingId) {
         router.push({
-          pathname: '/booking/summary/[id]',
-          params: { id: result.id },
+          pathname: '/offer-booking/summary/[id]',
+          params: {
+            id: bookingId,
+            offerId,
+            listingId,
+          },
         });
         return;
       }
