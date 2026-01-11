@@ -1,19 +1,16 @@
-import { useMutation, useQuery } from '@apollo/client';
+import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
-import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
-import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetails';
-import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
+import { FIND_OFFER_BOOKING_SUMMARY_DETAILS } from '@/queries/findOfferBookingSummaryDetails';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   SafeAreaView,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
@@ -32,7 +29,17 @@ const formatDateDisplay = (value: string | null | undefined) => {
 
 const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
-const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
+const formatTimeDisplay = (value: string | null | undefined) => {
+  if (!value) return '—';
+  const match = value.match(/(\d{2}):(\d{2})/);
+  if (!match) return value;
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return value;
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+};
 
 type BookingSummaryResponse = {
   findBookingSummaryDetails: {
@@ -49,11 +56,17 @@ type BookingSummaryResponse = {
     bookingPurpose: string | null;
     checkIn: string | null;
     checkOut: string | null;
+    checkInTime: string | null;
+    checkOutTime: string | null;
     numberOfNights: number | null;
     subtotal: number | null;
     cautionFee: number | null;
     bookingTotal: number | null;
-    couponAppliedAmount: number | null;
+    offerCampaign: {
+      name: string | null;
+      bookableOption: string | null;
+    } | null;
+    bookingRewards: BookingReward[] | null;
   } | null;
 };
 
@@ -61,102 +74,53 @@ type BookingSummaryVariables = {
   bookingId: string;
 };
 
-type OfferCampaignReward = {
+type BookingReward = {
   id: string | null;
-  rewardType: string | null;
+  type: string | null;
   name: string | null;
-};
-
-type OfferNewBookingDetailsResponse = {
-  offerNewBookingDetails: {
-    offer: {
-      id: string | null;
-      name: string | null;
-      offerCampaignRewards: OfferCampaignReward[] | null;
-    } | null;
-  } | null;
-};
-
-type OfferNewBookingDetailsVariables = {
-  offerId: string;
-  listingId: string;
-};
-
-type ApplyCouponResponse = {
-  applyCouponToBooking: {
-    errors: string[] | string | null;
-    appliedAmount: number | null;
-    successMessage: string | null;
-  } | null;
-};
-
-type ApplyCouponVariables = {
-  bookingId: string;
-  couponCode: string;
+  description: string | null;
 };
 
 const getRewardIcon = (rewardType: string | null) => {
-  if (rewardType === 'DiscountOfferReward') return 'percent';
-  if (rewardType === 'PerkOfferReward') return 'gift';
+  const normalized = rewardType?.toLowerCase() ?? '';
+  if (normalized.includes('discount')) return 'percent';
+  if (normalized.includes('perk') || normalized.includes('gift')) return 'gift';
   return 'award';
 };
 
-const getRewardTag = (reward: OfferCampaignReward) => {
-  if (reward.rewardType?.includes('Discount')) return 'Discount';
-  if (reward.rewardType?.includes('Perk')) return 'Perk';
+const getRewardTag = (reward: BookingReward) => {
+  if (reward.type?.trim()) return reward.type.replace(/_/g, ' ');
   if (reward.name?.trim()) return reward.name.trim();
   return 'Reward';
 };
 
 export default function OfferBookingSummaryScreen() {
   const router = useRouter();
-  const { id: idParam, offerId: offerIdParam, listingId: listingIdParam } = useLocalSearchParams<{
-    id?: string;
-    offerId?: string;
-    listingId?: string;
-  }>();
+  const { id: idParam } = useLocalSearchParams<{ id?: string }>();
   const bookingId = Array.isArray(idParam) ? idParam[0] : idParam;
-  const offerId = Array.isArray(offerIdParam) ? offerIdParam[0] : offerIdParam;
-  const listingId = Array.isArray(listingIdParam) ? listingIdParam[0] : listingIdParam;
   const { data, loading, refetch, error } = useQuery<
     BookingSummaryResponse,
     BookingSummaryVariables
   >(
-    FIND_BOOKING_SUMMARY_DETAILS,
+    FIND_OFFER_BOOKING_SUMMARY_DETAILS,
     {
       variables: { bookingId: bookingId ?? '' },
       skip: !bookingId,
     }
   );
-  const {
-    data: offerData,
-    loading: offerLoading,
-    refetch: refetchOffer,
-  } = useQuery<OfferNewBookingDetailsResponse, OfferNewBookingDetailsVariables>(
-    NEW_BOOKING_DETAILS_FOR_OFFER,
-    {
-      variables: { offerId: offerId ?? '', listingId: listingId ?? '' },
-      skip: !offerId || !listingId,
-    }
-  );
-  const [applyCoupon, { loading: isApplyingCoupon }] = useMutation<
-    ApplyCouponResponse,
-    ApplyCouponVariables
-  >(APPLY_COUPON_TO_BOOKING);
-
   useFocusEffect(
     useCallback(() => {
       if (bookingId) {
         refetch({ bookingId });
       }
-      if (offerId && listingId) {
-        refetchOffer({ offerId, listingId });
-      }
-    }, [bookingId, offerId, listingId, refetch, refetchOffer])
+    }, [bookingId, refetch])
   );
 
   const booking = data?.findBookingSummaryDetails ?? null;
-  const rewards = offerData?.offerNewBookingDetails?.offer?.offerCampaignRewards ?? [];
+  const rewards = booking?.bookingRewards ?? [];
+  const offerCampaign = booking?.offerCampaign ?? null;
+  const isTimeBased =
+    offerCampaign?.bookableOption?.toLowerCase() === 'time_based';
   const bookingLabel = booking?.referenceNumber ?? booking?.id ?? bookingId ?? 'Booking';
   const listingName = booking?.listing?.name ?? 'Listing';
   const listingArea = booking?.listing?.area ?? '';
@@ -165,90 +129,18 @@ export default function OfferBookingSummaryScreen() {
   const bookingPurpose = booking?.bookingPurpose ?? '';
   const checkIn = booking?.checkIn ?? null;
   const checkOut = booking?.checkOut ?? null;
+  const checkInTime = booking?.checkInTime ?? null;
+  const checkOutTime = booking?.checkOutTime ?? null;
   const nights = booking?.numberOfNights ?? 0;
   const subtotal = booking?.subtotal ?? 0;
   const cautionFee = booking?.cautionFee ?? 0;
-  const serverCouponAmount = booking?.couponAppliedAmount ?? 0;
-  const baseTotal = subtotal + cautionFee;
+  const bookingTotal = booking?.bookingTotal ?? subtotal + cautionFee;
 
-  const [couponCode, setCouponCode] = useState('');
-  const [couponMessage, setCouponMessage] = useState<string | null>(null);
-  const [couponError, setCouponError] = useState<string | null>(null);
-  const [appliedAmount, setAppliedAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
 
-  const effectiveCouponAmount = serverCouponAmount > 0 ? serverCouponAmount : appliedAmount;
-  const discount = Math.min(effectiveCouponAmount, baseTotal);
-  const total = Math.max(baseTotal - discount, 0);
+  const total = bookingTotal;
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
-
-  const handleApplyCoupon = () => {
-    const normalized = normalizeCouponCode(couponCode);
-    if (!normalized) {
-      setCouponError('Enter a coupon code to apply.');
-      setCouponMessage(null);
-      setAppliedAmount(0);
-      return;
-    }
-    if (!bookingId) {
-      setCouponError('Booking reference is missing.');
-      setCouponMessage(null);
-      setAppliedAmount(0);
-      return;
-    }
-    if (serverCouponAmount > 0) {
-      setCouponError('A coupon has already been applied to this booking.');
-      setCouponMessage(null);
-      setAppliedAmount(0);
-      return;
-    }
-    setCouponError(null);
-    setCouponMessage(null);
-    setAppliedAmount(0);
-    applyCoupon({
-      variables: { bookingId, couponCode: normalized },
-    })
-      .then(({ data: response }) => {
-        const result = response?.applyCouponToBooking;
-        const errors = result?.errors;
-        if (Array.isArray(errors) && errors.length) {
-          setCouponError(errors.join(' '));
-          return;
-        }
-        if (typeof errors === 'string' && errors.trim()) {
-          setCouponError(errors);
-          return;
-        }
-        const amount = result?.appliedAmount ?? 0;
-        setAppliedAmount(amount);
-        setCouponMessage(result?.successMessage ?? 'Coupon applied successfully.');
-      })
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : 'Unable to apply coupon right now.';
-        setCouponError(message);
-      });
-  };
-
-  const clearCouponFeedback = () => {
-    if (couponMessage) setCouponMessage(null);
-    if (couponError) setCouponError(null);
-    if (appliedAmount) setAppliedAmount(0);
-  };
-
-  useEffect(() => {
-    setCouponMessage(null);
-    setCouponError(null);
-    setAppliedAmount(0);
-  }, [bookingId]);
-
-  useEffect(() => {
-    if (serverCouponAmount > 0) {
-      setCouponMessage(null);
-      setCouponError(null);
-      setAppliedAmount(0);
-    }
-  }, [serverCouponAmount]);
 
   if (!bookingId) {
     return (
@@ -385,12 +277,22 @@ export default function OfferBookingSummaryScreen() {
                 <Text className="mt-1 text-base font-semibold text-slate-900">
                   {formatDateDisplay(checkIn)}
                 </Text>
+                {isTimeBased ? (
+                  <Text className="mt-1 text-xs text-slate-500">
+                    {formatTimeDisplay(checkInTime)}
+                  </Text>
+                ) : null}
               </View>
               <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
                 <Text className="mt-1 text-base font-semibold text-slate-900">
                   {formatDateDisplay(checkOut)}
                 </Text>
+                {isTimeBased ? (
+                  <Text className="mt-1 text-xs text-slate-500">
+                    {formatTimeDisplay(checkOutTime)}
+                  </Text>
+                ) : null}
               </View>
             </View>
           </View>
@@ -401,15 +303,14 @@ export default function OfferBookingSummaryScreen() {
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Rewards
             </Text>
-            {offerLoading && !offerData ? (
-              <Text className="mt-3 text-sm text-slate-500">Loading rewards...</Text>
-            ) : rewards.length ? (
+            {rewards.length ? (
               <View className="mt-4 space-y-3">
                 {rewards.map((reward, index) => {
-                  const safeReward: OfferCampaignReward = reward ?? {
+                  const safeReward: BookingReward = reward ?? {
                     id: null,
-                    rewardType: null,
+                    type: null,
                     name: null,
+                    description: null,
                   };
                   return (
                     <View
@@ -420,10 +321,15 @@ export default function OfferBookingSummaryScreen() {
                           <Text className="text-sm font-semibold text-slate-900">
                             {safeReward.name?.trim() || 'Offer reward'}
                           </Text>
+                          {safeReward.description?.trim() ? (
+                            <Text className="mt-1 text-xs text-slate-500">
+                              {safeReward.description.trim()}
+                            </Text>
+                          ) : null}
                         </View>
                         <View className="flex-row items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1">
                           <Feather
-                            name={getRewardIcon(safeReward.rewardType)}
+                            name={getRewardIcon(safeReward.type)}
                             size={12}
                             color="#047857"
                           />
@@ -450,24 +356,18 @@ export default function OfferBookingSummaryScreen() {
               Price summary
             </Text>
             <View className="mt-4 space-y-3">
-              <View className="flex-row items-center justify-between">
-                <Text className="text-sm text-slate-500">Nights</Text>
-                <Text className="text-sm font-semibold text-slate-900">{nights}</Text>
-              </View>
+              {!isTimeBased ? (
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-slate-500">Nights</Text>
+                  <Text className="text-sm font-semibold text-slate-900">{nights}</Text>
+                </View>
+              ) : null}
               <View className="flex-row items-center justify-between">
                 <Text className="text-sm text-slate-500">Subtotal</Text>
                 <Text className="text-sm font-semibold text-slate-900">
                   {formatCurrency(subtotal)}
                 </Text>
               </View>
-              {discount > 0 ? (
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-sm text-emerald-600">Coupon discount</Text>
-                  <Text className="text-sm font-semibold text-emerald-600">
-                    -{formatCurrency(discount)}
-                  </Text>
-                </View>
-              ) : null}
               <View className="flex-row items-center justify-between">
                 <Text className="text-sm text-slate-500">Caution fee</Text>
                 <Text className="text-sm font-semibold text-slate-900">
@@ -486,73 +386,6 @@ export default function OfferBookingSummaryScreen() {
 
         <View className="mt-6 px-6">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Apply coupon
-            </Text>
-            {serverCouponAmount > 0 ? (
-              <View className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3">
-                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
-                  Discount already applied
-                </Text>
-                <Text className="mt-2 text-sm font-semibold text-blue-700">
-                  A coupon discount is already active for this booking.
-                </Text>
-                <Text className="mt-1 text-xs text-blue-600">
-                  Discount: {formatCurrency(serverCouponAmount)}
-                </Text>
-              </View>
-            ) : couponMessage ? (
-              <View className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
-                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                  Coupon applied
-                </Text>
-                <Text className="mt-2 text-sm font-semibold text-emerald-700">
-                  {couponMessage}
-                </Text>
-                <Text className="mt-1 text-xs text-emerald-600">
-                  Discount: {formatCurrency(discount)}
-                </Text>
-              </View>
-            ) : (
-              <>
-                <Text className="mt-2 text-sm text-slate-500">
-                  Add a promo code to unlock extra savings.
-                </Text>
-                <View className="mt-4 flex-row items-center gap-3">
-                  <TextInput
-                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
-                    placeholder="Enter coupon code"
-                    placeholderTextColor="#94a3b8"
-                    autoCapitalize="characters"
-                    value={couponCode}
-                    onChangeText={(value) => {
-                      setCouponCode(value);
-                      clearCouponFeedback();
-                    }}
-                  />
-                  <Pressable
-                    className={`rounded-2xl px-4 py-3 ${
-                      isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
-                    }`}
-                    disabled={isApplyingCoupon}
-                    onPress={handleApplyCoupon}>
-                    <Text className="text-sm font-semibold text-white">
-                      {isApplyingCoupon ? 'Applying' : 'Apply'}
-                    </Text>
-                  </Pressable>
-                </View>
-                {couponError ? (
-                  <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                    <Text className="text-xs font-semibold text-rose-600">
-                      {couponError}
-                    </Text>
-                  </View>
-                ) : null}
-              </>
-            )}
-          </View>
-
-          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Payment method
             </Text>

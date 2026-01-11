@@ -467,7 +467,8 @@ export default function BookingScreen() {
   const total = subtotal - discount + (nights > 0 ? cautionFee : 0);
   const hasDates = nights > 0;
   const hasPrice = baseNightlyRate > 0;
-  const canReview = acceptedTerms && hasDates && hasPrice && !isCreating;
+  const hasPurpose = Boolean(purpose.trim());
+  const canReview = acceptedTerms && hasDates && hasPrice && hasPurpose && !isCreating;
 
   const handleCreateBooking = async () => {
     if (!checkIn || !checkOut) return;

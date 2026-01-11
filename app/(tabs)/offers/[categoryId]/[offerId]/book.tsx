@@ -679,8 +679,14 @@ export default function OfferBookingScreen() {
   const total = staySubtotal - discount + (stayUnits > 0 ? cautionFee : 0);
   const hasStaySelection = isTimeBased ? Boolean(checkInTime) : nights > 0;
   const hasPrice = baseNightlyRate > 0;
+  const hasPurpose = Boolean(purpose.trim());
   const canReview =
-    acceptedTerms && hasStaySelection && hasPrice && !isCreating && (!isTimeBased || hasTimeSlots);
+    acceptedTerms &&
+    hasStaySelection &&
+    hasPrice &&
+    hasPurpose &&
+    !isCreating &&
+    (!isTimeBased || hasTimeSlots);
   const rateUnitLabel = isTimeBased ? ' / stay' : ' / night';
 
   const handleCreateBooking = async () => {
