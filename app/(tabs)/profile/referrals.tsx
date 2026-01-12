@@ -1,9 +1,12 @@
 import { BackButton } from '@/components/BackButton';
+import { LOAD_REFERRALS } from '@/queries/loadReferrals';
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Modal,
@@ -15,17 +18,33 @@ import {
   View,
 } from 'react-native';
 
-type ReferralPerson = {
-  id?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  createdAt?: string | null;
+type ReferralInvitee = {
+  name: string | null;
+  signupDate: string | null;
+};
+
+type ReferralRecord = {
+  id: string | null;
+  invitee: ReferralInvitee | null;
 };
 
 type NormalizedReferral = {
   id: string;
   name: string;
   date: string;
+};
+
+type LoadReferralsResponse = {
+  user: {
+    referralCode: string | null;
+    totalReferrals: number | null;
+  } | null;
+  referrals: ReferralRecord[] | null;
+};
+
+type LoadReferralsVariables = {
+  limit?: number | null;
+  offset?: number | null;
 };
 
 const referralSteps = [
@@ -36,25 +55,51 @@ const referralSteps = [
   { label: 'You earn points', detail: 'Points help you level up your rewards.' },
 ];
 
-const FALLBACK_REFERRALS: ReferralPerson[] = [
-  { id: '1', firstName: 'Chika', lastName: 'Okafor', createdAt: '2024-03-01T10:00:00+01:00' },
-  { id: '2', firstName: 'Ifeanyi', lastName: 'Udo', createdAt: '2024-02-26T10:00:00+01:00' },
-  { id: '3', firstName: 'Adaeze', lastName: 'Obi', createdAt: '2024-02-20T10:00:00+01:00' },
-  { id: '4', firstName: 'Seyi', lastName: 'Adebayo', createdAt: '2024-02-10T10:00:00+01:00' },
-  { id: '5', firstName: 'Tosin', lastName: 'Alabi', createdAt: '2024-02-02T10:00:00+01:00' },
-  { id: '6', firstName: 'Binta', lastName: 'Garba', createdAt: '2024-01-25T10:00:00+01:00' },
-  { id: '7', firstName: 'Tunde', lastName: 'Adeyemi', createdAt: '2024-01-18T10:00:00+01:00' },
-  { id: '8', firstName: 'Ngozi', lastName: 'Nwosu', createdAt: '2024-01-10T10:00:00+01:00' },
-  { id: '9', firstName: 'Kola', lastName: 'Akin', createdAt: '2024-01-03T10:00:00+01:00' },
-  { id: '10', firstName: 'Zainab', lastName: 'Musa', createdAt: '2023-12-28T10:00:00+01:00' },
-  { id: '11', firstName: 'Emeka', lastName: 'Obi', createdAt: '2023-12-20T10:00:00+01:00' },
-  { id: '12', firstName: 'Latifa', lastName: 'Balogun', createdAt: '2023-12-12T10:00:00+01:00' },
-  { id: '13', firstName: 'Ire', lastName: 'Adesina', createdAt: '2023-12-04T10:00:00+01:00' },
-  { id: '14', firstName: 'Funmi', lastName: 'Oyewole', createdAt: '2023-11-28T10:00:00+01:00' },
-  { id: '15', firstName: 'Gbenga', lastName: 'Bello', createdAt: '2023-11-20T10:00:00+01:00' },
+const PAGE_SIZE = 10;
+const FALLBACK_REFERRALS: ReferralRecord[] = [
+  {
+    id: '1',
+    invitee: { name: 'Chika Okafor', signupDate: '2024-03-01T10:00:00+01:00' },
+  },
+  {
+    id: '2',
+    invitee: { name: 'Ifeanyi Udo', signupDate: '2024-02-26T10:00:00+01:00' },
+  },
+  {
+    id: '3',
+    invitee: { name: 'Adaeze Obi', signupDate: '2024-02-20T10:00:00+01:00' },
+  },
+  {
+    id: '4',
+    invitee: { name: 'Seyi Adebayo', signupDate: '2024-02-10T10:00:00+01:00' },
+  },
+  {
+    id: '5',
+    invitee: { name: 'Tosin Alabi', signupDate: '2024-02-02T10:00:00+01:00' },
+  },
+  {
+    id: '6',
+    invitee: { name: 'Binta Garba', signupDate: '2024-01-25T10:00:00+01:00' },
+  },
+  {
+    id: '7',
+    invitee: { name: 'Tunde Adeyemi', signupDate: '2024-01-18T10:00:00+01:00' },
+  },
+  {
+    id: '8',
+    invitee: { name: 'Ngozi Nwosu', signupDate: '2024-01-10T10:00:00+01:00' },
+  },
+  {
+    id: '9',
+    invitee: { name: 'Kola Akin', signupDate: '2024-01-03T10:00:00+01:00' },
+  },
+  {
+    id: '10',
+    invitee: { name: 'Zainab Musa', signupDate: '2023-12-28T10:00:00+01:00' },
+  },
 ];
 
-const REFERRAL_CODE = 'SAF-2048';
+const FALLBACK_REFERRAL_CODE = 'SAF-2048';
 
 const formatReferralDate = (value: string) => {
   const date = new Date(value);
@@ -71,15 +116,44 @@ export default function ReferralsScreen() {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [showReferrals, setShowReferrals] = useState(false);
-  const [visibleReferrals, setVisibleReferrals] = useState(5);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [remoteReferrals, setRemoteReferrals] = useState<ReferralRecord[]>([]);
+  const [hasMore, setHasMore] = useState(true);
   const modalMaxHeight = Math.min(640, Dimensions.get('window').height * 0.78);
 
+  const { data, loading, fetchMore, refetch } = useQuery<
+    LoadReferralsResponse,
+    LoadReferralsVariables
+  >(LOAD_REFERRALS, {
+    variables: { limit: PAGE_SIZE, offset: 0 },
+    notifyOnNetworkStatusChange: true,
+  });
+
+  const referralCode = data?.user?.referralCode?.trim() || FALLBACK_REFERRAL_CODE;
+  const totalReferralsCount = data?.user?.totalReferrals ?? null;
+  const fetchedReferrals = data?.referrals;
+  const hasRemoteData = Array.isArray(fetchedReferrals);
+
+  useEffect(() => {
+    if (!hasRemoteData) return;
+    setRemoteReferrals(fetchedReferrals ?? []);
+  }, [fetchedReferrals, hasRemoteData]);
+
+  useEffect(() => {
+    if (!hasRemoteData) return;
+    if (typeof totalReferralsCount === 'number') {
+      setHasMore(remoteReferrals.length < totalReferralsCount);
+      return;
+    }
+    setHasMore(remoteReferrals.length >= PAGE_SIZE);
+  }, [hasRemoteData, remoteReferrals.length, totalReferralsCount]);
+
   const normalizedReferrals = useMemo<NormalizedReferral[]>(() => {
-    return FALLBACK_REFERRALS.map((ref, index) => {
-      const first = ref?.firstName?.trim() ?? '';
-      const last = ref?.lastName?.trim() ?? '';
-      const name = (first || last ? `${first} ${last}`.trim() : null) ?? `Referral ${index + 1}`;
-      const createdAt = ref?.createdAt ?? '';
+    const showFallback = !hasRemoteData && !loading;
+    const base = hasRemoteData ? remoteReferrals : showFallback ? FALLBACK_REFERRALS : [];
+    return base.map((ref, index) => {
+      const name = ref?.invitee?.name?.trim() || `Referral ${index + 1}`;
+      const createdAt = ref?.invitee?.signupDate ?? '';
       const date = createdAt ? formatReferralDate(createdAt) : 'Signed up • Date unavailable';
       return {
         id: ref?.id ?? `${index}`,
@@ -87,12 +161,23 @@ export default function ReferralsScreen() {
         date,
       };
     });
-  }, []);
+  }, [hasRemoteData, loading, remoteReferrals]);
 
-  const totalReferrals = normalizedReferrals.length;
+  const totalReferrals =
+    typeof totalReferralsCount === 'number'
+      ? totalReferralsCount
+      : normalizedReferrals.length;
+
+  const handleOpenReferrals = useCallback(() => {
+    setShowReferrals(true);
+    setLoadingMore(false);
+    setHasMore(true);
+    setRemoteReferrals((prev) => prev.slice(0, PAGE_SIZE));
+    refetch({ limit: PAGE_SIZE, offset: 0 }).catch(() => null);
+  }, [refetch]);
 
   const handleCopy = async () => {
-    await Clipboard.setStringAsync(REFERRAL_CODE);
+    await Clipboard.setStringAsync(referralCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -100,16 +185,59 @@ export default function ReferralsScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Join me on Safarihills with my code ${REFERRAL_CODE} to earn a welcome perk on your first booking.`,
+        message: `Join me on Safarihills with my code ${referralCode} to earn a welcome perk on your first booking.`,
       });
     } catch {
       // no-op on cancel or failure
     }
   };
 
-  useEffect(() => {
-    setVisibleReferrals((prev) => Math.min(Math.max(5, prev), normalizedReferrals.length || 5));
-  }, [normalizedReferrals.length]);
+  const handleLoadMore = useCallback(() => {
+    if (!hasRemoteData || loading || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    fetchMore({
+      variables: {
+        limit: PAGE_SIZE,
+        offset: remoteReferrals.length,
+      },
+    })
+      .then((response) => {
+        const next = response.data?.referrals ?? [];
+        if (!next.length) {
+          setHasMore(false);
+          return;
+        }
+        setRemoteReferrals((prev) => {
+          const seen = new Set(prev.map((ref) => ref.id ?? ''));
+          const merged = [...prev];
+          next.forEach((ref) => {
+            const key = ref.id ?? '';
+            if (key && seen.has(key)) return;
+            merged.push(ref);
+            if (key) seen.add(key);
+          });
+          return merged;
+        });
+        const totalCount =
+          response.data?.user?.totalReferrals ?? totalReferralsCount;
+        if (typeof totalCount === 'number') {
+          const mergedLength = remoteReferrals.length + next.length;
+          setHasMore(mergedLength < totalCount);
+        } else if (next.length < PAGE_SIZE) {
+          setHasMore(false);
+        }
+      })
+      .catch(() => null)
+      .finally(() => setLoadingMore(false));
+  }, [
+    fetchMore,
+    hasMore,
+    hasRemoteData,
+    loading,
+    loadingMore,
+    remoteReferrals.length,
+    totalReferralsCount,
+  ]);
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
@@ -131,7 +259,7 @@ export default function ReferralsScreen() {
               <Text className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-500">
                 Your referral code
               </Text>
-              <Text className="mt-2 text-4xl font-bold text-slate-900">{REFERRAL_CODE}</Text>
+              <Text className="mt-2 text-4xl font-bold text-slate-900">{referralCode}</Text>
               <Text className="mt-1 text-sm text-slate-500">
                 Send this code to friends so they can use it at signup and you both earn rewards.
               </Text>
@@ -169,7 +297,7 @@ export default function ReferralsScreen() {
             <Text className="text-base font-semibold text-slate-900">How it works</Text>
             <Pressable
               className="flex-row items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5"
-              onPress={() => setShowReferrals(true)}>
+              onPress={handleOpenReferrals}>
               <Feather name="users" size={16} color="#1d4ed8" />
               <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
                 View referrals
@@ -206,7 +334,7 @@ export default function ReferralsScreen() {
         <View className="flex-1 justify-end bg-black/40">
           <View
             className="rounded-t-[32px] bg-white px-6 pb-10 pt-6"
-            style={{ maxHeight: modalMaxHeight }}>
+            style={{ maxHeight: modalMaxHeight, flex: 1 }}>
             <View className="mb-6 h-1 w-14 self-center rounded-full bg-slate-200" />
             <View className="flex-row items-center justify-between">
               <Text className="text-2xl font-bold text-slate-900">Your referrals</Text>
@@ -233,17 +361,30 @@ export default function ReferralsScreen() {
               People who joined with your code and their signup dates.
             </Text>
 
-            <View className="mt-4 rounded-2xl border border-slate-100 bg-slate-50/70">
+            <View className="mt-4 flex-1 rounded-2xl border border-slate-100 bg-slate-50/70">
               <FlatList
-                data={normalizedReferrals.slice(0, visibleReferrals)}
+                data={normalizedReferrals}
                 keyExtractor={(item) => item.id}
                 scrollEnabled
                 showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 16 }}
                 onEndReachedThreshold={0.2}
-                onEndReached={() =>
-                  setVisibleReferrals((prev) =>
-                    Math.min(prev + 5, normalizedReferrals.length)
-                  )
+                onEndReached={handleLoadMore}
+                ListEmptyComponent={
+                  <View className="items-center px-4 py-6">
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#2563eb" />
+                    ) : (
+                      <Text className="text-sm text-slate-500">No referrals yet.</Text>
+                    )}
+                  </View>
+                }
+                ListFooterComponent={
+                  loadingMore ? (
+                    <View className="py-4">
+                      <ActivityIndicator size="small" color="#2563eb" />
+                    </View>
+                  ) : null
                 }
                 renderItem={({ item, index }) => (
                   <View
