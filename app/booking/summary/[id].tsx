@@ -5,9 +5,10 @@ import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetail
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,8 +16,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 const WALLET_BALANCE = 120000;
+const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
+const PAYSTACK_EMAIL = 'random@email.com';
 
 const formatDateDisplay = (value: string | null | undefined) => {
   if (!value) return '—';
@@ -125,6 +129,81 @@ export default function BookingSummaryScreen() {
   const total = Math.max(baseTotal - discount, 0);
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
+  const [paystackVisible, setPaystackVisible] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  const paystackReference = booking?.referenceNumber ?? bookingId ?? 'booking-reference';
+  const paystackAmount = Math.max(Math.round(total * 100), 0);
+  const paystackHtml = useMemo(() => {
+    const configJson = JSON.stringify({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: PAYSTACK_EMAIL,
+      amount: paystackAmount,
+      currency: 'NGN',
+      ref: paystackReference,
+    });
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <script src="https://js.paystack.co/v1/inline.js"></script>
+          <style>
+            html, body { margin: 0; padding: 0; background: #ffffff; }
+          </style>
+        </head>
+        <body>
+          <script>
+            const config = ${configJson};
+            config.callback = function(response) {
+              window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'success',
+                reference: response.reference
+              }));
+            };
+            config.onClose = function() {
+              window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'close'
+              }));
+            };
+            const handler = PaystackPop.setup(config);
+            handler.openIframe();
+          </script>
+        </body>
+      </html>
+    `;
+  }, [paystackAmount, paystackReference, PAYSTACK_EMAIL, PAYSTACK_PUBLIC_KEY]);
+
+  const handleOpenPaystack = () => {
+    if (!PAYSTACK_PUBLIC_KEY) {
+      setPaymentError('Paystack is unavailable right now.');
+      return;
+    }
+    if (!paystackReference) {
+      setPaymentError('Booking reference is missing.');
+      return;
+    }
+    if (paystackAmount <= 0) {
+      setPaymentError('Payment amount is unavailable.');
+      return;
+    }
+    setPaymentError(null);
+    setPaystackVisible(true);
+  };
+
+  const handlePaystackMessage = (event: { nativeEvent: { data: string } }) => {
+    try {
+      const payload = JSON.parse(event.nativeEvent.data);
+      if (payload?.type === 'close') {
+        setPaystackVisible(false);
+      }
+      if (payload?.type === 'success') {
+        setPaystackVisible(false);
+      }
+    } catch {
+      setPaystackVisible(false);
+    }
+  };
 
   const handleApplyCoupon = () => {
     const normalized = normalizeCouponCode(couponCode);
@@ -458,7 +537,10 @@ export default function BookingSummaryScreen() {
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-slate-200 bg-white'
                 }`}
-                onPress={() => setPaymentMethod('paystack')}>
+                onPress={() => {
+                  setPaymentMethod('paystack');
+                  handleOpenPaystack();
+                }}>
                 <View className="flex-row items-center justify-between">
                   <View>
                     <Text
@@ -518,6 +600,13 @@ export default function BookingSummaryScreen() {
                 </Text>
               </View>
             ) : null}
+            {paymentError ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">
+                  {paymentError}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
@@ -526,7 +615,11 @@ export default function BookingSummaryScreen() {
                 canPay ? 'bg-blue-600' : 'bg-slate-200'
               }`}
               disabled={!canPay}
-              onPress={() => {}}>
+              onPress={() => {
+                if (paymentMethod === 'paystack') {
+                  handleOpenPaystack();
+                }
+              }}>
               <View className="items-center">
                 <Text
                   className={`text-base font-semibold ${
@@ -545,6 +638,27 @@ export default function BookingSummaryScreen() {
           </View>
         </View>
       </ScrollView>
+      <Modal
+        visible={paystackVisible}
+        animationType="slide"
+        onRequestClose={() => setPaystackVisible(false)}>
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
+            <Text className="text-base font-semibold text-slate-900">Pay with Paystack</Text>
+            <Pressable
+              className="rounded-full border border-slate-200 px-3 py-1.5"
+              onPress={() => setPaystackVisible(false)}>
+              <Text className="text-xs font-semibold text-slate-600">Close</Text>
+            </Pressable>
+          </View>
+          <WebView
+            key={`${paystackReference}-${paystackAmount}`}
+            originWhitelist={['*']}
+            source={{ html: paystackHtml }}
+            onMessage={handlePaystackMessage}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
