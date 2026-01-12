@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -142,6 +142,13 @@ export default function BookingsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [remoteHasMore, setRemoteHasMore] = useState(true);
+  const { paymentStatus, message } = useLocalSearchParams<{
+    paymentStatus?: string | string[];
+    message?: string | string[];
+  }>();
+  const [paymentBanner, setPaymentBanner] = useState<string | null>(null);
+  const paymentStatusValue = Array.isArray(paymentStatus) ? paymentStatus[0] : paymentStatus;
+  const paymentMessageValue = Array.isArray(message) ? message[0] : message;
 
   const queryVariables = useMemo<FindBookingsVariables>(
     () => ({
@@ -190,6 +197,16 @@ export default function BookingsScreen() {
   useEffect(() => {
     setRemoteHasMore(true);
   }, [activeFilter]);
+
+  useEffect(() => {
+    if (paymentStatusValue !== 'success') return;
+    const bannerMessage = paymentMessageValue?.trim() || 'Payment completed successfully.';
+    setPaymentBanner(bannerMessage);
+    const timer = setTimeout(() => {
+      setPaymentBanner(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [paymentStatusValue, paymentMessageValue]);
 
   const bookings = useMemo<BookingListItem[]>(() => {
     return (data?.findBookings ?? []).map(mapBooking);
@@ -374,6 +391,16 @@ export default function BookingsScreen() {
         </View>
       ) : (
         <>
+          {paymentBanner ? (
+            <View className="mx-6 mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
+              <View className="flex-row items-center gap-2">
+                <Feather name="check-circle" size={16} color="#047857" />
+                <Text className="text-sm font-semibold text-emerald-700">
+                  {paymentBanner}
+                </Text>
+              </View>
+            </View>
+          ) : null}
           <View className="px-6 pt-4">
             <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
               Safarihills

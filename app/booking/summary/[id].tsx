@@ -244,6 +244,14 @@ export default function BookingSummaryScreen() {
       return;
     }
     setPaymentError(null);
+    setPaystackVisible(false);
+    router.replace({
+      pathname: '/(tabs)/bookings',
+      params: {
+        paymentStatus: 'success',
+        message: 'Payment completed successfully.',
+      },
+    });
   };
 
   const handlePaystackMessage = (event: { nativeEvent: { data: string } }) => {
@@ -253,7 +261,15 @@ export default function BookingSummaryScreen() {
         setPaystackVisible(false);
       }
       if (payload?.type === 'success') {
+        setPaymentError(null);
         setPaystackVisible(false);
+        router.replace({
+          pathname: '/(tabs)/bookings',
+          params: {
+            paymentStatus: 'success',
+            message: 'Payment completed successfully.',
+          },
+        });
       }
     } catch {
       setPaystackVisible(false);
