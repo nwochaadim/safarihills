@@ -1,5 +1,6 @@
 import { BackButton } from '@/components/BackButton';
 import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
+import { CREATE_WALLET_PAYMENT_FOR_BOOKING } from '@/mutations/createWalletPaymentForBooking';
 import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
 import { FIND_BOOKING_SUMMARY_AND_USER_DETAILS } from '@/queries/findBookingSummaryAndUserDetails';
 import { useMutation, useQuery } from '@apollo/client';
@@ -93,6 +94,16 @@ type ValidateBookingVariables = {
   reference: string;
 };
 
+type CreateWalletPaymentResponse = {
+  createWalletPayment: {
+    errors: string[] | string | null;
+  } | null;
+};
+
+type CreateWalletPaymentVariables = {
+  reference: string;
+};
+
 export default function BookingSummaryScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
@@ -115,6 +126,10 @@ export default function BookingSummaryScreen() {
     ValidateBookingResponse,
     ValidateBookingVariables
   >(VALIDATE_BOOKING);
+  const [createWalletPayment, { loading: isPayingWithWallet }] = useMutation<
+    CreateWalletPaymentResponse,
+    CreateWalletPaymentVariables
+  >(CREATE_WALLET_PAYMENT_FOR_BOOKING);
 
   useFocusEffect(
     useCallback(() => {
@@ -155,6 +170,7 @@ export default function BookingSummaryScreen() {
   const walletBalance = user?.walletBalance ?? 0;
   const walletHasFunds = total > 0 && walletBalance >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
+  const isProcessingPayment = isValidating || isPayingWithWallet;
   const [paystackVisible, setPaystackVisible] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
@@ -267,14 +283,31 @@ export default function BookingSummaryScreen() {
       return;
     }
     setPaymentError(null);
-    setPaystackVisible(false);
-    router.replace({
-      pathname: '/(tabs)/bookings',
-      params: {
-        paymentStatus: 'success',
-        message: 'Payment completed successfully.',
-      },
-    });
+    try {
+      const { data: response } = await createWalletPayment({
+        variables: { reference: bookingReference },
+      });
+      const errors = response?.createWalletPayment?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setPaymentError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setPaymentError(errors);
+        return;
+      }
+      router.replace({
+        pathname: '/(tabs)/bookings',
+        params: {
+          paymentStatus: 'success',
+          message: 'Payment completed successfully.',
+        },
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to complete wallet payment.';
+      setPaymentError(message);
+    }
   };
 
   const handlePaystackMessage = (event: { nativeEvent: { data: string } }) => {
@@ -708,7 +741,7 @@ export default function BookingSummaryScreen() {
               className={`items-center justify-center rounded-full py-4 ${
                 canPay ? 'bg-blue-600' : 'bg-slate-200'
               }`}
-              disabled={!canPay || isValidating}
+              disabled={!canPay || isProcessingPayment}
               onPress={() => {
                 if (paymentMethod === 'paystack') {
                   void handleOpenPaystack();
@@ -727,7 +760,7 @@ export default function BookingSummaryScreen() {
                   className={`text-xs font-semibold ${
                     canPay ? 'text-blue-100' : 'text-slate-400'
                   }`}>
-                  {isValidating ? 'Validating booking' : 'Final total'}
+                  {isProcessingPayment ? 'Processing payment' : 'Final total'}
                 </Text>
               </View>
             </Pressable>
