@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
 import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
-import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetails';
+import { FIND_BOOKING_SUMMARY_AND_USER_DETAILS } from '@/queries/findBookingSummaryAndUserDetails';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,9 +19,8 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-const WALLET_BALANCE = 120000;
 const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
-const PAYSTACK_EMAIL = 'random@email.com';
+const PAYSTACK_FALLBACK_EMAIL = 'no-reply@safarihills.app';
 
 const formatDateDisplay = (value: string | null | undefined) => {
   if (!value) return '—';
@@ -39,6 +38,12 @@ const formatCurrency = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
 
 type BookingSummaryResponse = {
+  user: {
+    email: string | null;
+    name: string | null;
+    phone: string | null;
+    walletBalance: number | null;
+  } | null;
   findBookingSummaryDetails: {
     id: string;
     referenceNumber: string | null;
@@ -96,7 +101,7 @@ export default function BookingSummaryScreen() {
     BookingSummaryResponse,
     BookingSummaryVariables
   >(
-    FIND_BOOKING_SUMMARY_DETAILS,
+    FIND_BOOKING_SUMMARY_AND_USER_DETAILS,
     {
       variables: { bookingId: bookingId ?? '' },
       skip: !bookingId,
@@ -119,13 +124,17 @@ export default function BookingSummaryScreen() {
   );
 
   const booking = data?.findBookingSummaryDetails ?? null;
+  const user = data?.user ?? null;
   const bookingReference = booking?.referenceNumber?.trim() ?? '';
-  const bookingLabel = bookingReference || booking?.id || bookingId || 'Booking';
-  const listingName = booking?.listing?.name ?? 'Listing';
-  const listingArea = booking?.listing?.area ?? '';
-  const roomCategory = booking?.roomCategory?.name ?? null;
-  const numberOfGuests = booking?.numberOfGuests ?? 0;
-  const bookingPurpose = booking?.bookingPurpose ?? '';
+  const userEmail = user?.email?.trim() || PAYSTACK_FALLBACK_EMAIL;
+  const userName = user?.name?.trim() || 'Guest';
+  const userPhone = user?.phone?.trim() || '—';
+  const bookingLabel = bookingReference || booking?.id || bookingId;
+  const listingName = booking?.listing?.name;
+  const listingArea = booking?.listing?.area;
+  const roomCategory = booking?.roomCategory?.name;
+  const numberOfGuests = booking?.numberOfGuests;
+  const bookingPurpose = booking?.bookingPurpose;
   const checkIn = booking?.checkIn ?? null;
   const checkOut = booking?.checkOut ?? null;
   const nights = booking?.numberOfNights ?? 0;
@@ -143,7 +152,8 @@ export default function BookingSummaryScreen() {
   const effectiveCouponAmount = serverCouponAmount > 0 ? serverCouponAmount : appliedAmount;
   const discount = Math.min(effectiveCouponAmount, baseTotal);
   const total = Math.max(baseTotal - discount, 0);
-  const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
+  const walletBalance = user?.walletBalance ?? 0;
+  const walletHasFunds = total > 0 && walletBalance >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
   const [paystackVisible, setPaystackVisible] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -153,10 +163,16 @@ export default function BookingSummaryScreen() {
   const paystackHtml = useMemo(() => {
     const configJson = JSON.stringify({
       key: PAYSTACK_PUBLIC_KEY,
-      email: PAYSTACK_EMAIL,
+      email: userEmail,
       amount: paystackAmount,
       currency: 'NGN',
       ref: paystackReference,
+      metadata: {
+        custom_fields: [
+          { display_name: 'Name', variable_name: 'name', value: userName },
+          { display_name: 'Phone', variable_name: 'phone', value: userPhone },
+        ],
+      },
     });
     return `
       <!doctype html>
@@ -188,7 +204,14 @@ export default function BookingSummaryScreen() {
         </body>
       </html>
     `;
-  }, [paystackAmount, paystackReference, PAYSTACK_EMAIL, PAYSTACK_PUBLIC_KEY]);
+  }, [
+    paystackAmount,
+    paystackReference,
+    PAYSTACK_PUBLIC_KEY,
+    userEmail,
+    userName,
+    userPhone,
+  ]);
 
   const validateBeforePayment = async () => {
     if (!bookingReference) {
@@ -648,7 +671,7 @@ export default function BookingSummaryScreen() {
                       Pay via wallet
                     </Text>
                     <Text className="mt-1 text-xs text-slate-500">
-                      Balance {formatCurrency(WALLET_BALANCE)}
+                      Balance {formatCurrency(walletBalance)}
                     </Text>
                   </View>
                   <View
