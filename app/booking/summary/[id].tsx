@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
+import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
 import { FIND_BOOKING_SUMMARY_DETAILS } from '@/queries/findBookingSummaryDetails';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -77,6 +78,16 @@ type ApplyCouponVariables = {
   couponCode: string;
 };
 
+type ValidateBookingResponse = {
+  validateBooking: {
+    errors: string[] | string | null;
+  } | null;
+};
+
+type ValidateBookingVariables = {
+  reference: string;
+};
+
 export default function BookingSummaryScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
@@ -95,6 +106,10 @@ export default function BookingSummaryScreen() {
     ApplyCouponResponse,
     ApplyCouponVariables
   >(APPLY_COUPON_TO_BOOKING);
+  const [validateBooking, { loading: isValidating }] = useMutation<
+    ValidateBookingResponse,
+    ValidateBookingVariables
+  >(VALIDATE_BOOKING);
 
   useFocusEffect(
     useCallback(() => {
@@ -104,7 +119,8 @@ export default function BookingSummaryScreen() {
   );
 
   const booking = data?.findBookingSummaryDetails ?? null;
-  const bookingLabel = booking?.referenceNumber ?? booking?.id ?? bookingId ?? 'Booking';
+  const bookingReference = booking?.referenceNumber?.trim() ?? '';
+  const bookingLabel = bookingReference || booking?.id || bookingId || 'Booking';
   const listingName = booking?.listing?.name ?? 'Listing';
   const listingArea = booking?.listing?.area ?? '';
   const roomCategory = booking?.roomCategory?.name ?? null;
@@ -132,7 +148,7 @@ export default function BookingSummaryScreen() {
   const [paystackVisible, setPaystackVisible] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  const paystackReference = booking?.referenceNumber ?? bookingId ?? 'booking-reference';
+  const paystackReference = bookingReference || 'booking-reference';
   const paystackAmount = Math.max(Math.round(total * 100), 0);
   const paystackHtml = useMemo(() => {
     const configJson = JSON.stringify({
@@ -174,21 +190,60 @@ export default function BookingSummaryScreen() {
     `;
   }, [paystackAmount, paystackReference, PAYSTACK_EMAIL, PAYSTACK_PUBLIC_KEY]);
 
-  const handleOpenPaystack = () => {
+  const validateBeforePayment = async () => {
+    if (!bookingReference) {
+      setPaymentError('Booking reference is missing.');
+      return false;
+    }
+    setPaymentError(null);
+    try {
+      const { data: response } = await validateBooking({
+        variables: { reference: bookingReference },
+      });
+      const errors = response?.validateBooking?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setPaymentError(errors.join(' '));
+        return false;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setPaymentError(errors);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to validate booking right now.';
+      setPaymentError(message);
+      return false;
+    }
+  };
+
+  const handleOpenPaystack = async () => {
     if (!PAYSTACK_PUBLIC_KEY) {
       setPaymentError('Paystack is unavailable right now.');
-      return;
-    }
-    if (!paystackReference) {
-      setPaymentError('Booking reference is missing.');
       return;
     }
     if (paystackAmount <= 0) {
       setPaymentError('Payment amount is unavailable.');
       return;
     }
-    setPaymentError(null);
+    const isValid = await validateBeforePayment();
+    if (!isValid) {
+      return;
+    }
     setPaystackVisible(true);
+  };
+
+  const handleWalletPayment = async () => {
+    if (!walletHasFunds) {
+      setPaymentError('Wallet balance is lower than the booking total.');
+      return;
+    }
+    const isValid = await validateBeforePayment();
+    if (!isValid) {
+      return;
+    }
+    setPaymentError(null);
   };
 
   const handlePaystackMessage = (event: { nativeEvent: { data: string } }) => {
@@ -539,7 +594,7 @@ export default function BookingSummaryScreen() {
                 }`}
                 onPress={() => {
                   setPaymentMethod('paystack');
-                  handleOpenPaystack();
+                  void handleOpenPaystack();
                 }}>
                 <View className="flex-row items-center justify-between">
                   <View>
@@ -614,11 +669,13 @@ export default function BookingSummaryScreen() {
               className={`items-center justify-center rounded-full py-4 ${
                 canPay ? 'bg-blue-600' : 'bg-slate-200'
               }`}
-              disabled={!canPay}
+              disabled={!canPay || isValidating}
               onPress={() => {
                 if (paymentMethod === 'paystack') {
-                  handleOpenPaystack();
+                  void handleOpenPaystack();
+                  return;
                 }
+                void handleWalletPayment();
               }}>
               <View className="items-center">
                 <Text
@@ -631,7 +688,7 @@ export default function BookingSummaryScreen() {
                   className={`text-xs font-semibold ${
                     canPay ? 'text-blue-100' : 'text-slate-400'
                   }`}>
-                  Final total
+                  {isValidating ? 'Validating booking' : 'Final total'}
                 </Text>
               </View>
             </Pressable>
