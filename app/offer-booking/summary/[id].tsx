@@ -18,7 +18,6 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-const WALLET_BALANCE = 120000;
 const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
 const PAYSTACK_FALLBACK_EMAIL = 'no-reply@safarihills.app';
 
@@ -53,6 +52,7 @@ type BookingSummaryResponse = {
     name: string | null;
     email: string | null;
     phone: string | null;
+    walletBalance: number | null;
   } | null;
   findBookingSummaryDetails: {
     id: string;
@@ -186,7 +186,8 @@ export default function OfferBookingSummaryScreen() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const total = bookingTotal;
-  const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
+  const walletBalance = user?.walletBalance ?? 0;
+  const walletHasFunds = total > 0 && walletBalance >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
   const isProcessingPayment = isValidating || isPayingWithWallet;
   const paystackAmount = Math.max(Math.round(total * 100), 0);
@@ -643,7 +644,7 @@ export default function OfferBookingSummaryScreen() {
                       Pay via wallet
                     </Text>
                     <Text className="mt-1 text-xs text-slate-500">
-                      Balance {formatCurrency(WALLET_BALANCE)}
+                      Balance {formatCurrency(walletBalance)}
                     </Text>
                   </View>
                   <View

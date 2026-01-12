@@ -7,6 +7,7 @@ export const FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS = gql`
       name
       email
       phone
+      walletBalance
     }
     findBookingSummaryDetails(bookingId: $bookingId) {
       id
