@@ -1,7 +1,9 @@
 import { BackButton } from '@/components/BackButton';
+import { WALLET_AND_TRANSACTIONS } from '@/queries/walletAndTransactions';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@apollo/client';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -15,10 +17,12 @@ import {
 type RemoteTransaction = {
   id?: string | null;
   name?: string | null;
-  amountCents?: number | null;
+  formattedAmount?: string | null;
   transactionType?: string | null;
   state?: string | null;
+  date?: string | null;
   createdAt?: string | null;
+  amountCents?: number | null;
   reference?: string | null;
 };
 
@@ -30,6 +34,18 @@ type NormalizedTransaction = {
   date: string;
   reference: string;
   pending: boolean;
+};
+
+type WalletQueryResponse = {
+  wallet: {
+    balance: number | null;
+    transactions: RemoteTransaction[] | null;
+  } | null;
+};
+
+type WalletQueryVariables = {
+  limit?: number | null;
+  offset?: number | null;
 };
 
 const PAGE_SIZE = 10;
@@ -145,6 +161,13 @@ const FALLBACK_TRANSACTIONS: RemoteTransaction[] = [
   },
 ];
 
+const parseFormattedAmount = (value: string | null | undefined) => {
+  if (!value) return 0;
+  const cleaned = value.replace(/[^\d.]/g, '');
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const formatTransactionDate = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Date unavailable';
@@ -165,23 +188,34 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const hasMore = visibleCount < FALLBACK_TRANSACTIONS.length;
-  const visibleTransactions = useMemo(
-    () => FALLBACK_TRANSACTIONS.slice(0, visibleCount),
-    [visibleCount]
+  const [remoteTransactions, setRemoteTransactions] = useState<RemoteTransaction[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+
+  const { data, fetchMore, refetch } = useQuery<WalletQueryResponse, WalletQueryVariables>(
+    WALLET_AND_TRANSACTIONS,
+    {
+      variables: { limit: PAGE_SIZE, offset: 0 },
+      notifyOnNetworkStatusChange: true,
+    }
   );
 
+  const fetchedTransactions = data?.wallet?.transactions;
+  const hasRemoteData = Array.isArray(fetchedTransactions);
+
   const transactions = useMemo<NormalizedTransaction[]>(() => {
-    const base = visibleTransactions.length ? visibleTransactions : [];
+    const base = hasRemoteData ? remoteTransactions : FALLBACK_TRANSACTIONS;
 
     return base.map((txn, index) => {
-      const amountCents = txn?.amountCents ?? 0;
       const type =
         txn?.transactionType?.toLowerCase() === 'debit' ? 'debit' : 'credit';
-      const dateLabel = txn?.createdAt
-        ? formatTransactionDate(txn.createdAt)
-        : 'Date unavailable';
+      const amountValue = txn?.formattedAmount
+        ? parseFormattedAmount(txn.formattedAmount)
+        : Math.max(0, txn?.amountCents ?? 0) / 100;
+      const dateLabel = txn?.date
+        ? txn.date
+        : txn?.createdAt
+          ? formatTransactionDate(txn.createdAt)
+          : 'Date unavailable';
       const reference =
         txn?.reference ??
         (txn?.id ? `REF-${txn.id}` : `REF-${index + 1}`);
@@ -191,26 +225,67 @@ export default function TransactionsScreen() {
         id: txn?.id ?? `txn-${index + 1}`,
         type,
         title: txn?.name ?? `Transaction ${index + 1}`,
-        amount: Math.max(0, amountCents) / 100,
+        amount: amountValue,
         date: dateLabel,
         reference,
         pending,
       };
     });
-  }, [visibleTransactions]);
+  }, [hasRemoteData, remoteTransactions]);
 
   const handleRefresh = useCallback(() => {
+    if (refreshing) return;
     setRefreshing(true);
-    setVisibleCount(PAGE_SIZE);
-    setTimeout(() => setRefreshing(false), 450);
-  }, []);
+    setHasMore(true);
+    refetch({ limit: PAGE_SIZE, offset: 0 })
+      .then((response) => {
+        const next = response.data?.wallet?.transactions ?? [];
+        setRemoteTransactions(next);
+        setHasMore(next.length >= PAGE_SIZE);
+      })
+      .catch(() => null)
+      .finally(() => setRefreshing(false));
+  }, [refreshing, refetch]);
 
   const handleLoadMore = useCallback(() => {
     if (loadingMore || refreshing || !hasMore) return;
     setLoadingMore(true);
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, FALLBACK_TRANSACTIONS.length));
-    setTimeout(() => setLoadingMore(false), 300);
-  }, [hasMore, loadingMore, refreshing]);
+    fetchMore({
+      variables: {
+        limit: PAGE_SIZE,
+        offset: remoteTransactions.length,
+      },
+    })
+      .then((response) => {
+        const next = response.data?.wallet?.transactions ?? [];
+        if (!next.length) {
+          setHasMore(false);
+          return;
+        }
+        setRemoteTransactions((prev) => {
+          const seen = new Set(prev.map((txn) => txn.id ?? ''));
+          const merged = [...prev];
+          next.forEach((txn) => {
+            const key = txn.id ?? '';
+            if (key && seen.has(key)) return;
+            merged.push(txn);
+            if (key) seen.add(key);
+          });
+          return merged;
+        });
+        if (next.length < PAGE_SIZE) {
+          setHasMore(false);
+        }
+      })
+      .catch(() => null)
+      .finally(() => setLoadingMore(false));
+  }, [fetchMore, hasMore, loadingMore, refreshing, remoteTransactions.length]);
+
+  useEffect(() => {
+    if (!hasRemoteData) return;
+    setRemoteTransactions(fetchedTransactions ?? []);
+    setHasMore((fetchedTransactions ?? []).length >= PAGE_SIZE);
+  }, [fetchedTransactions, hasRemoteData]);
 
   const loadMoreThrottleRef = useRef(0);
 

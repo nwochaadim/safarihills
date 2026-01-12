@@ -1,8 +1,11 @@
 import { BackButton } from '@/components/BackButton';
+import { TOPUP_WALLET_BALANCE } from '@/mutations/topupWalletBalance';
+import { WALLET_AND_TRANSACTIONS } from '@/queries/walletAndTransactions';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import { useMutation, useQuery } from '@apollo/client';
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
@@ -15,15 +18,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 import { BlankSlate } from '@/components/BlankSlate';
-
-type BankAccount = {
-  id: string;
-  bank: string;
-  accountNumber: string;
-  label: string;
-};
 
 type NormalizedTransaction = {
   id: string;
@@ -34,10 +31,25 @@ type NormalizedTransaction = {
   pending: boolean;
 };
 
-const defaultAccounts: BankAccount[] = [
-  { id: '1', bank: 'GTBank', accountNumber: '**** 4521', label: 'Primary' },
-  { id: '2', bank: 'Zenith', accountNumber: '**** 8892', label: 'Savings' },
-];
+type WalletTransaction = {
+  id: string | null;
+  transactionType: string | null;
+  name: string | null;
+  formattedAmount: string | null;
+  date: string | null;
+};
+
+type WalletQueryResponse = {
+  wallet: {
+    balance: number | null;
+    transactions: WalletTransaction[] | null;
+  } | null;
+};
+
+type WalletQueryVariables = {
+  limit?: number | null;
+  offset?: number | null;
+};
 
 const FALLBACK_WALLET = {
   balance: 245000,
@@ -86,6 +98,35 @@ const formatAmountInput = (value: string) => {
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
+const parseFormattedAmount = (value: string | null | undefined) => {
+  if (!value) return 0;
+  const cleaned = value.replace(/[^\d.]/g, '');
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const LATEST_TRANSACTIONS_LIMIT = 5;
+const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
+const PAYSTACK_FALLBACK_EMAIL = 'no-reply@safarihills.app';
+
+type WalletTopupResponse = {
+  createWalletTopup: {
+    amount: number | null;
+    reference: string | null;
+    state: string | null;
+    user: {
+      id: string | null;
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+    } | null;
+  } | null;
+};
+
+type WalletTopupVariables = {
+  amount: number;
+};
+
 export default function WalletScreen() {
   const router = useRouter();
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
@@ -122,18 +163,53 @@ export default function WalletScreen() {
     }, [])
   );
 
-  const balance = FALLBACK_WALLET.balance;
+  const latestVariables = useMemo<WalletQueryVariables>(
+    () => ({ limit: LATEST_TRANSACTIONS_LIMIT, offset: 0 }),
+    []
+  );
+
+  const { data, refetch } = useQuery<WalletQueryResponse, WalletQueryVariables>(
+    WALLET_AND_TRANSACTIONS,
+    {
+      variables: latestVariables,
+      skip: authStatus !== 'signed-in',
+      notifyOnNetworkStatusChange: true,
+    }
+  );
+
+  const walletData = data?.wallet ?? null;
+  const balance = walletData?.balance ?? FALLBACK_WALLET.balance;
 
   const selectedAccount = useMemo(
     () => accounts.find((acct) => acct.id === selectedAccountId),
     [accounts, selectedAccountId]
   );
 
-  const transactions = useMemo<NormalizedTransaction[]>(() => FALLBACK_WALLET.transactions, []);
+  const transactions = useMemo<NormalizedTransaction[]>(() => {
+    if (!walletData?.transactions) return FALLBACK_WALLET.transactions;
+    return walletData.transactions.map((txn, index) => {
+      const type =
+        txn?.transactionType?.toLowerCase() === 'debit' ? 'debit' : 'credit';
+      const title = txn?.name ?? `Transaction ${index + 1}`;
+      const amount = parseFormattedAmount(txn?.formattedAmount);
+      const date = txn?.date ?? 'Date unavailable';
+      return {
+        id: txn?.id ?? `txn-${index + 1}`,
+        type,
+        title,
+        amount,
+        date,
+        pending: false,
+      };
+    });
+  }, [walletData?.transactions]);
 
   const handleRefresh = () => {
+    if (authStatus !== 'signed-in') return;
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 500);
+    refetch({ limit: LATEST_TRANSACTIONS_LIMIT, offset: 0 })
+      .catch(() => null)
+      .finally(() => setRefreshing(false));
   };
 
   const handleAddAccount = () => {
