@@ -1,20 +1,25 @@
-import { useQuery } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
-import { FIND_OFFER_BOOKING_SUMMARY_DETAILS } from '@/queries/findOfferBookingSummaryDetails';
+import { FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS } from '@/queries/findUserAndOfferBookingSummaryDetails';
+import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 const WALLET_BALANCE = 120000;
+const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
+const PAYSTACK_FALLBACK_EMAIL = 'no-reply@safarihills.app';
 
 const formatDateDisplay = (value: string | null | undefined) => {
   if (!value) return '—';
@@ -42,6 +47,12 @@ const formatTimeDisplay = (value: string | null | undefined) => {
 };
 
 type BookingSummaryResponse = {
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
   findBookingSummaryDetails: {
     id: string;
     referenceNumber: string | null;
@@ -74,6 +85,16 @@ type BookingSummaryVariables = {
   bookingId: string;
 };
 
+type ValidateBookingResponse = {
+  validateBooking: {
+    errors: string[] | string | null;
+  } | null;
+};
+
+type ValidateBookingVariables = {
+  reference: string;
+};
+
 type BookingReward = {
   id: string | null;
   type: string | null;
@@ -102,12 +123,16 @@ export default function OfferBookingSummaryScreen() {
     BookingSummaryResponse,
     BookingSummaryVariables
   >(
-    FIND_OFFER_BOOKING_SUMMARY_DETAILS,
+    FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS,
     {
       variables: { bookingId: bookingId ?? '' },
       skip: !bookingId,
     }
   );
+  const [validateBooking, { loading: isValidating }] = useMutation<
+    ValidateBookingResponse,
+    ValidateBookingVariables
+  >(VALIDATE_BOOKING);
   useFocusEffect(
     useCallback(() => {
       if (bookingId) {
@@ -116,12 +141,17 @@ export default function OfferBookingSummaryScreen() {
     }, [bookingId, refetch])
   );
 
+  const user = data?.user ?? null;
   const booking = data?.findBookingSummaryDetails ?? null;
   const rewards = booking?.bookingRewards ?? [];
   const offerCampaign = booking?.offerCampaign ?? null;
   const isTimeBased =
     offerCampaign?.bookableOption?.toLowerCase() === 'time_based';
-  const bookingLabel = booking?.referenceNumber ?? booking?.id ?? bookingId ?? 'Booking';
+  const bookingReference = booking?.referenceNumber?.trim() ?? '';
+  const bookingLabel = bookingReference || booking?.id || bookingId || 'Booking';
+  const userEmail = user?.email?.trim() || PAYSTACK_FALLBACK_EMAIL;
+  const userName = user?.name?.trim() || 'Guest';
+  const userPhone = user?.phone?.trim() || '—';
   const listingName = booking?.listing?.name ?? 'Listing';
   const listingArea = booking?.listing?.area ?? '';
   const roomCategory = booking?.roomCategory?.name ?? null;
@@ -137,10 +167,151 @@ export default function OfferBookingSummaryScreen() {
   const bookingTotal = booking?.bookingTotal ?? subtotal + cautionFee;
 
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
+  const [paystackVisible, setPaystackVisible] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const total = bookingTotal;
   const walletHasFunds = total > 0 && WALLET_BALANCE >= total;
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
+  const paystackAmount = Math.max(Math.round(total * 100), 0);
+  const paystackReference = bookingReference || 'booking-reference';
+  const paystackHtml = useMemo(() => {
+    const configJson = JSON.stringify({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: userEmail,
+      amount: paystackAmount,
+      currency: 'NGN',
+      ref: paystackReference,
+      metadata: {
+        custom_fields: [
+          { display_name: 'Name', variable_name: 'name', value: userName },
+          { display_name: 'Phone', variable_name: 'phone', value: userPhone },
+        ],
+      },
+    });
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <script src="https://js.paystack.co/v1/inline.js"></script>
+          <style>
+            html, body { margin: 0; padding: 0; background: #ffffff; }
+          </style>
+        </head>
+        <body>
+          <script>
+            const config = ${configJson};
+            config.callback = function(response) {
+              window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'success',
+                reference: response.reference
+              }));
+            };
+            config.onClose = function() {
+              window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'close'
+              }));
+            };
+            const handler = PaystackPop.setup(config);
+            handler.openIframe();
+          </script>
+        </body>
+      </html>
+    `;
+  }, [
+    paystackAmount,
+    paystackReference,
+    PAYSTACK_PUBLIC_KEY,
+    userEmail,
+    userName,
+    userPhone,
+  ]);
+
+  const validateBeforePayment = async () => {
+    if (!bookingReference) {
+      setPaymentError('Booking reference is missing.');
+      return false;
+    }
+    setPaymentError(null);
+    try {
+      const { data: response } = await validateBooking({
+        variables: { reference: bookingReference },
+      });
+      const errors = response?.validateBooking?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setPaymentError(errors.join(' '));
+        return false;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setPaymentError(errors);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to validate booking right now.';
+      setPaymentError(message);
+      return false;
+    }
+  };
+
+  const handleOpenPaystack = async () => {
+    if (!PAYSTACK_PUBLIC_KEY) {
+      setPaymentError('Paystack is unavailable right now.');
+      return;
+    }
+    if (paystackAmount <= 0) {
+      setPaymentError('Payment amount is unavailable.');
+      return;
+    }
+    const isValid = await validateBeforePayment();
+    if (!isValid) {
+      return;
+    }
+    setPaystackVisible(true);
+  };
+
+  const handleWalletPayment = async () => {
+    if (!walletHasFunds) {
+      setPaymentError('Wallet balance is lower than the booking total.');
+      return;
+    }
+    const isValid = await validateBeforePayment();
+    if (!isValid) {
+      return;
+    }
+    setPaymentError(null);
+    router.replace({
+      pathname: '/(tabs)/bookings',
+      params: {
+        paymentStatus: 'success',
+        message: 'Payment completed successfully.',
+      },
+    });
+  };
+
+  const handlePaystackMessage = (event: { nativeEvent: { data: string } }) => {
+    try {
+      const payload = JSON.parse(event.nativeEvent.data);
+      if (payload?.type === 'close') {
+        setPaystackVisible(false);
+      }
+      if (payload?.type === 'success') {
+        setPaymentError(null);
+        setPaystackVisible(false);
+        router.replace({
+          pathname: '/(tabs)/bookings',
+          params: {
+            paymentStatus: 'success',
+            message: 'Payment completed successfully.',
+          },
+        });
+      }
+    } catch {
+      setPaystackVisible(false);
+    }
+  };
 
   if (!bookingId) {
     return (
@@ -396,7 +567,10 @@ export default function OfferBookingSummaryScreen() {
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-slate-200 bg-white'
                 }`}
-                onPress={() => setPaymentMethod('paystack')}>
+                onPress={() => {
+                  setPaymentMethod('paystack');
+                  void handleOpenPaystack();
+                }}>
                 <View className="flex-row items-center justify-between">
                   <View>
                     <Text
@@ -458,6 +632,11 @@ export default function OfferBookingSummaryScreen() {
                 </Text>
               </View>
             ) : null}
+            {paymentError ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">{paymentError}</Text>
+              </View>
+            ) : null}
           </View>
 
           <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
@@ -465,8 +644,14 @@ export default function OfferBookingSummaryScreen() {
               className={`items-center justify-center rounded-full py-4 ${
                 canPay ? 'bg-blue-600' : 'bg-slate-200'
               }`}
-              disabled={!canPay}
-              onPress={() => {}}>
+              disabled={!canPay || isValidating}
+              onPress={() => {
+                if (paymentMethod === 'paystack') {
+                  void handleOpenPaystack();
+                  return;
+                }
+                void handleWalletPayment();
+              }}>
               <View className="items-center">
                 <Text
                   className={`text-base font-semibold ${
@@ -478,13 +663,34 @@ export default function OfferBookingSummaryScreen() {
                   className={`text-xs font-semibold ${
                     canPay ? 'text-blue-100' : 'text-slate-400'
                   }`}>
-                  Final total
+                  {isValidating ? 'Validating booking' : 'Final total'}
                 </Text>
               </View>
             </Pressable>
           </View>
         </View>
       </ScrollView>
+      <Modal
+        visible={paystackVisible}
+        animationType="slide"
+        onRequestClose={() => setPaystackVisible(false)}>
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
+            <Text className="text-base font-semibold text-slate-900">Pay with Paystack</Text>
+            <Pressable
+              className="rounded-full border border-slate-200 px-3 py-1.5"
+              onPress={() => setPaystackVisible(false)}>
+              <Text className="text-xs font-semibold text-slate-600">Close</Text>
+            </Pressable>
+          </View>
+          <WebView
+            key={`${paystackReference}-${paystackAmount}`}
+            originWhitelist={['*']}
+            source={{ html: paystackHtml }}
+            onMessage={handlePaystackMessage}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }

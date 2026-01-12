@@ -1,8 +1,8 @@
-import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
 import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
 import { FIND_BOOKING_SUMMARY_AND_USER_DETAILS } from '@/queries/findBookingSummaryAndUserDetails';
+import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -158,7 +158,7 @@ export default function BookingSummaryScreen() {
   const [paystackVisible, setPaystackVisible] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  const paystackReference = bookingReference || 'booking-reference';
+  const paystackReference = bookingReference;
   const paystackAmount = Math.max(Math.round(total * 100), 0);
   const paystackHtml = useMemo(() => {
     const configJson = JSON.stringify({
