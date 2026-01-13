@@ -2,7 +2,7 @@ import { BackButton } from '@/components/BackButton';
 import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
 import { CREATE_WALLET_PAYMENT_FOR_BOOKING } from '@/mutations/createWalletPaymentForBooking';
 import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
-import { FIND_BOOKING_SUMMARY_AND_USER_DETAILS } from '@/queries/findBookingSummaryAndUserDetails';
+import { FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS } from '@/queries/findUserAndOfferBookingSummaryDetails';
 import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,6 +47,8 @@ type BookingSummaryResponse = {
   } | null;
   findBookingSummaryDetails: {
     id: string;
+    timelineStatus: string | null;
+    state: string | null;
     referenceNumber: string | null;
     listing: {
       name: string | null;
@@ -64,6 +66,11 @@ type BookingSummaryResponse = {
     cautionFee: number | null;
     bookingTotal: number | null;
     couponAppliedAmount: number | null;
+    offerCampaign: {
+      name: string | null;
+      bookableOption: string | null;
+    } | null;
+    bookingRewards: BookingReward[] | null;
   } | null;
 };
 
@@ -104,6 +111,26 @@ type CreateWalletPaymentVariables = {
   reference: string;
 };
 
+type BookingReward = {
+  id: string | null;
+  type: string | null;
+  name: string | null;
+  description: string | null;
+};
+
+const getRewardIcon = (rewardType: string | null) => {
+  const normalized = rewardType?.toLowerCase() ?? '';
+  if (normalized.includes('discount')) return 'percent';
+  if (normalized.includes('perk') || normalized.includes('gift')) return 'gift';
+  return 'award';
+};
+
+const getRewardTag = (reward: BookingReward) => {
+  if (reward.type?.trim()) return reward.type.replace(/_/g, ' ');
+  if (reward.name?.trim()) return reward.name.trim();
+  return 'Reward';
+};
+
 export default function BookingSummaryScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
@@ -112,7 +139,7 @@ export default function BookingSummaryScreen() {
     BookingSummaryResponse,
     BookingSummaryVariables
   >(
-    FIND_BOOKING_SUMMARY_AND_USER_DETAILS,
+    FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS,
     {
       variables: { bookingId: bookingId ?? '' },
       skip: !bookingId,
@@ -140,6 +167,13 @@ export default function BookingSummaryScreen() {
 
   const booking = data?.findBookingSummaryDetails ?? null;
   const user = data?.user ?? null;
+  const bookingState = booking?.state?.trim().toLowerCase() ?? '';
+  const bookingTimelineStatus = booking?.timelineStatus?.trim().toLowerCase() ?? '';
+  const isPastTimeline = bookingTimelineStatus === 'past';
+  const isPaymentPending = bookingState === 'payment_pending';
+  const isPaymentConfirmed = bookingState === 'payment_confirmed';
+  const showPaymentSections = isPaymentPending && !isPastTimeline;
+  const showPayNow = isPaymentPending && !isPastTimeline;
   const bookingReference = booking?.referenceNumber?.trim() ?? '';
   const userEmail = user?.email?.trim() || PAYSTACK_FALLBACK_EMAIL;
   const userName = user?.name?.trim() || 'Guest';
@@ -148,6 +182,8 @@ export default function BookingSummaryScreen() {
   const listingName = booking?.listing?.name;
   const listingArea = booking?.listing?.area;
   const roomCategory = booking?.roomCategory?.name;
+  const offerCampaign = booking?.offerCampaign ?? null;
+  const rewards = booking?.bookingRewards ?? [];
   const numberOfGuests = booking?.numberOfGuests;
   const bookingPurpose = booking?.bookingPurpose;
   const checkIn = booking?.checkIn ?? null;
@@ -585,187 +621,267 @@ export default function BookingSummaryScreen() {
           </View>
         </View>
 
-        <View className="mt-6 px-6">
-          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Apply coupon
-            </Text>
-            {serverCouponAmount > 0 ? (
-              <View className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3">
-                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
-                  Discount already applied
-                </Text>
-                <Text className="mt-2 text-sm font-semibold text-blue-700">
-                  A coupon discount is already active for this booking.
-                </Text>
-                <Text className="mt-1 text-xs text-blue-600">
-                  Discount: {formatCurrency(serverCouponAmount)}
-                </Text>
-              </View>
-            ) : couponMessage ? (
-              <View className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
-                <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                  Coupon applied
-                </Text>
-                <Text className="mt-2 text-sm font-semibold text-emerald-700">
-                  {couponMessage}
-                </Text>
-                <Text className="mt-1 text-xs text-emerald-600">
-                  Discount: {formatCurrency(discount)}
-                </Text>
-              </View>
-            ) : (
-              <>
-                <Text className="mt-2 text-sm text-slate-500">
-                  Add a promo code to unlock extra savings.
-                </Text>
-                <View className="mt-4 flex-row items-center gap-3">
-                  <TextInput
-                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
-                    placeholder="Enter coupon code"
-                    placeholderTextColor="#94a3b8"
-                    autoCapitalize="characters"
-                    value={couponCode}
-                    onChangeText={(value) => {
-                      setCouponCode(value);
-                      clearCouponFeedback();
-                    }}
-                  />
-                  <Pressable
-                    className={`rounded-2xl px-4 py-3 ${
-                      isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
-                    }`}
-                    disabled={isApplyingCoupon}
-                    onPress={handleApplyCoupon}>
-                    <Text className="text-sm font-semibold text-white">
-                      {isApplyingCoupon ? 'Applying' : 'Apply'}
-                    </Text>
-                  </Pressable>
+        {offerCampaign ? (
+          <View className="mt-6 px-6">
+            <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+              <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Rewards
+              </Text>
+              {rewards.length ? (
+                <View className="mt-4 space-y-3">
+                  {rewards.map((reward, index) => {
+                    const safeReward: BookingReward = reward ?? {
+                      id: null,
+                      type: null,
+                      name: null,
+                      description: null,
+                    };
+                    return (
+                      <View
+                        key={safeReward.id ?? `reward-${index}`}
+                        className="rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                        <View className="flex-row items-start justify-between">
+                          <View className="flex-1 pr-3">
+                            <Text className="text-sm font-semibold text-slate-900">
+                              {safeReward.name?.trim() || 'Offer reward'}
+                            </Text>
+                            {safeReward.description?.trim() ? (
+                              <Text className="mt-1 text-xs text-slate-500">
+                                {safeReward.description.trim()}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View className="flex-row items-center gap-2 rounded-full border border-blue-200 bg-white px-3 py-1">
+                            <Feather
+                              name={getRewardIcon(safeReward.type)}
+                              size={12}
+                              color="#2563eb"
+                            />
+                            <Text className="text-xs font-semibold text-blue-700">
+                              {getRewardTag(safeReward)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
-                {couponError ? (
-                  <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                    <Text className="text-xs font-semibold text-rose-600">
-                      {couponError}
-                    </Text>
-                  </View>
-                ) : null}
-              </>
-            )}
-          </View>
-
-          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Payment method
-            </Text>
-            <View className="mt-4 flex-row gap-3">
-              <Pressable
-                className={`flex-1 rounded-2xl border px-4 py-3 ${
-                  paymentMethod === 'paystack'
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-                onPress={() => {
-                  setPaymentMethod('paystack');
-                  void handleOpenPaystack();
-                }}>
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        paymentMethod === 'paystack' ? 'text-blue-700' : 'text-slate-700'
-                      }`}>
-                      Pay Online
-                    </Text>
-                    <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
-                  </View>
-                  <View
-                    className={`h-5 w-5 items-center justify-center rounded-full border ${
-                      paymentMethod === 'paystack'
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
-                    {paymentMethod === 'paystack' ? (
-                      <View className="h-2 w-2 rounded-full bg-white" />
-                    ) : null}
-                  </View>
-                </View>
-              </Pressable>
-              <Pressable
-                className={`flex-1 rounded-2xl border px-4 py-3 ${
-                  paymentMethod === 'wallet' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
-                }`}
-                onPress={() => setPaymentMethod('wallet')}>
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        paymentMethod === 'wallet' ? 'text-blue-700' : 'text-slate-700'
-                      }`}>
-                      Pay via wallet
-                    </Text>
-                    <Text className="mt-1 text-xs text-slate-500">
-                      Balance {formatCurrency(walletBalance)}
-                    </Text>
-                  </View>
-                  <View
-                    className={`h-5 w-5 items-center justify-center rounded-full border ${
-                      paymentMethod === 'wallet'
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
-                    {paymentMethod === 'wallet' ? (
-                      <View className="h-2 w-2 rounded-full bg-white" />
-                    ) : null}
-                  </View>
-                </View>
-              </Pressable>
+              ) : (
+                <Text className="mt-3 text-sm text-slate-500">
+                  Rewards will appear here once available.
+                </Text>
+              )}
             </View>
-            {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">
-                  Wallet balance is lower than the booking total.
-                </Text>
-              </View>
-            ) : null}
-            {paymentError ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">
-                  {paymentError}
-                </Text>
-              </View>
-            ) : null}
           </View>
+        ) : null}
 
-          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Pressable
-              className={`items-center justify-center rounded-full py-4 ${
-                canPay ? 'bg-blue-600' : 'bg-slate-200'
-              }`}
-              disabled={!canPay || isProcessingPayment}
-              onPress={() => {
-                if (paymentMethod === 'paystack') {
-                  void handleOpenPaystack();
-                  return;
-                }
-                void handleWalletPayment();
-              }}>
-              <View className="items-center">
-                <Text
-                  className={`text-base font-semibold ${
-                    canPay ? 'text-white' : 'text-slate-500'
-                  }`}>
-                  Pay Now · {formatCurrency(total)}
-                </Text>
-                <Text
-                  className={`text-xs font-semibold ${
-                    canPay ? 'text-blue-100' : 'text-slate-400'
-                  }`}>
-                  {isProcessingPayment ? 'Processing payment' : 'Final total'}
+        {showPaymentSections ? (
+          <View className="mt-6 px-6">
+            <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+              <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Apply coupon
+              </Text>
+              {serverCouponAmount > 0 ? (
+                <View className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                    Discount already applied
+                  </Text>
+                  <Text className="mt-2 text-sm font-semibold text-blue-700">
+                    A coupon discount is already active for this booking.
+                  </Text>
+                  <Text className="mt-1 text-xs text-blue-600">
+                    Discount: {formatCurrency(serverCouponAmount)}
+                  </Text>
+                </View>
+              ) : couponMessage ? (
+                <View className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                  <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                    Coupon applied
+                  </Text>
+                  <Text className="mt-2 text-sm font-semibold text-emerald-700">
+                    {couponMessage}
+                  </Text>
+                  <Text className="mt-1 text-xs text-emerald-600">
+                    Discount: {formatCurrency(discount)}
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text className="mt-2 text-sm text-slate-500">
+                    Add a promo code to unlock extra savings.
+                  </Text>
+                  <View className="mt-4 flex-row items-center gap-3">
+                    <TextInput
+                      className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
+                      placeholder="Enter coupon code"
+                      placeholderTextColor="#94a3b8"
+                      autoCapitalize="characters"
+                      value={couponCode}
+                      onChangeText={(value) => {
+                        setCouponCode(value);
+                        clearCouponFeedback();
+                      }}
+                    />
+                    <Pressable
+                      className={`rounded-2xl px-4 py-3 ${
+                        isApplyingCoupon ? 'bg-slate-300' : 'bg-blue-600'
+                      }`}
+                      disabled={isApplyingCoupon}
+                      onPress={handleApplyCoupon}>
+                      <Text className="text-sm font-semibold text-white">
+                        {isApplyingCoupon ? 'Applying' : 'Apply'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {couponError ? (
+                    <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                      <Text className="text-xs font-semibold text-rose-600">
+                        {couponError}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
+            </View>
+
+            <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+              <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Payment method
+              </Text>
+              <View className="mt-4 flex-row gap-3">
+                <Pressable
+                  className={`flex-1 rounded-2xl border px-4 py-3 ${
+                    paymentMethod === 'paystack'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                  onPress={() => {
+                    setPaymentMethod('paystack');
+                    void handleOpenPaystack();
+                  }}>
+                  <View className="flex-row items-center justify-between">
+                    <View>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          paymentMethod === 'paystack'
+                            ? 'text-blue-700'
+                            : 'text-slate-700'
+                        }`}>
+                        Pay Online
+                      </Text>
+                      <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
+                    </View>
+                    <View
+                      className={`h-5 w-5 items-center justify-center rounded-full border ${
+                        paymentMethod === 'paystack'
+                          ? 'border-blue-600 bg-blue-600'
+                          : 'border-slate-300'
+                      }`}>
+                      {paymentMethod === 'paystack' ? (
+                        <View className="h-2 w-2 rounded-full bg-white" />
+                      ) : null}
+                    </View>
+                  </View>
+                </Pressable>
+                <Pressable
+                  className={`flex-1 rounded-2xl border px-4 py-3 ${
+                    paymentMethod === 'wallet'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                  onPress={() => setPaymentMethod('wallet')}>
+                  <View className="flex-row items-center justify-between">
+                    <View>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          paymentMethod === 'wallet'
+                            ? 'text-blue-700'
+                            : 'text-slate-700'
+                        }`}>
+                        Pay via wallet
+                      </Text>
+                      <Text className="mt-1 text-xs text-slate-500">
+                        Balance {formatCurrency(walletBalance)}
+                      </Text>
+                    </View>
+                    <View
+                      className={`h-5 w-5 items-center justify-center rounded-full border ${
+                        paymentMethod === 'wallet'
+                          ? 'border-blue-600 bg-blue-600'
+                          : 'border-slate-300'
+                      }`}>
+                      {paymentMethod === 'wallet' ? (
+                        <View className="h-2 w-2 rounded-full bg-white" />
+                      ) : null}
+                    </View>
+                  </View>
+                </Pressable>
+              </View>
+              {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
+                <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                  <Text className="text-xs font-semibold text-rose-600">
+                    Wallet balance is lower than the booking total.
+                  </Text>
+                </View>
+              ) : null}
+              {paymentError ? (
+                <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                  <Text className="text-xs font-semibold text-rose-600">
+                    {paymentError}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {showPayNow ? (
+              <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+                <Pressable
+                  className={`items-center justify-center rounded-full py-4 ${
+                    canPay ? 'bg-blue-600' : 'bg-slate-200'
+                  }`}
+                  disabled={!canPay || isProcessingPayment}
+                  onPress={() => {
+                    if (paymentMethod === 'paystack') {
+                      void handleOpenPaystack();
+                      return;
+                    }
+                    void handleWalletPayment();
+                  }}>
+                  <View className="items-center">
+                    <Text
+                      className={`text-base font-semibold ${
+                        canPay ? 'text-white' : 'text-slate-500'
+                      }`}>
+                      Pay Now · {formatCurrency(total)}
+                    </Text>
+                    <Text
+                      className={`text-xs font-semibold ${
+                        canPay ? 'text-blue-100' : 'text-slate-400'
+                      }`}>
+                      {isProcessingPayment ? 'Processing payment' : 'Final total'}
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {isPaymentConfirmed ? (
+          <View className="mt-6 px-6">
+            <View className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
+              <View className="flex-row items-center gap-2">
+                <Feather name="check-circle" size={16} color="#047857" />
+                <Text className="text-sm font-semibold text-emerald-700">
+                  Payment confirmed
                 </Text>
               </View>
-            </Pressable>
+              <Text className="mt-2 text-sm text-emerald-700">
+                Your payment has been received and this booking is confirmed.
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : null}
       </ScrollView>
       <Modal
         visible={paystackVisible}

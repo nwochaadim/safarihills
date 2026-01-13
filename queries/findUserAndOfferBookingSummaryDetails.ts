@@ -11,6 +11,8 @@ export const FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS = gql`
     }
     findBookingSummaryDetails(bookingId: $bookingId) {
       id
+      timelineStatus
+      state
       referenceNumber
       listing {
         name
@@ -29,6 +31,8 @@ export const FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS = gql`
       subtotal
       cautionFee
       bookingTotal
+      couponAppliedAmount
+      timelineStatus
       offerCampaign {
         name
         bookableOption

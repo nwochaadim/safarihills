@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   SafeAreaView,
   Text,
@@ -137,7 +136,6 @@ export default function BookingsScreen() {
     'checking'
   );
   const [activeFilter, setActiveFilter] = useState<BookingStatus>('current');
-  const [selectedBooking, setSelectedBooking] = useState<BookingListItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
@@ -258,7 +256,6 @@ export default function BookingsScreen() {
       return;
     }
     setActiveFilter(status);
-    setSelectedBooking(null);
     setLoadMoreError(null);
   };
 
@@ -273,20 +270,10 @@ export default function BookingsScreen() {
     }
   };
 
-  const handleOpenListing = () => {
-    if (!selectedBooking?.listingId) {
-      setSelectedBooking(null);
-      return;
-    }
-    const listingId = selectedBooking.listingId;
-    setSelectedBooking(null);
-    router.push(`/listing/${listingId}`);
-  };
-
   const renderBookingCard = ({ item }: { item: BookingListItem }) => (
     <Pressable
       className="mb-5 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100"
-      onPress={() => setSelectedBooking(item)}>
+      onPress={() => router.push(`/booking/summary/${item.id}`)}>
       <View className="flex-row items-center gap-4">
         <LoadingImage
           source={{ uri: item.coverImage ?? AVATARS[0] }}
@@ -465,85 +452,6 @@ export default function BookingsScreen() {
             }
           />
 
-          <Modal visible={!!selectedBooking} transparent animationType="slide">
-            <View className="flex-1 justify-end bg-black/40">
-              <View className="rounded-t-[32px] bg-white px-6 pb-8 pt-6">
-                {selectedBooking ? (
-                  <>
-                    <View className="mb-4 flex-row items-start justify-between gap-3">
-                      <Text className="flex-1 text-2xl font-bold text-slate-900">
-                        {selectedBooking.apartmentName}
-                      </Text>
-                      <Pressable onPress={() => setSelectedBooking(null)}>
-                        <Feather name="x" size={22} color="#0f172a" />
-                      </Pressable>
-                    </View>
-                    <LoadingImage
-                      source={{
-                        uri: selectedBooking.coverImage ?? AVATARS[0],
-                      }}
-                      style={{ height: 192, width: '100%' }}
-                      className="rounded-3xl"
-                    />
-                    <View className="mt-4 flex-row items-center justify-between">
-                      <View>
-                        <Text className="text-xs uppercase tracking-[0.3em] text-blue-500">
-                          Guest
-                        </Text>
-                        <Text className="text-base font-semibold text-slate-900">
-                          {selectedBooking.guestName}
-                        </Text>
-                      </View>
-                      <View className="items-end">
-                        <Text className="text-xs uppercase tracking-[0.3em] text-blue-500">
-                          Stay
-                        </Text>
-                        <Text className="text-base font-semibold text-slate-900">
-                          {formatDateRange(selectedBooking.checkIn, selectedBooking.checkOut)}
-                        </Text>
-                      </View>
-                    </View>
-                    <View className="mt-4 rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-sm text-slate-500">Amount paid</Text>
-                        <Text className="text-sm font-semibold text-slate-900">
-                          {formatCurrency(selectedBooking.amountPaid)}
-                        </Text>
-                      </View>
-                      <View className="mt-2 flex-row items-center justify-between">
-                        <Text className="text-sm text-slate-500">Caution fee</Text>
-                        <Text className="text-sm font-semibold text-slate-900">
-                          {formatCurrency(selectedBooking.cautionFee)}
-                        </Text>
-                      </View>
-                      <View className="mt-2 flex-row items-center justify-between">
-                        <Text className="text-sm text-slate-500">Guests</Text>
-                        <Text className="text-sm font-semibold text-slate-900">
-                          {selectedBooking.numberOfOccupants}
-                        </Text>
-                      </View>
-                      <View className="mt-2 flex-row items-center justify-between">
-                        <Text className="text-sm text-slate-500">Reference</Text>
-                        <Text className="text-sm font-semibold text-slate-900">
-                          {selectedBooking.referenceNumber}
-                        </Text>
-                      </View>
-                    </View>
-                    {selectedBooking.listingId ? (
-                      <Pressable
-                        className="mt-6 flex-row items-center justify-center rounded-full bg-blue-600 py-4"
-                        onPress={handleOpenListing}>
-                        <Feather name="external-link" size={18} color="#fff" />
-                        <Text className="ml-2 text-base font-semibold text-white">
-                          View Apartment
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </>
-                ) : null}
-              </View>
-            </View>
-          </Modal>
         </>
       )}
     </SafeAreaView>

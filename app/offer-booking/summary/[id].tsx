@@ -56,6 +56,8 @@ type BookingSummaryResponse = {
   } | null;
   findBookingSummaryDetails: {
     id: string;
+    timelineStatus: string | null;
+    state: string | null;
     referenceNumber: string | null;
     listing: {
       name: string | null;
@@ -74,6 +76,7 @@ type BookingSummaryResponse = {
     subtotal: number | null;
     cautionFee: number | null;
     bookingTotal: number | null;
+    couponAppliedAmount: number | null;
     offerCampaign: {
       name: string | null;
       bookableOption: string | null;
@@ -158,6 +161,13 @@ export default function OfferBookingSummaryScreen() {
 
   const user = data?.user ?? null;
   const booking = data?.findBookingSummaryDetails ?? null;
+  const bookingState = booking?.state?.trim().toLowerCase() ?? '';
+  const bookingTimelineStatus = booking?.timelineStatus?.trim().toLowerCase() ?? '';
+  const isPastTimeline = bookingTimelineStatus === 'past';
+  const isPaymentPending = bookingState === 'payment_pending';
+  const isPaymentConfirmed = bookingState === 'payment_confirmed';
+  const showPaymentSections = isPaymentPending && !isPastTimeline;
+  const showPayNow = isPaymentPending && !isPastTimeline;
   const rewards = booking?.bookingRewards ?? [];
   const offerCampaign = booking?.offerCampaign ?? null;
   const isTimeBased =
@@ -590,120 +600,140 @@ export default function OfferBookingSummaryScreen() {
           </View>
         </View>
 
-        <View className="mt-6 px-6">
-          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Payment method
-            </Text>
-            <View className="mt-4 flex-row gap-3">
-              <Pressable
-                className={`flex-1 rounded-2xl border px-4 py-3 ${
-                  paymentMethod === 'paystack'
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-                onPress={() => {
-                  setPaymentMethod('paystack');
-                  void handleOpenPaystack();
-                }}>
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        paymentMethod === 'paystack' ? 'text-blue-700' : 'text-slate-700'
+        {showPaymentSections ? (
+          <View className="mt-6 px-6">
+            <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+              <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Payment method
+              </Text>
+              <View className="mt-4 flex-row gap-3">
+                <Pressable
+                  className={`flex-1 rounded-2xl border px-4 py-3 ${
+                    paymentMethod === 'paystack'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                  onPress={() => {
+                    setPaymentMethod('paystack');
+                    void handleOpenPaystack();
+                  }}>
+                  <View className="flex-row items-center justify-between">
+                    <View>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          paymentMethod === 'paystack' ? 'text-blue-700' : 'text-slate-700'
+                        }`}>
+                        Pay Online
+                      </Text>
+                      <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
+                    </View>
+                    <View
+                      className={`h-5 w-5 items-center justify-center rounded-full border ${
+                        paymentMethod === 'paystack'
+                          ? 'border-blue-600 bg-blue-600'
+                          : 'border-slate-300'
                       }`}>
-                      Pay Online
-                    </Text>
-                    <Text className="mt-1 text-xs text-slate-500">via Paystack</Text>
+                      {paymentMethod === 'paystack' ? (
+                        <View className="h-2 w-2 rounded-full bg-white" />
+                      ) : null}
+                    </View>
                   </View>
-                  <View
-                    className={`h-5 w-5 items-center justify-center rounded-full border ${
-                      paymentMethod === 'paystack'
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
-                    {paymentMethod === 'paystack' ? (
-                      <View className="h-2 w-2 rounded-full bg-white" />
-                    ) : null}
-                  </View>
-                </View>
-              </Pressable>
-              <Pressable
-                className={`flex-1 rounded-2xl border px-4 py-3 ${
-                  paymentMethod === 'wallet'
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-                onPress={() => setPaymentMethod('wallet')}>
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        paymentMethod === 'wallet' ? 'text-blue-700' : 'text-slate-700'
+                </Pressable>
+                <Pressable
+                  className={`flex-1 rounded-2xl border px-4 py-3 ${
+                    paymentMethod === 'wallet'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                  onPress={() => setPaymentMethod('wallet')}>
+                  <View className="flex-row items-center justify-between">
+                    <View>
+                      <Text
+                        className={`text-sm font-semibold ${
+                          paymentMethod === 'wallet' ? 'text-blue-700' : 'text-slate-700'
+                        }`}>
+                        Pay via wallet
+                      </Text>
+                      <Text className="mt-1 text-xs text-slate-500">
+                        Balance {formatCurrency(walletBalance)}
+                      </Text>
+                    </View>
+                    <View
+                      className={`h-5 w-5 items-center justify-center rounded-full border ${
+                        paymentMethod === 'wallet'
+                          ? 'border-blue-600 bg-blue-600'
+                          : 'border-slate-300'
                       }`}>
-                      Pay via wallet
-                    </Text>
-                    <Text className="mt-1 text-xs text-slate-500">
-                      Balance {formatCurrency(walletBalance)}
-                    </Text>
+                      {paymentMethod === 'wallet' ? (
+                        <View className="h-2 w-2 rounded-full bg-white" />
+                      ) : null}
+                    </View>
                   </View>
-                  <View
-                    className={`h-5 w-5 items-center justify-center rounded-full border ${
-                      paymentMethod === 'wallet'
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
-                    {paymentMethod === 'wallet' ? (
-                      <View className="h-2 w-2 rounded-full bg-white" />
-                    ) : null}
-                  </View>
+                </Pressable>
+              </View>
+              {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
+                <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                  <Text className="text-xs font-semibold text-rose-600">
+                    Wallet balance is lower than the booking total.
+                  </Text>
                 </View>
-              </Pressable>
+              ) : null}
+              {paymentError ? (
+                <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                  <Text className="text-xs font-semibold text-rose-600">{paymentError}</Text>
+                </View>
+              ) : null}
             </View>
-            {paymentMethod === 'wallet' && total > 0 && !walletHasFunds ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">
-                  Wallet balance is lower than the booking total.
-                </Text>
-              </View>
-            ) : null}
-            {paymentError ? (
-              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
-                <Text className="text-xs font-semibold text-rose-600">{paymentError}</Text>
-              </View>
-            ) : null}
-          </View>
 
-          <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Pressable
-              className={`items-center justify-center rounded-full py-4 ${
-                canPay ? 'bg-blue-600' : 'bg-slate-200'
-              }`}
-              disabled={!canPay || isProcessingPayment}
-              onPress={() => {
-                if (paymentMethod === 'paystack') {
-                  void handleOpenPaystack();
-                  return;
-                }
-                void handleWalletPayment();
-              }}>
-              <View className="items-center">
-                <Text
-                  className={`text-base font-semibold ${
-                    canPay ? 'text-white' : 'text-slate-500'
-                  }`}>
-                  Pay Now · {formatCurrency(total)}
-                </Text>
-                <Text
-                  className={`text-xs font-semibold ${
-                    canPay ? 'text-blue-100' : 'text-slate-400'
-                  }`}>
-                  {isProcessingPayment ? 'Processing payment' : 'Final total'}
+            {showPayNow ? (
+              <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+                <Pressable
+                  className={`items-center justify-center rounded-full py-4 ${
+                    canPay ? 'bg-blue-600' : 'bg-slate-200'
+                  }`}
+                  disabled={!canPay || isProcessingPayment}
+                  onPress={() => {
+                    if (paymentMethod === 'paystack') {
+                      void handleOpenPaystack();
+                      return;
+                    }
+                    void handleWalletPayment();
+                  }}>
+                  <View className="items-center">
+                    <Text
+                      className={`text-base font-semibold ${
+                        canPay ? 'text-white' : 'text-slate-500'
+                      }`}>
+                      Pay Now · {formatCurrency(total)}
+                    </Text>
+                    <Text
+                      className={`text-xs font-semibold ${
+                        canPay ? 'text-blue-100' : 'text-slate-400'
+                      }`}>
+                      {isProcessingPayment ? 'Processing payment' : 'Final total'}
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {isPaymentConfirmed ? (
+          <View className="mt-6 px-6">
+            <View className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
+              <View className="flex-row items-center gap-2">
+                <Feather name="check-circle" size={16} color="#047857" />
+                <Text className="text-sm font-semibold text-emerald-700">
+                  Payment confirmed
                 </Text>
               </View>
-            </Pressable>
+              <Text className="mt-2 text-sm text-emerald-700">
+                Your payment has been received and this booking is confirmed.
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : null}
       </ScrollView>
       <Modal
         visible={paystackVisible}
