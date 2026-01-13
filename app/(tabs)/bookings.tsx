@@ -1,4 +1,4 @@
-import { useQuery } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -6,6 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   SafeAreaView,
@@ -15,6 +16,7 @@ import {
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { DELETE_BOOKING } from '@/mutations/deleteBooking';
 import { FIND_BOOKINGS } from '@/queries/findBookings';
 
 type BookingStatus = 'current' | 'upcoming' | 'past';
@@ -66,6 +68,17 @@ type FindBookingsVariables = {
   status?: string | null;
   limit: number;
   offset: number;
+};
+
+type DeleteBookingResponse = {
+  deleteBooking: {
+    id: string | null;
+    errors: string[] | string | null;
+  } | null;
+};
+
+type DeleteBookingVariables = {
+  referenceNumber: string;
 };
 
 const PAGE_SIZE = 10;
@@ -140,6 +153,10 @@ export default function BookingsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [remoteHasMore, setRemoteHasMore] = useState(true);
+  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(
+    null
+  );
   const { paymentStatus, message } = useLocalSearchParams<{
     paymentStatus?: string | string[];
     message?: string | string[];
@@ -165,6 +182,9 @@ export default function BookingsScreen() {
     notifyOnNetworkStatusChange: true,
     skip: authStatus !== 'signed-in',
   });
+  const [deleteBooking] = useMutation<DeleteBookingResponse, DeleteBookingVariables>(
+    DELETE_BOOKING
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -257,10 +277,14 @@ export default function BookingsScreen() {
     }
     setActiveFilter(status);
     setLoadMoreError(null);
+    setDeleteError(null);
+    setDeletingBookingId(null);
   };
 
   const handleRefresh = async () => {
     setLoadMoreError(null);
+    setDeleteError(null);
+    setDeletingBookingId(null);
     setRefreshing(true);
     try {
       await refetch(queryVariables);
@@ -270,69 +294,150 @@ export default function BookingsScreen() {
     }
   };
 
-  const renderBookingCard = ({ item }: { item: BookingListItem }) => (
-    <Pressable
-      className="mb-5 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100"
-      onPress={() => router.push(`/booking/summary/${item.id}`)}>
-      <View className="flex-row items-center gap-4">
-        <LoadingImage
-          source={{ uri: item.coverImage ?? AVATARS[0] }}
-          style={{ height: 64, width: 64 }}
-          className="rounded-2xl"
-        />
-        <View className="flex-1">
-          <View className="flex-row items-center justify-between">
-            <Text
-              className="flex-1 text-base font-semibold text-slate-900"
-              numberOfLines={1}
-              ellipsizeMode="tail">
-              {item.apartmentName}
-            </Text>
-            <View className="items-end">
-              <Text className="text-xs font-semibold uppercase text-blue-500">
-                {item.apartmentType}
-              </Text>
-              {item.state ? (
-                <Text className="text-[10px] font-semibold uppercase text-slate-400">
-                  {formatStatusLabel(item.state)}
+  const handleDeleteBooking = async (booking: BookingListItem) => {
+    const referenceNumber = booking.referenceNumber?.trim();
+    if (!referenceNumber || referenceNumber === '—') {
+      setDeleteError({
+        id: booking.id,
+        message: 'Booking reference is missing.',
+      });
+      return;
+    }
+    setDeleteError(null);
+    setDeletingBookingId(booking.id);
+    try {
+      const { data: response } = await deleteBooking({
+        variables: { referenceNumber },
+      });
+      const errors = response?.deleteBooking?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setDeleteError({ id: booking.id, message: errors.join(' ') });
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setDeleteError({ id: booking.id, message: errors });
+        return;
+      }
+      await refetch(queryVariables);
+      setRemoteHasMore(true);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to delete booking right now.';
+      setDeleteError({ id: booking.id, message });
+    } finally {
+      setDeletingBookingId(null);
+    }
+  };
+
+  const confirmDeleteBooking = (booking: BookingListItem) => {
+    if (deletingBookingId) return;
+    Alert.alert(
+      'Delete booking?',
+      'This will remove your booking request. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => void handleDeleteBooking(booking),
+        },
+      ]
+    );
+  };
+
+  const renderBookingCard = ({ item }: { item: BookingListItem }) => {
+    const isPaymentPending = item.state?.trim().toLowerCase() === 'payment_pending';
+    const isDeleting = deletingBookingId === item.id;
+    const deleteMessage = deleteError?.id === item.id ? deleteError.message : null;
+
+    return (
+      <View className="mb-5 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
+        <Pressable onPress={() => router.push(`/booking/summary/${item.id}`)}>
+          <View className="flex-row items-center gap-4">
+            <LoadingImage
+              source={{ uri: item.coverImage ?? AVATARS[0] }}
+              style={{ height: 64, width: 64 }}
+              className="rounded-2xl"
+            />
+            <View className="flex-1">
+              <View className="flex-row items-center justify-between">
+                <Text
+                  className="flex-1 text-base font-semibold text-slate-900"
+                  numberOfLines={1}
+                  ellipsizeMode="tail">
+                  {item.apartmentName}
                 </Text>
-              ) : null}
+                <View className="items-end">
+                  <Text className="text-xs font-semibold uppercase text-blue-500">
+                    {item.apartmentType}
+                  </Text>
+                  {item.state ? (
+                    <Text className="text-[10px] font-semibold uppercase text-slate-400">
+                      {formatStatusLabel(item.state)}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+              <Text className="text-sm text-slate-500">{item.guestName}</Text>
+              <Text className="text-xs text-slate-400">
+                {formatDateRange(item.checkIn, item.checkOut)}
+              </Text>
             </View>
           </View>
-          <Text className="text-sm text-slate-500">{item.guestName}</Text>
-          <Text className="text-xs text-slate-400">
-            {formatDateRange(item.checkIn, item.checkOut)}
-          </Text>
-        </View>
+          <View className="mt-4 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <Feather name="credit-card" size={16} color="#0f172a" />
+              <Text className="text-sm font-semibold text-slate-800">
+                {formatCurrency(item.amountPaid)}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Feather name="shield" size={16} color="#0f172a" />
+              <Text className="text-xs font-semibold text-slate-500">
+                Caution {formatCurrency(item.cautionFee)}
+              </Text>
+            </View>
+          </View>
+          <View className="mt-3 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <Feather name="map-pin" size={16} color="#0f172a" />
+              <Text className="text-sm font-semibold text-slate-600">
+                {item.location}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Feather name="users" size={16} color="#0f172a" />
+              <Text className="text-sm font-semibold text-slate-800">
+                {item.numberOfOccupants} guests
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+
+        {isPaymentPending ? (
+          <View className="mt-4 border-t border-slate-100 pt-3">
+            <Pressable
+              className={`items-center justify-center rounded-full py-3 ${
+                isDeleting ? 'bg-rose-200' : 'bg-rose-600'
+              }`}
+              disabled={isDeleting}
+              onPress={() => confirmDeleteBooking(item)}>
+              <Text className="text-sm font-semibold text-white">
+                {isDeleting ? 'Deleting...' : 'Delete booking'}
+              </Text>
+            </Pressable>
+            {deleteMessage ? (
+              <View className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-rose-600">
+                  {deleteMessage}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
-      <View className="mt-4 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <Feather name="credit-card" size={16} color="#0f172a" />
-          <Text className="text-sm font-semibold text-slate-800">
-            {formatCurrency(item.amountPaid)}
-          </Text>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <Feather name="shield" size={16} color="#0f172a" />
-          <Text className="text-xs font-semibold text-slate-500">
-            Caution {formatCurrency(item.cautionFee)}
-          </Text>
-        </View>
-      </View>
-      <View className="mt-3 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <Feather name="map-pin" size={16} color="#0f172a" />
-          <Text className="text-sm font-semibold text-slate-600">{item.location}</Text>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <Feather name="users" size={16} color="#0f172a" />
-          <Text className="text-sm font-semibold text-slate-800">
-            {item.numberOfOccupants} guests
-          </Text>
-        </View>
-      </View>
-    </Pressable>
-  );
+    );
+  };
 
   const renderListFooter = () => {
     if (loadingMore) {
