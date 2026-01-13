@@ -16,6 +16,7 @@ type LinkConfig = {
 const accountLinks: LinkConfig[] = [
   { label: 'Personal details', href: '/profile/personal-details' },
   { label: 'Wallet', href: '/(tabs)/profile/wallet' },
+  { label: 'Rewards', href: '/profile/rewards' },
   { label: 'Referrals', href: '/profile/referrals' },
 ];
 
