@@ -204,6 +204,7 @@ export default function WalletScreen() {
       };
     });
   }, [walletData?.transactions]);
+  const hasTransactions = transactions.length > 0;
 
   const paystackReference = paystackConfig?.reference ?? '';
   const paystackAmount = paystackConfig?.amount ?? 0;
@@ -389,39 +390,52 @@ export default function WalletScreen() {
               </Text>
 
               <View className="mt-4">
-                {transactions.map((txn, index) => {
-                  const isCredit = txn.type === 'credit';
-                  const icon = isCredit ? 'arrow-down-left' : 'arrow-up-right';
-                  const amountColor = isCredit ? 'text-green-600' : 'text-rose-600';
-                  const pillBg = isCredit ? 'bg-green-50' : 'bg-rose-50';
-                  const iconColor = isCredit ? '#16a34a' : '#e11d48';
+                {hasTransactions ? (
+                  transactions.map((txn, index) => {
+                    const isCredit = txn.type === 'credit';
+                    const icon = isCredit ? 'arrow-down-left' : 'arrow-up-right';
+                    const amountColor = isCredit ? 'text-green-600' : 'text-rose-600';
+                    const pillBg = isCredit ? 'bg-green-50' : 'bg-rose-50';
+                    const iconColor = isCredit ? '#16a34a' : '#e11d48';
 
-                  return (
-                    <View
-                      key={txn.id}
-                      className={`flex-row items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3 ${
-                        index === 0 ? '' : 'mt-3'
-                      }`}>
-                      <View className="flex-row items-center gap-3">
-                        <View className={`rounded-full p-3 ${pillBg}`}>
-                          <Feather name={icon} size={18} color={iconColor} />
-                        </View>
-                        <View>
-                          <Text className="text-base font-semibold text-slate-900">{txn.title}</Text>
-                          <Text className="text-sm text-slate-500">{txn.date}</Text>
-                          {txn.pending ? (
-                            <Text className="text-xs font-semibold text-amber-600">
-                              Processing...
+                    return (
+                      <View
+                        key={txn.id}
+                        className={`flex-row items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3 ${
+                          index === 0 ? '' : 'mt-3'
+                        }`}>
+                        <View className="flex-row items-center gap-3">
+                          <View className={`rounded-full p-3 ${pillBg}`}>
+                            <Feather name={icon} size={18} color={iconColor} />
+                          </View>
+                          <View>
+                            <Text className="text-base font-semibold text-slate-900">
+                              {txn.title}
                             </Text>
-                          ) : null}
+                            <Text className="text-sm text-slate-500">{txn.date}</Text>
+                            {txn.pending ? (
+                              <Text className="text-xs font-semibold text-amber-600">
+                                Processing...
+                              </Text>
+                            ) : null}
+                          </View>
                         </View>
+                        <Text className={`text-base font-semibold ${amountColor}`}>
+                          {isCredit ? '+' : '-'}₦{txn.amount.toLocaleString()}
+                        </Text>
                       </View>
-                      <Text className={`text-base font-semibold ${amountColor}`}>
-                        {isCredit ? '+' : '-'}₦{txn.amount.toLocaleString()}
-                      </Text>
-                    </View>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <View className="items-center rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-6">
+                    <Text className="text-sm font-semibold text-slate-600">
+                      No transactions available.
+                    </Text>
+                    <Text className="mt-1 text-xs text-slate-500">
+                      Your wallet activity will show up here.
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 

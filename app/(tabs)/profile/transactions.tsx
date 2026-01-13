@@ -232,6 +232,7 @@ export default function TransactionsScreen() {
       };
     });
   }, [hasRemoteData, remoteTransactions]);
+  const showEmptyState = hasRemoteData && transactions.length === 0;
 
   const handleRefresh = useCallback(() => {
     if (refreshing) return;
@@ -323,45 +324,56 @@ export default function TransactionsScreen() {
         </Text>
 
         <View className="mt-6 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
-          {transactions.map((txn, index) => {
-            const isCredit = txn.type === 'credit';
-            const amountColor = isCredit ? 'text-green-600' : 'text-rose-600';
+          {showEmptyState ? (
+            <View className="items-center rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-6">
+              <Text className="text-sm font-semibold text-slate-600">
+                No transactions available.
+              </Text>
+              <Text className="mt-1 text-xs text-slate-500">
+                Your wallet activity will show up here.
+              </Text>
+            </View>
+          ) : (
+            transactions.map((txn, index) => {
+              const isCredit = txn.type === 'credit';
+              const amountColor = isCredit ? 'text-green-600' : 'text-rose-600';
 
-            return (
-              <View
-                key={txn.id}
-                className={`flex-row items-center justify-between py-4 ${
-                  index !== 0 ? 'border-t border-slate-100' : ''
-                }`}>
-                <View className="flex-row items-center gap-3">
-                  <View
-                    className={`rounded-full p-3 ${
-                      isCredit ? 'bg-green-50' : 'bg-rose-50'
-                    }`}>
-                    <Feather
-                      name={isCredit ? 'arrow-down-left' : 'arrow-up-right'}
-                      size={18}
-                      color={isCredit ? '#16a34a' : '#e11d48'}
-                    />
-                  </View>
-                  <View>
-                    <Text className="text-base font-semibold text-slate-900">
-                      {txn.title}
-                    </Text>
-                    <Text className="text-sm text-slate-500">{txn.date}</Text>
-                    {txn.pending ? (
-                      <Text className="mt-1 text-xs font-semibold text-amber-600">
-                        Processing...
+              return (
+                <View
+                  key={txn.id}
+                  className={`flex-row items-center justify-between py-4 ${
+                    index !== 0 ? 'border-t border-slate-100' : ''
+                  }`}>
+                  <View className="flex-row items-center gap-3">
+                    <View
+                      className={`rounded-full p-3 ${
+                        isCredit ? 'bg-green-50' : 'bg-rose-50'
+                      }`}>
+                      <Feather
+                        name={isCredit ? 'arrow-down-left' : 'arrow-up-right'}
+                        size={18}
+                        color={isCredit ? '#16a34a' : '#e11d48'}
+                      />
+                    </View>
+                    <View>
+                      <Text className="text-base font-semibold text-slate-900">
+                        {txn.title}
                       </Text>
-                    ) : null}
+                      <Text className="text-sm text-slate-500">{txn.date}</Text>
+                      {txn.pending ? (
+                        <Text className="mt-1 text-xs font-semibold text-amber-600">
+                          Processing...
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
+                  <Text className={`text-base font-semibold ${amountColor}`}>
+                    {isCredit ? '+' : '-'}₦{txn.amount.toLocaleString()}
+                  </Text>
                 </View>
-                <Text className={`text-base font-semibold ${amountColor}`}>
-                  {isCredit ? '+' : '-'}₦{txn.amount.toLocaleString()}
-                </Text>
-              </View>
-            );
-          })}
+              );
+            })
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
