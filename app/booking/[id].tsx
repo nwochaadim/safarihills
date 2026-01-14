@@ -1,12 +1,16 @@
-import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_BOOKING_WITHOUT_OFFER } from '@/mutations/createBookingWithoutOffer';
 import { NEW_BOOKING_DETAILS } from '@/queries/newBookingDetails';
+import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Linking,
@@ -334,6 +338,9 @@ const getBookingTypeIcon = (option: BookingOption) => (option === 'room' ? 'key'
 
 export default function BookingScreen() {
   const router = useRouter();
+  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
+    'checking'
+  );
   const { id: idParam, referenceNumber: referenceParam } = useLocalSearchParams<{
     id?: string;
     referenceNumber?: string;
@@ -342,7 +349,7 @@ export default function BookingScreen() {
   const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
   const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
     variables: { listingId: id ?? '' },
-    skip: !id,
+    skip: !id || authStatus !== 'signed-in',
   });
   const [createBooking, { loading: isCreating }] = useMutation<
     CreateBookingResponse,
@@ -381,6 +388,19 @@ export default function BookingScreen() {
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingReference, setBookingReference] = useState(
     () => referenceNumber ?? generateBookingReference()
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      setAuthStatus('checking');
+      AuthStatus.isSignedIn().then((signedIn) => {
+        if (isActive) setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
+      });
+      return () => {
+        isActive = false;
+      };
+    }, [])
   );
 
   const bookingOptions = useMemo(() => {
@@ -596,6 +616,40 @@ export default function BookingScreen() {
       return next;
     });
   };
+
+  if (authStatus === 'checking') {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#2563eb" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (authStatus === 'signed-out') {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 px-6 pt-4">
+          <BackButton onPress={() => router.back()} />
+          <View className="flex-1 items-center justify-center px-2">
+            <BlankSlate
+              title="Sign in to continue"
+              description="Create an account or sign in to complete your booking."
+              iconName="user"
+              primaryAction={{ label: 'Sign in', onPress: () => router.push('/auth/login') }}
+              secondaryAction={{
+                label: 'Create account',
+                onPress: () => router.push('/auth/sign-up'),
+              }}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading || (!entireApartment && roomCategories.length === 0)) {
     return null;
