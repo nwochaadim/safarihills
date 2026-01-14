@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 
 import { LOGIN_GUEST } from '@/mutations/loginGuest';
+import { maybePromptForPushNotifications } from '@/lib/pushNotifications';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -86,6 +87,7 @@ export default function LoginScreen() {
 
       if (response?.token) {
         await SecureStore.setItemAsync('authToken', response.token);
+        void maybePromptForPushNotifications();
         router.replace('/(tabs)/explore');
         return;
       }

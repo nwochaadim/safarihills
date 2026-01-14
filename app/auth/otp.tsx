@@ -16,6 +16,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import { RESEND_GUEST_OTP } from '@/mutations/resendGuestOtp';
 import { VERIFY_GUEST_OTP } from '@/mutations/verifyGuestOtp';
+import { maybePromptForPushNotifications } from '@/lib/pushNotifications';
 
 const OTP_LENGTH = 4;
 const RESEND_INTERVAL_SECONDS = 60;
@@ -157,6 +158,7 @@ export default function OtpScreen() {
       if (response?.valid) {
         if (response.token) {
           await SecureStore.setItemAsync('authToken', response.token);
+          void maybePromptForPushNotifications();
         }
         Alert.alert('Verification complete', 'Your account is now verified.');
         router.replace('/(tabs)/explore');
