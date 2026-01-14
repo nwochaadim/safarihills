@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "200536731933",
+    "project_id": "safarihills-f29da",
+    "storage_bucket": "safarihills-f29da.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:200536731933:android:4ddf63f2f28c46f9f4f1f4",
+        "android_client_info": {
+          "package_name": "com.safarihills.listings"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBf6KuCrxDsM79XksEq77KvtFU-Jdv6_Jw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

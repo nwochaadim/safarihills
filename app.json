@@ -1,17 +1,27 @@
 {
   "expo": {
     "name": "safarihills",
-    "slug": "safarihills",
-    "version": "1.0.0",
+    "slug": "safarihill",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "safarihills",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.safarihills.app",
+      "buildNumber": "1",
+      "icon": "./assets/images/SafariLogo.png",
+      "notification": {
+        "icon": "./assets/images/SafariLogo.png",
+        "color": "#fff"
+      }
     },
     "android": {
+      "package": "com.safarihills.listings",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -50,6 +60,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8b4ca1cb-15af-4f50-9746-463ed43190e9"
+      }
+    },
+    "owner": "adiim"
   }
 }
