@@ -1,12 +1,16 @@
-import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_OFFER_BOOKING } from '@/mutations/createOfferBooking';
 import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
+import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Linking,
@@ -474,6 +478,9 @@ const buildDerivedCheckOutTime = (
 
 export default function OfferBookingScreen() {
   const router = useRouter();
+  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
+    'checking'
+  );
   const {
     offerId: offerParam,
     listingId: listingParam,
@@ -491,7 +498,7 @@ export default function OfferBookingScreen() {
     NEW_BOOKING_DETAILS_FOR_OFFER,
     {
       variables: { offerId: offerId ?? '', listingId: listingId ?? '' },
-      skip: !offerId || !listingId,
+      skip: !offerId || !listingId || authStatus !== 'signed-in',
     }
   );
   const [createOfferBooking, { loading: isCreating }] = useMutation<
@@ -548,6 +555,19 @@ export default function OfferBookingScreen() {
     () => referenceNumber ?? generateBookingReference()
   );
   const todayLabel = useMemo(() => formatTodayLabel(), []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      setAuthStatus('checking');
+      AuthStatus.isSignedIn().then((signedIn) => {
+        if (isActive) setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
+      });
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   const bookingOptions = useMemo<BookingOption[]>(() => {
     const options: BookingOption[] = [];
@@ -850,6 +870,40 @@ export default function OfferBookingScreen() {
       return next;
     });
   };
+
+  if (authStatus === 'checking') {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#2563eb" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (authStatus === 'signed-out') {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 px-6 pt-4">
+          <BackButton onPress={() => router.back()} />
+          <View className="flex-1 items-center justify-center px-2">
+            <BlankSlate
+              title="Sign in to continue"
+              description="Create an account or sign in to complete your booking."
+              iconName="user"
+              primaryAction={{ label: 'Sign in', onPress: () => router.push('/auth/login') }}
+              secondaryAction={{
+                label: 'Create account',
+                onPress: () => router.push('/auth/sign-up'),
+              }}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading || (!entireApartment && roomCategories.length === 0)) {
     return null;
