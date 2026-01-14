@@ -2,7 +2,6 @@ import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,6 +15,7 @@ import {
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { AuthStatus } from '@/lib/authStatus';
 import { DELETE_BOOKING } from '@/mutations/deleteBooking';
 import { FIND_BOOKINGS } from '@/queries/findBookings';
 
@@ -190,13 +190,9 @@ export default function BookingsScreen() {
     useCallback(() => {
       let isActive = true;
       setAuthStatus('checking');
-      SecureStore.getItemAsync('authToken')
-        .then((token) => {
-          if (isActive) setAuthStatus(token ? 'signed-in' : 'signed-in');
-        })
-        .catch(() => {
-          if (isActive) setAuthStatus('signed-out');
-        });
+      AuthStatus.isSignedIn().then((signedIn) => {
+        if (isActive) setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
+      });
 
       return () => {
         isActive = false;

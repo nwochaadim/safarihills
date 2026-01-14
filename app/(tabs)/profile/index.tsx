@@ -2,11 +2,11 @@ import { useQuery } from '@apollo/client';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 
 import { BlankSlate } from '@/components/BlankSlate';
+import { AuthStatus } from '@/lib/authStatus';
 import { PROFILE_QUERY } from '@/queries/profile';
 
 type LinkConfig = {
@@ -64,13 +64,9 @@ export default function ProfileScreen() {
     useCallback(() => {
       let isActive = true;
       setAuthStatus('checking');
-      SecureStore.getItemAsync('authToken')
-        .then((token) => {
-          if (isActive) setAuthStatus(token ? 'signed-in' : 'signed-out');
-        })
-        .catch(() => {
-          if (isActive) setAuthStatus('signed-out');
-        });
+      AuthStatus.isSignedIn().then((signedIn) => {
+        if (isActive) setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
+      });
       return () => {
         isActive = false;
       };

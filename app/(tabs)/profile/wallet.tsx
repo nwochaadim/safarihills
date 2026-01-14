@@ -5,7 +5,6 @@ import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Modal,
@@ -20,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { BlankSlate } from '@/components/BlankSlate';
+import { AuthStatus } from '@/lib/authStatus';
 
 type NormalizedTransaction = {
   id: string;
@@ -152,13 +152,9 @@ export default function WalletScreen() {
     useCallback(() => {
       let isActive = true;
       setAuthStatus('checking');
-      SecureStore.getItemAsync('authToken')
-        .then((token) => {
-          if (isActive) setAuthStatus(token ? 'signed-in' : 'signed-out');
-        })
-        .catch(() => {
-          if (isActive) setAuthStatus('signed-out');
-        });
+      AuthStatus.isSignedIn().then((signedIn) => {
+        if (isActive) setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
+      });
       return () => {
         isActive = false;
       };
