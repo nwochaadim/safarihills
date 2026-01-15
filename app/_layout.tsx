@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import "../global.css";
 
 import { apolloClient } from '@/lib/apolloClient';
-import { maybePromptForPushNotifications } from '@/lib/pushNotifications';
+import { maybePromptForPushNotifications, usePushNotificationHandler } from '@/lib/pushNotifications';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -15,6 +15,8 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  usePushNotificationHandler();
 
   useEffect(() => {
     void maybePromptForPushNotifications();
