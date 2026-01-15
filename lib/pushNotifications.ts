@@ -14,6 +14,7 @@ let hasPromptedThisSession = false;
 let lastHandledNotificationId: string | null = null;
 let registrationInFlight = false;
 let promptInFlight = false;
+let hasLoggedPushTokenThisSession = false;
 
 const PUSH_NOTIFICATIONS_REGISTERED_KEY = 'pushNotificationsRegistered';
 const PUSH_NOTIFICATIONS_TOKEN_KEY = 'pushNotificationsToken';
@@ -84,13 +85,19 @@ const getExpoPushToken = async (): Promise<string | null> => {
   return token?.data ?? null;
 };
 
-const registerDeviceWithBackend = async (): Promise<void> => {
+const logExpoPushTokenOnce = (token: string): void => {
+  if (hasLoggedPushTokenThisSession) return;
+  console.log('Expo push token:', token);
+  hasLoggedPushTokenThisSession = true;
+};
+
+const registerDeviceWithBackend = async (pushTokenOverride?: string): Promise<void> => {
   if (registrationInFlight) return;
   registrationInFlight = true;
   try {
     if (await hasRegisteredPushNotifications()) return;
 
-    const pushToken = await getExpoPushToken();
+    const pushToken = pushTokenOverride ?? (await getExpoPushToken());
     if (!pushToken) return;
 
     const { data } = await apolloClient.mutate({
@@ -119,6 +126,12 @@ const registerDeviceWithBackend = async (): Promise<void> => {
 const requestAndRegisterPushNotifications = async (): Promise<void> => {
   const permissions = await Notifications.requestPermissionsAsync();
   if (permissions.status === 'granted') {
+    const pushToken = await getExpoPushToken();
+    if (pushToken) {
+      logExpoPushTokenOnce(pushToken);
+      await registerDeviceWithBackend(pushToken);
+      return;
+    }
     await registerDeviceWithBackend();
   }
 };
@@ -131,6 +144,12 @@ export const maybePromptForPushNotifications = async (): Promise<void> => {
 
   const permissions = await Notifications.getPermissionsAsync();
   if (permissions.status === 'granted') {
+    const pushToken = await getExpoPushToken();
+    if (pushToken) {
+      logExpoPushTokenOnce(pushToken);
+      await registerDeviceWithBackend(pushToken);
+      return;
+    }
     await registerDeviceWithBackend();
     return;
   }
