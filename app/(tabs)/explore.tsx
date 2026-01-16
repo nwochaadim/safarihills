@@ -221,6 +221,7 @@ type V2ExploreListingsVariables = {
   checkOut?: string | null;
   numberOfGuests?: number | null;
   amenities?: string[] | null;
+  apartmentType?: string | null;
   limit: number;
   offset: number;
 };
@@ -241,6 +242,7 @@ const buildQueryVariables = (filters: FilterState): V2ExploreListingsVariables =
     checkOut: filters.checkOut ? formatQueryDate(filters.checkOut) : null,
     numberOfGuests,
     amenities: filters.amenities.length > 0 ? filters.amenities : null,
+    apartmentType: filters.type ? filters.type : null,
     limit: PAGE_SIZE,
     offset: 0,
   };
@@ -301,26 +303,8 @@ export default function ExploreScreen() {
     return items.map(mapExploreListing);
   }, [data]);
 
-  const filteredListings = useMemo(() => {
-    const minBudget = parseCurrencyInput(appliedFilters.minBudget);
-    const maxBudget = parseCurrencyInput(appliedFilters.maxBudget);
-    const numberOfGuests = appliedFilters.guests
-      ? appliedFilters.guests === '6+'
-        ? 6
-        : Number(appliedFilters.guests)
-      : null;
-
-    return remoteListings.filter((listing) => {
-      if (appliedFilters.type && listing.apartmentType !== appliedFilters.type) return false;
-      if (minBudget !== null && listing.minimumPrice < minBudget) return false;
-      if (maxBudget !== null && listing.minimumPrice > maxBudget) return false;
-      if (numberOfGuests && listing.maxNumberOfGuestsAllowed < numberOfGuests) return false;
-      return true;
-    });
-  }, [remoteListings, appliedFilters]);
-
   const remoteListingCount = data?.v2ExploreListings?.length ?? 0;
-  const listings = filteredListings;
+  const listings = remoteListings;
   const hasMore = !error && remoteHasMore;
   const isNetworkError = Boolean(error?.networkError);
 

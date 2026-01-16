@@ -8,6 +8,7 @@ export const V2_EXPLORE_LISTINGS = gql`
     $checkOut: String
     $numberOfGuests: Int
     $amenities: [String!]
+    $apartmentType: String
     $limit: Int
     $offset: Int
   ) {
@@ -22,6 +23,7 @@ export const V2_EXPLORE_LISTINGS = gql`
       checkOut: $checkOut
       numberOfGuests: $numberOfGuests
       amenities: $amenities
+      apartmentType: $apartmentType
       limit: $limit
       offset: $offset
     ) {
