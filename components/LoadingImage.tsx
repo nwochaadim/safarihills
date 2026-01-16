@@ -1,5 +1,6 @@
 import { ComponentProps, useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 type LoadingImageProps = ComponentProps<typeof Image> & {
   className?: string;
@@ -12,10 +13,11 @@ export function LoadingImage({ className, style, onLoadEnd, ...props }: LoadingI
     <View className={`overflow-hidden ${className ?? ''}`} style={style}>
       <Image
         {...props}
+        cachePolicy={props.cachePolicy ?? 'memory-disk'}
         style={[StyleSheet.absoluteFillObject, StyleSheet.flatten(style)]}
-        onLoadEnd={(event) => {
+        onLoadEnd={() => {
           setIsLoading(false);
-          onLoadEnd?.(event);
+          onLoadEnd?.();
         }}
       />
       {isLoading ? (
