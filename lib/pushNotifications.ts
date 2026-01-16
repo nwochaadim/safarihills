@@ -15,9 +15,23 @@ let lastHandledNotificationId: string | null = null;
 let registrationInFlight = false;
 let promptInFlight = false;
 let hasLoggedPushTokenThisSession = false;
+let notificationHandlerConfigured = false;
 
 const PUSH_NOTIFICATIONS_REGISTERED_KEY = 'pushNotificationsRegistered';
 const PUSH_NOTIFICATIONS_TOKEN_KEY = 'pushNotificationsToken';
+
+const ensureNotificationHandlerConfigured = (): void => {
+  if (notificationHandlerConfigured || Platform.OS === 'web') return;
+  notificationHandlerConfigured = true;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+};
 
 type NotificationPayload = {
   path?: string;
@@ -185,6 +199,8 @@ export const usePushNotificationHandler = (): void => {
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
+
+    ensureNotificationHandlerConfigured();
 
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       handleNotificationResponse(response, router);
