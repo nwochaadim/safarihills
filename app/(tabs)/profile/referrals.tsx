@@ -56,51 +56,6 @@ const referralSteps = [
 ];
 
 const PAGE_SIZE = 10;
-const FALLBACK_REFERRALS: ReferralRecord[] = [
-  {
-    id: '1',
-    invitee: { name: 'Chika Okafor', signupDate: '2024-03-01T10:00:00+01:00' },
-  },
-  {
-    id: '2',
-    invitee: { name: 'Ifeanyi Udo', signupDate: '2024-02-26T10:00:00+01:00' },
-  },
-  {
-    id: '3',
-    invitee: { name: 'Adaeze Obi', signupDate: '2024-02-20T10:00:00+01:00' },
-  },
-  {
-    id: '4',
-    invitee: { name: 'Seyi Adebayo', signupDate: '2024-02-10T10:00:00+01:00' },
-  },
-  {
-    id: '5',
-    invitee: { name: 'Tosin Alabi', signupDate: '2024-02-02T10:00:00+01:00' },
-  },
-  {
-    id: '6',
-    invitee: { name: 'Binta Garba', signupDate: '2024-01-25T10:00:00+01:00' },
-  },
-  {
-    id: '7',
-    invitee: { name: 'Tunde Adeyemi', signupDate: '2024-01-18T10:00:00+01:00' },
-  },
-  {
-    id: '8',
-    invitee: { name: 'Ngozi Nwosu', signupDate: '2024-01-10T10:00:00+01:00' },
-  },
-  {
-    id: '9',
-    invitee: { name: 'Kola Akin', signupDate: '2024-01-03T10:00:00+01:00' },
-  },
-  {
-    id: '10',
-    invitee: { name: 'Zainab Musa', signupDate: '2023-12-28T10:00:00+01:00' },
-  },
-];
-
-const FALLBACK_REFERRAL_CODE = 'SAF-2048';
-
 const formatReferralDate = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Signed up • Date unavailable';
@@ -121,7 +76,7 @@ export default function ReferralsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const modalMaxHeight = Math.min(640, Dimensions.get('window').height * 0.78);
 
-  const { data, loading, fetchMore, refetch } = useQuery<
+  const { data, loading, error, fetchMore, refetch } = useQuery<
     LoadReferralsResponse,
     LoadReferralsVariables
   >(LOAD_REFERRALS, {
@@ -129,10 +84,11 @@ export default function ReferralsScreen() {
     notifyOnNetworkStatusChange: true,
   });
 
-  const referralCode = data?.user?.referralCode?.trim() || FALLBACK_REFERRAL_CODE;
+  const referralCode = data?.user?.referralCode?.trim() ?? '';
   const totalReferralsCount = data?.user?.totalReferrals ?? null;
   const fetchedReferrals = data?.referrals;
   const hasRemoteData = Array.isArray(fetchedReferrals);
+  const showErrorOnly = Boolean(error) && !data;
 
   useEffect(() => {
     if (!hasRemoteData) return;
@@ -149,10 +105,9 @@ export default function ReferralsScreen() {
   }, [hasRemoteData, remoteReferrals.length, totalReferralsCount]);
 
   const normalizedReferrals = useMemo<NormalizedReferral[]>(() => {
-    const showFallback = !hasRemoteData && !loading;
-    const base = hasRemoteData ? remoteReferrals : showFallback ? FALLBACK_REFERRALS : [];
-    return base.map((ref, index) => {
-      const name = ref?.invitee?.name?.trim() || `Referral ${index + 1}`;
+    if (!hasRemoteData) return [];
+    return remoteReferrals.map((ref, index) => {
+      const name = ref?.invitee?.name?.trim() || 'Invitee';
       const createdAt = ref?.invitee?.signupDate ?? '';
       const date = createdAt ? formatReferralDate(createdAt) : 'Signed up • Date unavailable';
       return {
@@ -161,7 +116,7 @@ export default function ReferralsScreen() {
         date,
       };
     });
-  }, [hasRemoteData, loading, remoteReferrals]);
+  }, [hasRemoteData, remoteReferrals]);
 
   const totalReferrals =
     typeof totalReferralsCount === 'number'
@@ -238,6 +193,37 @@ export default function ReferralsScreen() {
     remoteReferrals.length,
     totalReferralsCount,
   ]);
+
+  if (loading && !data) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <View className="px-6 pt-6">
+          <BackButton onPress={() => router.back()} />
+        </View>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#2563eb" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (showErrorOnly) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50">
+        <View className="px-6 pt-6">
+          <BackButton onPress={() => router.back()} />
+        </View>
+        <View className="flex-1 items-center justify-center px-6">
+          <View className="w-full rounded-3xl border border-rose-200 bg-rose-50 px-4 py-4">
+            <Text className="text-base font-semibold text-rose-700">
+              Unable to load referrals right now.
+            </Text>
+            <Text className="mt-1 text-sm text-rose-600">Please try again later.</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
