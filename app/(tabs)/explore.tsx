@@ -185,7 +185,6 @@ type ExploreListing = {
   minimumPrice: number;
   rating: number;
   area: string;
-  pointsToWin: number;
   maxNumberOfGuestsAllowed: number;
   bookingOptions: BookingOption[];
 };
@@ -199,7 +198,6 @@ type ExploreListingResponse = {
   minimumPrice: number;
   rating: number;
   area: string;
-  pointsToWin: number;
   maxNumberOfGuestsAllowed: number;
   bookableOptions: string[];
 };
@@ -265,7 +263,6 @@ const mapExploreListing = (listing: ExploreListingResponse): ExploreListing => (
   minimumPrice: listing.minimumPrice,
   rating: listing.rating ?? 0,
   area: listing.area,
-  pointsToWin: listing.pointsToWin,
   maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
   bookingOptions: mapBookableOptions(listing.bookableOptions),
 });
@@ -458,10 +455,15 @@ export default function ExploreScreen() {
             <Text className="flex-1 text-xl font-semibold text-slate-900" numberOfLines={2}>
               {item.name}
             </Text>
-            <Text className="text-base font-semibold text-blue-600">
-              ₦{item.minimumPrice.toLocaleString()}
-              <Text className="text-xs font-medium text-slate-500"> / night</Text>
-            </Text>
+            <View className="items-end">
+              <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                From
+              </Text>
+              <Text className="text-base font-semibold text-blue-600">
+                ₦{item.minimumPrice.toLocaleString()}
+              </Text>
+              <Text className="text-[10px] font-medium text-slate-500">/ night</Text>
+            </View>
           </View>
           <View className="mt-1 flex-row items-center gap-2">
             <Feather name="map-pin" size={14} color="#94a3b8" />
@@ -494,10 +496,6 @@ export default function ExploreScreen() {
               <Text className="text-sm font-medium text-slate-600">
                 Up to {item.maxNumberOfGuestsAllowed} guests
               </Text>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <Feather name="award" size={16} color="#0f172a" />
-              <Text className="text-sm font-semibold text-slate-800">+{item.pointsToWin} pts/night</Text>
             </View>
           </View>
         </View>

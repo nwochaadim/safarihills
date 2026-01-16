@@ -340,14 +340,13 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
               <Text className="mt-1 text-base text-slate-500">{listing.area}</Text>
             </View>
             <View className="items-end flex-shrink">
+              <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                From
+              </Text>
               <Text className="text-lg font-semibold text-blue-600">
                 ₦{listing.minimumPrice.toLocaleString()}
               </Text>
               <Text className="text-xs font-medium text-slate-500">per night</Text>
-              <View className="mt-2 flex-row items-center gap-2">
-                <Feather name="award" size={16} color="#0f172a" />
-                <Text className="text-sm font-semibold text-slate-800">+{listing.pointsToWin} pts</Text>
-              </View>
             </View>
           </View>
 

@@ -37,7 +37,6 @@ export const V2_EXPLORE_LISTINGS = gql`
       apartmentType
       rating
       area
-      pointsToWin
       maxNumberOfGuestsAllowed
       bookableOptions
     }
