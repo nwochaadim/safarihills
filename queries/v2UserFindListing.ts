@@ -32,6 +32,14 @@ export const V2_USER_FIND_LISTING = gql`
         largeUrl
         xtraLargeUrl
       }
+      attractions {
+        id
+        name
+        description
+        address
+        googleLocation
+        avatar
+      }
     }
   }
 `;

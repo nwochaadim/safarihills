@@ -2,7 +2,14 @@ import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { BookingOption, findListingById, ListingDetail, ListingReview, LISTINGS } from '@/data/listings';
+import {
+  BookingOption,
+  findListingById,
+  ListingAttraction,
+  ListingDetail,
+  ListingReview,
+  LISTINGS,
+} from '@/data/listings';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -67,6 +74,15 @@ type RemotePropertyPhoto = {
   xtraLargeUrl: string | null;
 };
 
+type RemoteAttraction = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  address: string | null;
+  googleLocation: string | null;
+  avatar: string | null;
+};
+
 type RemoteListing = {
   id: string;
   name: string | null;
@@ -83,6 +99,7 @@ type RemoteListing = {
   reviews: RemoteReview[] | null;
   propertyPhotos: RemotePropertyPhoto[] | null;
   bookedDays: Record<string, boolean> | null;
+  attractions: RemoteAttraction[] | null;
 };
 
 type V2UserFindListingResponse = {
@@ -119,6 +136,28 @@ const getGalleryFromPhotos = (photos: RemotePropertyPhoto[] | null | undefined) 
   return photos
     .map((photo) => photo.largeUrl || photo.mediumUrl || photo.smallUrl || photo.xtraLargeUrl || photo.tinyUrl)
     .filter((url): url is string => Boolean(url));
+};
+
+const mapAttractions = (
+  attractions: RemoteAttraction[] | null | undefined,
+  fallbackImage: string
+): ListingAttraction[] | null => {
+  if (!Array.isArray(attractions)) return null;
+  return attractions
+    .map((attraction, index) => {
+      const name = attraction?.name?.trim() || `Attraction ${index + 1}`;
+      const description = attraction?.description?.trim() || 'Details coming soon.';
+      const mapUrl = attraction?.googleLocation?.trim() || '';
+      const image = attraction?.avatar?.trim() || fallbackImage;
+      return {
+        id: attraction?.id ?? `${name}-${index}`,
+        name,
+        description,
+        image,
+        mapUrl,
+      };
+    })
+    .filter((item) => item.name.length > 0);
 };
 
 export default function ListingDetailScreen() {
@@ -176,6 +215,8 @@ export default function ListingDetailScreen() {
     const bookingOptions = remoteListing.bookableOptions
       ? mapBookableOptions(remoteListing.bookableOptions)
       : baseListing.bookingOptions;
+    const fallbackAttractionImage = finalGallery[0] ?? baseListing.coverPhoto;
+    const attractions = mapAttractions(remoteListing.attractions, fallbackAttractionImage);
 
     return {
       ...baseListing,
@@ -193,6 +234,7 @@ export default function ListingDetailScreen() {
       amenities: remoteListing.amenities ?? baseListing.amenities,
       bookingOptions,
       reviews: reviews ?? baseListing.reviews,
+      attractions: attractions ?? baseListing.attractions,
       gallery: finalGallery,
       coverPhoto:
         remoteListing.coverPhoto ??
@@ -237,7 +279,8 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const handleOpenAttraction = (mapUrl: string) => {
-    Linking.openURL(mapUrl);
+    if (!mapUrl) return;
+    Linking.openURL(mapUrl).catch(() => null);
   };
 
   const renderBookingOptions = () => (
@@ -397,10 +440,13 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
                 showsHorizontalScrollIndicator={false}
                 className="mt-4"
                 contentContainerStyle={{ paddingRight: 16 }}>
-                {attractions.map((attraction) => (
+                {attractions.map((attraction) => {
+                  const canOpenMap = Boolean(attraction.mapUrl);
+                  return (
                   <Pressable
                     key={attraction.id}
                     onPress={() => handleOpenAttraction(attraction.mapUrl)}
+                    disabled={!canOpenMap}
                     className="mr-4 w-64 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-100">
                     <LoadingImage
                       source={{ uri: attraction.image }}
@@ -415,14 +461,18 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
                         {attraction.description}
                       </Text>
                       <View className="mt-3 flex-row items-center gap-2">
-                        <Feather name="map-pin" size={14} color="#1d4ed8" />
-                        <Text className="text-xs font-semibold text-blue-600">
-                          Open in Google Maps
+                        <Feather name="map-pin" size={14} color={canOpenMap ? '#1d4ed8' : '#94a3b8'} />
+                        <Text
+                          className={`text-xs font-semibold ${
+                            canOpenMap ? 'text-blue-600' : 'text-slate-400'
+                          }`}>
+                          {canOpenMap ? 'Open in Google Maps' : 'Map link unavailable'}
                         </Text>
                       </View>
                     </View>
                   </Pressable>
-                ))}
+                  );
+                })}
               </ScrollView>
             )}
           </View>
