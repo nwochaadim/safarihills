@@ -4,12 +4,14 @@ import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -56,6 +58,22 @@ const referralSteps = [
 ];
 
 const PAGE_SIZE = 10;
+const mergeReferrals = (current: ReferralRecord[], incoming: ReferralRecord[]) => {
+  if (!incoming.length) return current;
+  const seen = new Set<string>();
+  current.forEach((ref) => {
+    if (ref?.id) seen.add(ref.id);
+  });
+  const merged = [...current];
+  incoming.forEach((ref) => {
+    const key = ref?.id;
+    if (key && seen.has(key)) return;
+    merged.push(ref);
+    if (key) seen.add(key);
+  });
+  return merged;
+};
+
 const formatReferralDate = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Signed up • Date unavailable';
@@ -72,8 +90,9 @@ export default function ReferralsScreen() {
   const [copied, setCopied] = useState(false);
   const [showReferrals, setShowReferrals] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [remoteReferrals, setRemoteReferrals] = useState<ReferralRecord[]>([]);
   const [hasMore, setHasMore] = useState(true);
+  const loadMoreLockRef = useRef(false);
+  const loadMoreThrottleRef = useRef(0);
   const modalMaxHeight = Math.min(640, Dimensions.get('window').height * 0.78);
 
   const { data, loading, error, fetchMore, refetch } = useQuery<
@@ -86,27 +105,28 @@ export default function ReferralsScreen() {
 
   const referralCode = data?.user?.referralCode?.trim() ?? '';
   const totalReferralsCount = data?.user?.totalReferrals ?? null;
-  const fetchedReferrals = data?.referrals;
-  const hasRemoteData = Array.isArray(fetchedReferrals);
+  const referrals = data?.referrals ?? [];
+  const hasRemoteData = Array.isArray(data?.referrals);
   const showErrorOnly = Boolean(error) && !data;
-
-  useEffect(() => {
-    if (!hasRemoteData) return;
-    setRemoteReferrals(fetchedReferrals ?? []);
-  }, [fetchedReferrals, hasRemoteData]);
+  const effectiveHasMore =
+    typeof totalReferralsCount === 'number'
+      ? referrals.length < totalReferralsCount
+      : hasMore;
 
   useEffect(() => {
     if (!hasRemoteData) return;
     if (typeof totalReferralsCount === 'number') {
-      setHasMore(remoteReferrals.length < totalReferralsCount);
+      setHasMore(referrals.length < totalReferralsCount);
       return;
     }
-    setHasMore(remoteReferrals.length >= PAGE_SIZE);
-  }, [hasRemoteData, remoteReferrals.length, totalReferralsCount]);
+    if (referrals.length <= PAGE_SIZE) {
+      setHasMore(referrals.length >= PAGE_SIZE);
+    }
+  }, [hasRemoteData, referrals.length, totalReferralsCount]);
 
   const normalizedReferrals = useMemo<NormalizedReferral[]>(() => {
     if (!hasRemoteData) return [];
-    return remoteReferrals.map((ref, index) => {
+    return referrals.map((ref, index) => {
       const name = ref?.invitee?.name?.trim() || 'Invitee';
       const createdAt = ref?.invitee?.signupDate ?? '';
       const date = createdAt ? formatReferralDate(createdAt) : 'Signed up • Date unavailable';
@@ -116,7 +136,7 @@ export default function ReferralsScreen() {
         date,
       };
     });
-  }, [hasRemoteData, remoteReferrals]);
+  }, [hasRemoteData, referrals]);
 
   const totalReferrals =
     typeof totalReferralsCount === 'number'
@@ -127,9 +147,20 @@ export default function ReferralsScreen() {
     setShowReferrals(true);
     setLoadingMore(false);
     setHasMore(true);
-    setRemoteReferrals((prev) => prev.slice(0, PAGE_SIZE));
-    refetch({ limit: PAGE_SIZE, offset: 0 }).catch(() => null);
-  }, [refetch]);
+    loadMoreLockRef.current = false;
+    loadMoreThrottleRef.current = 0;
+    refetch({ limit: PAGE_SIZE, offset: 0 })
+      .then((response) => {
+        const next = response.data?.referrals ?? [];
+        const nextTotal = response.data?.user?.totalReferrals ?? totalReferralsCount;
+        if (typeof nextTotal === 'number') {
+          setHasMore(next.length < nextTotal);
+          return;
+        }
+        setHasMore(next.length >= PAGE_SIZE);
+      })
+      .catch(() => null);
+  }, [refetch, totalReferralsCount]);
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(referralCode);
@@ -148,51 +179,73 @@ export default function ReferralsScreen() {
   };
 
   const handleLoadMore = useCallback(() => {
-    if (!hasRemoteData || loading || loadingMore || !hasMore) return;
+    if (!hasRemoteData || loading || loadingMore || !effectiveHasMore) return;
+    if (loadMoreLockRef.current) return;
+    loadMoreLockRef.current = true;
     setLoadingMore(true);
+    const offset = referrals.length;
     fetchMore({
       variables: {
         limit: PAGE_SIZE,
-        offset: remoteReferrals.length,
+        offset,
+      },
+      updateQuery: (previous, { fetchMoreResult }) => {
+        const nextReferrals = fetchMoreResult?.referrals ?? [];
+        if (!nextReferrals.length) return previous;
+        const prevReferrals = previous?.referrals ?? [];
+        const merged = mergeReferrals(prevReferrals, nextReferrals);
+        return {
+          user: fetchMoreResult?.user ?? previous?.user ?? null,
+          referrals: merged,
+        };
       },
     })
       .then((response) => {
         const next = response.data?.referrals ?? [];
-        if (!next.length) {
+        const merged = mergeReferrals(referrals, next);
+        const nextTotal = response.data?.user?.totalReferrals ?? totalReferralsCount;
+        if (typeof nextTotal === 'number') {
+          setHasMore(merged.length < nextTotal);
+          return;
+        }
+        if (!next.length || merged.length === referrals.length) {
           setHasMore(false);
           return;
         }
-        setRemoteReferrals((prev) => {
-          const seen = new Set(prev.map((ref) => ref.id ?? ''));
-          const merged = [...prev];
-          next.forEach((ref) => {
-            const key = ref.id ?? '';
-            if (key && seen.has(key)) return;
-            merged.push(ref);
-            if (key) seen.add(key);
-          });
-          return merged;
-        });
-        const totalCount =
-          response.data?.user?.totalReferrals ?? totalReferralsCount;
-        if (typeof totalCount === 'number') {
-          const mergedLength = remoteReferrals.length + next.length;
-          setHasMore(mergedLength < totalCount);
-        } else if (next.length < PAGE_SIZE) {
+        if (next.length < PAGE_SIZE) {
           setHasMore(false);
         }
       })
       .catch(() => null)
-      .finally(() => setLoadingMore(false));
+      .finally(() => {
+        loadMoreLockRef.current = false;
+        setLoadingMore(false);
+      });
   }, [
+    effectiveHasMore,
     fetchMore,
-    hasMore,
     hasRemoteData,
     loading,
     loadingMore,
-    remoteReferrals.length,
+    referrals,
     totalReferralsCount,
   ]);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (loading || loadingMore || !effectiveHasMore) return;
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      if (distanceFromBottom < 200) {
+        const now = Date.now();
+        if (now - loadMoreThrottleRef.current < 700) return;
+        loadMoreThrottleRef.current = now;
+        handleLoadMore();
+      }
+    },
+    [effectiveHasMore, handleLoadMore, loading, loadingMore]
+  );
 
   if (loading && !data) {
     return (
@@ -224,7 +277,6 @@ export default function ReferralsScreen() {
       </SafeAreaView>
     );
   }
-  
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
@@ -355,8 +407,10 @@ export default function ReferralsScreen() {
                 scrollEnabled
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 16 }}
-                onEndReachedThreshold={0.2}
+                onEndReachedThreshold={0.3}
                 onEndReached={handleLoadMore}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
                 ListEmptyComponent={
                   <View className="items-center px-4 py-6">
                     {loading ? (
