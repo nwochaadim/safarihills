@@ -27,7 +27,7 @@ const supportLinks: LinkConfig[] = [
 
 const legalLinks: LinkConfig[] = [
   { label: 'Terms of use', href: '/profile/terms' },
-  { label: 'Privacy policy', href: '/profile/privacy' },
+  { label: 'Privacy policy', href: 'https://www.safarihills.site/privacy' },
 ];
 
 const renderLink = (router: ReturnType<typeof useRouter>) => (item: LinkConfig) => (
