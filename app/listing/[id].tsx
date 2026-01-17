@@ -13,7 +13,7 @@ import {
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ComponentProps, useMemo, useRef, useState } from 'react';
+import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -24,6 +24,7 @@ import {
   ScrollView,
   Text,
   View,
+  ViewStyle,
 } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -245,7 +246,7 @@ export default function ListingDetailScreen() {
 
   if (!listing) {
     if (loading) {
-      return null;
+      return <ListingDetailSkeleton onBack={() => router.back()} />;
     }
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white">
@@ -273,6 +274,109 @@ type ListingDetailContentProps = {
   onBack: () => void;
   onBook: () => void;
 };
+
+type SkeletonBarProps = {
+  pulse: Animated.Value;
+  className?: string;
+  style?: ViewStyle;
+};
+
+const SkeletonBar = ({ pulse, className, style }: SkeletonBarProps) => (
+  <Animated.View
+    className={`bg-slate-200 ${className ?? ''}`}
+    style={[style, { opacity: pulse }]}
+  />
+);
+
+function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
+  const pulse = useRef(new Animated.Value(0.6)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  return (
+    <SafeAreaView className="flex-1 bg-white">
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={{ height: IMAGE_HEIGHT }}>
+        <SkeletonBar pulse={pulse} className="h-full w-full rounded-none" />
+        <View style={{ position: 'absolute', top: 50, left: 15, right: 24 }}>
+          <BackButton onPress={onBack} />
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 24, paddingBottom: 120 }}>
+        <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+        <SkeletonBar pulse={pulse} className="mt-4 h-7 w-3/4 rounded-2xl" />
+        <SkeletonBar pulse={pulse} className="mt-2 h-4 w-1/2 rounded-xl" />
+
+        <View className="mt-6">
+          <SkeletonBar pulse={pulse} className="h-3 w-32 rounded-full" />
+          <View className="mt-3 flex-row flex-wrap gap-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <SkeletonBar
+                key={`booking-pill-${index}`}
+                pulse={pulse}
+                className="h-7 w-24 rounded-full"
+              />
+            ))}
+          </View>
+        </View>
+
+        <View className="mt-6 gap-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonBar
+              key={`desc-line-${index}`}
+              pulse={pulse}
+              className={`h-3 rounded-full ${index === 3 ? 'w-1/2' : 'w-full'}`}
+            />
+          ))}
+        </View>
+
+        <View className="mt-8 rounded-3xl border border-slate-100 bg-slate-50/80 p-5">
+          <SkeletonBar pulse={pulse} className="h-3 w-28 rounded-full" />
+          <View className="mt-4 flex-row flex-wrap gap-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <SkeletonBar
+                key={`amenity-pill-${index}`}
+                pulse={pulse}
+                className="h-8 w-24 rounded-full"
+              />
+            ))}
+          </View>
+        </View>
+
+        <View className="mt-8">
+          <SkeletonBar pulse={pulse} className="h-3 w-36 rounded-full" />
+          <SkeletonBar pulse={pulse} className="mt-2 h-4 w-2/3 rounded-xl" />
+          <View className="mt-4 flex-row gap-4">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <View
+                key={`attraction-card-${index}`}
+                className="w-64 overflow-hidden rounded-3xl border border-slate-100 bg-white">
+                <SkeletonBar pulse={pulse} className="h-32 w-full rounded-none" />
+                <View className="p-4">
+                  <SkeletonBar pulse={pulse} className="h-4 w-3/4 rounded-xl" />
+                  <SkeletonBar pulse={pulse} className="mt-3 h-3 w-full rounded-full" />
+                  <SkeletonBar pulse={pulse} className="mt-2 h-3 w-5/6 rounded-full" />
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
 function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentProps) {
   const [activeImage, setActiveImage] = useState(0);
