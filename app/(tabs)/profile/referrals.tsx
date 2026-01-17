@@ -224,6 +224,7 @@ export default function ReferralsScreen() {
       </SafeAreaView>
     );
   }
+  
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">

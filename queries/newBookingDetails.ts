@@ -29,6 +29,7 @@ export const NEW_BOOKING_DETAILS = gql`
     amenities
     restrictions
     maxNumberOfGuestsAllowed
+    cautionFeeNotApplicableForCheckins
     propertyPhotos {
       mediumUrl
       largeUrl

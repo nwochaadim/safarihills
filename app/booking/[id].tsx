@@ -57,6 +57,7 @@ type RemoteListableDetails = {
   amenities: string[] | null;
   restrictions: string[] | null;
   maxNumberOfGuestsAllowed: number | null;
+  cautionFeeNotApplicableForCheckins: Record<string, boolean> | null;
   propertyPhotos: RemotePropertyPhoto[] | null;
 };
 
@@ -87,6 +88,7 @@ type BookingListable = {
   photos: string[];
   description: string;
   restrictions: string[];
+  cautionFeeNotApplicableForCheckins: Record<string, boolean>;
 };
 
 type CreateBookingResponse = {
@@ -198,6 +200,7 @@ const mapListableDetails = (details: RemoteListableDetails | null, id: string): 
   amenities: details?.amenities ?? [],
   restrictions: details?.restrictions ?? [],
   maxNumberOfGuestsAllowed: Math.max(1, normalizeNumber(details?.maxNumberOfGuestsAllowed)),
+  cautionFeeNotApplicableForCheckins: normalizeDaysMap(details?.cautionFeeNotApplicableForCheckins),
   photos: mapPhotoUrls(details?.propertyPhotos),
   description: '',
 });
@@ -449,7 +452,9 @@ export default function BookingScreen() {
   const soldOutDays = activeListable?.soldOutDays ?? {};
   const blockedDays = activeListable?.blockedDays ?? {};
   const priceAdjustments = activeListable?.priceAdjustments ?? {};
-  const cautionFee = activeListable?.cautionFee ?? 0;
+  const baseCautionFee = activeListable?.cautionFee ?? 0;
+  const cautionFeeNotApplicableForCheckins =
+    activeListable?.cautionFeeNotApplicableForCheckins ?? {};
   const maxGuestsAllowed = activeListable?.maxNumberOfGuestsAllowed ?? 1;
 
   useEffect(() => {
@@ -464,6 +469,12 @@ export default function BookingScreen() {
     const diff = startOfDay(checkOut).getTime() - startOfDay(checkIn).getTime();
     return Math.max(Math.round(diff / (1000 * 60 * 60 * 24)), 0);
   }, [checkIn, checkOut]);
+
+  const isExtension = useMemo(() => {
+    if (!checkIn) return false;
+    const key = formatDateKey(checkIn);
+    return cautionFeeNotApplicableForCheckins[key] === true;
+  }, [checkIn, cautionFeeNotApplicableForCheckins]);
 
   const calendarDays = useMemo(
     () =>
@@ -484,7 +495,11 @@ export default function BookingScreen() {
     [checkIn, checkOut, baseNightlyRate, priceAdjustments]
   );
   const discount = 0;
-  const total = subtotal - discount + (nights > 0 ? cautionFee : 0);
+  const cautionFee = useMemo(
+    () => (nights > 0 ? (isExtension ? 0 : baseCautionFee) : 0),
+    [nights, isExtension, baseCautionFee]
+  );
+  const total = subtotal - discount + cautionFee;
   const hasDates = nights > 0;
   const hasPrice = baseNightlyRate > 0;
   const hasPurpose = Boolean(purpose.trim());
@@ -513,7 +528,7 @@ export default function BookingScreen() {
           cautionFee: Math.round(cautionFee),
           numberOfGuests: guestCount,
           entireProperty: bookingType === 'entire',
-          extending: null,
+          extending: isExtension,
         },
       });
 
