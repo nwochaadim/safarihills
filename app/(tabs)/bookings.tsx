@@ -342,9 +342,28 @@ export default function BookingsScreen() {
   };
 
   const renderBookingCard = ({ item }: { item: BookingListItem }) => {
-    const isPaymentPending = item.state?.trim().toLowerCase() === 'payment_pending';
+    const paymentState = item.state?.trim().toLowerCase();
+    const isPaymentPending = paymentState === 'payment_pending';
+    const isPaymentConfirmed = paymentState === 'payment_confirmed';
     const isDeleting = deletingBookingId === item.id;
     const deleteMessage = deleteError?.id === item.id ? deleteError.message : null;
+    const statusBadge = isPaymentPending
+      ? {
+          label: 'Payment pending',
+          icon: 'clock' as const,
+          containerClass: 'border-amber-200 bg-amber-50',
+          textClass: 'text-amber-700',
+          iconColor: '#b45309',
+        }
+      : isPaymentConfirmed
+        ? {
+            label: 'Payment confirmed',
+            icon: 'check-circle' as const,
+            containerClass: 'border-emerald-200 bg-emerald-50',
+            textClass: 'text-emerald-700',
+            iconColor: '#047857',
+          }
+        : null;
 
     return (
       <View className="mb-5 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
@@ -363,11 +382,20 @@ export default function BookingsScreen() {
                   ellipsizeMode="tail">
                   {item.apartmentName}
                 </Text>
-                <View className="items-end">
+                <View className="items-end gap-1">
                   <Text className="text-xs font-semibold uppercase text-blue-500">
                     {item.apartmentType}
                   </Text>
-                  {item.state ? (
+                  {statusBadge ? (
+                    <View
+                      className={`flex-row items-center gap-1 rounded-full border px-2 py-0.5 ${statusBadge.containerClass}`}>
+                      <Feather name={statusBadge.icon} size={10} color={statusBadge.iconColor} />
+                      <Text
+                        className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${statusBadge.textClass}`}>
+                        {statusBadge.label}
+                      </Text>
+                    </View>
+                  ) : item.state ? (
                     <Text className="text-[10px] font-semibold uppercase text-slate-400">
                       {formatStatusLabel(item.state)}
                     </Text>

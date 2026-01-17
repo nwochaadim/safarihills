@@ -172,6 +172,25 @@ export default function BookingSummaryScreen() {
   const isPastTimeline = bookingTimelineStatus === 'past';
   const isPaymentPending = bookingState === 'payment_pending';
   const isPaymentConfirmed = bookingState === 'payment_confirmed';
+  const paymentStatus = isPaymentConfirmed
+    ? {
+        label: 'Payment confirmed',
+        message: 'Your payment has been received and this booking is confirmed.',
+        icon: 'check-circle' as const,
+        containerClass: 'border-emerald-200 bg-emerald-50/70',
+        textClass: 'text-emerald-700',
+        iconColor: '#047857',
+      }
+    : isPaymentPending
+      ? {
+          label: 'Payment pending',
+          message: 'Complete payment to secure this booking.',
+          icon: 'clock' as const,
+          containerClass: 'border-amber-200 bg-amber-50/70',
+          textClass: 'text-amber-700',
+          iconColor: '#b45309',
+        }
+      : null;
   const showPaymentSections = isPaymentPending && !isPastTimeline;
   const showPayNow = isPaymentPending && !isPastTimeline;
   const bookingReference = booking?.referenceNumber?.trim() ?? '';
@@ -867,17 +886,17 @@ export default function BookingSummaryScreen() {
           </View>
         ) : null}
 
-        {isPaymentConfirmed ? (
+        {paymentStatus ? (
           <View className="mt-6 px-6">
-            <View className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
+            <View className={`rounded-3xl border p-5 ${paymentStatus.containerClass}`}>
               <View className="flex-row items-center gap-2">
-                <Feather name="check-circle" size={16} color="#047857" />
-                <Text className="text-sm font-semibold text-emerald-700">
-                  Payment confirmed
+                <Feather name={paymentStatus.icon} size={16} color={paymentStatus.iconColor} />
+                <Text className={`text-sm font-semibold ${paymentStatus.textClass}`}>
+                  {paymentStatus.label}
                 </Text>
               </View>
-              <Text className="mt-2 text-sm text-emerald-700">
-                Your payment has been received and this booking is confirmed.
+              <Text className={`mt-2 text-sm ${paymentStatus.textClass}`}>
+                {paymentStatus.message}
               </Text>
             </View>
           </View>
