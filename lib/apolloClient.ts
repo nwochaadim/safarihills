@@ -1,4 +1,5 @@
 import { ApolloClient, HttpLink, InMemoryCache, from } from '@apollo/client';
+import { loadDevMessages, loadErrorMessages } from '@apollo/client/dev';
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 import * as SecureStore from 'expo-secure-store';
@@ -6,6 +7,11 @@ import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:3000/graphql';
+
+if (__DEV__) {
+  loadDevMessages();
+  loadErrorMessages();
+}
 
 const httpLink = new HttpLink({
   uri: GRAPHQL_URL,
@@ -42,7 +48,28 @@ const authLink = setContext(async (_, { headers }) => {
   };
 });
 
+const stripCanonizeResults = <T extends Record<string, unknown> | undefined>(options: T): T => {
+  if (!options || typeof options !== 'object') return options;
+  if (!('canonizeResults' in options)) return options;
+  const cleaned = { ...(options as Record<string, unknown>) };
+  delete cleaned.canonizeResults;
+  return cleaned as T;
+};
+
 export const apolloClient = new ApolloClient({
   link: from([errorLink, authLink, httpLink]),
   cache: new InMemoryCache(),
 });
+
+if (__DEV__) {
+  const cache = apolloClient.cache as InMemoryCache;
+  const originalDiff = cache.diff.bind(cache);
+  cache.diff = (options) => {
+    return originalDiff(stripCanonizeResults(options as Record<string, unknown>));
+  };
+
+  const originalWatchQuery = apolloClient.watchQuery.bind(apolloClient);
+  apolloClient.watchQuery = ((options) => {
+    return originalWatchQuery(stripCanonizeResults(options as Record<string, unknown>));
+  }) as typeof apolloClient.watchQuery;
+}
