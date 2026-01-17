@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import { SkeletonBar } from '@/components/SkeletonBar';
 import {
   BookingOption,
   findListingById,
@@ -10,10 +11,11 @@ import {
   ListingReview,
   LISTINGS,
 } from '@/data/listings';
+import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
+import { ComponentProps, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -24,7 +26,6 @@ import {
   ScrollView,
   Text,
   View,
-  ViewStyle,
 } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -275,32 +276,8 @@ type ListingDetailContentProps = {
   onBook: () => void;
 };
 
-type SkeletonBarProps = {
-  pulse: Animated.Value;
-  className?: string;
-  style?: ViewStyle;
-};
-
-const SkeletonBar = ({ pulse, className, style }: SkeletonBarProps) => (
-  <Animated.View
-    className={`bg-slate-200 ${className ?? ''}`}
-    style={[style, { opacity: pulse }]}
-  />
-);
-
 function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
-  const pulse = useRef(new Animated.Value(0.6)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.6, duration: 800, useNativeDriver: true }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [pulse]);
+  const pulse = useSkeletonPulse();
 
   return (
     <SafeAreaView className="flex-1 bg-white">

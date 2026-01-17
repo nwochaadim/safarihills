@@ -15,6 +15,8 @@ import {
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { SkeletonBar } from '@/components/SkeletonBar';
+import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { AuthStatus } from '@/lib/authStatus';
 import { DELETE_BOOKING } from '@/mutations/deleteBooking';
 import { FIND_BOOKINGS } from '@/queries/findBookings';
@@ -141,6 +143,40 @@ const mapBooking = (booking: BookingResponse): BookingListItem => {
     timelineStatus: booking.timelineStatus ?? '',
     coverImage: photos[0]?.avatarPhoto ?? null,
   };
+};
+
+const BookingsSkeletonList = () => {
+  const pulse = useSkeletonPulse();
+
+  return (
+    <View className="pt-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <View
+          key={`booking-skeleton-${index}`}
+          className="mb-5 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
+          <View className="flex-row items-center gap-4">
+            <SkeletonBar pulse={pulse} className="h-16 w-16 rounded-2xl" />
+            <View className="flex-1">
+              <View className="flex-row items-center justify-between">
+                <SkeletonBar pulse={pulse} className="h-4 w-32 rounded-full" />
+                <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+              </View>
+              <SkeletonBar pulse={pulse} className="mt-2 h-3 w-24 rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-2 h-3 w-28 rounded-full" />
+            </View>
+          </View>
+          <View className="mt-4 flex-row items-center justify-between">
+            <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+            <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+          </View>
+          <View className="mt-3 flex-row items-center justify-between">
+            <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+            <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 };
 
 export default function BookingsScreen() {
@@ -562,9 +598,7 @@ export default function BookingsScreen() {
             ListFooterComponent={renderListFooter}
             ListEmptyComponent={
               loading ? (
-                <View className="mt-20 items-center">
-                  <ActivityIndicator color="#2563eb" />
-                </View>
+                <BookingsSkeletonList />
               ) : error ? (
                 <View className="mt-20 items-center">
                   <Text className="text-sm text-slate-400">
