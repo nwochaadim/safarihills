@@ -101,7 +101,6 @@ const getExpoPushToken = async (): Promise<string | null> => {
 
 const logExpoPushTokenOnce = (token: string): void => {
   if (hasLoggedPushTokenThisSession) return;
-  console.log('Expo push token:', token);
   hasLoggedPushTokenThisSession = true;
 };
 
