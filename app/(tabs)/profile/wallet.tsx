@@ -52,44 +52,6 @@ type WalletQueryVariables = {
   offset?: number | null;
 };
 
-const FALLBACK_WALLET = {
-  balance: 245000,
-  transactions: [
-    {
-      id: 't1',
-      title: 'Wallet top up',
-      amount: 80000,
-      type: 'credit' as const,
-      pending: false,
-      date: 'Mar 02, 2024 - 10:14 AM',
-    },
-    {
-      id: 't2',
-      title: 'Reservation hold',
-      amount: 45000,
-      type: 'debit' as const,
-      pending: true,
-      date: 'Feb 28, 2024 - 04:22 PM',
-    },
-    {
-      id: 't3',
-      title: 'Wallet top up',
-      amount: 120000,
-      type: 'credit' as const,
-      pending: false,
-      date: 'Feb 20, 2024 - 09:03 AM',
-    },
-    {
-      id: 't4',
-      title: 'Booking fee',
-      amount: 30000,
-      type: 'debit' as const,
-      pending: true,
-      date: 'Feb 12, 2024 - 01:45 PM',
-    },
-  ],
-};
-
 const formatAmountInput = (value: string) => {
   const digitsOnly = value.replace(/[^\d]/g, '');
   if (!digitsOnly) return '';
@@ -182,10 +144,10 @@ export default function WalletScreen() {
   >(TOPUP_WALLET_BALANCE);
 
   const walletData = data?.wallet ?? null;
-  const balance = walletData?.balance ?? FALLBACK_WALLET.balance;
+  const balance = walletData?.balance ?? 0;
 
   const transactions = useMemo<NormalizedTransaction[]>(() => {
-    if (!walletData?.transactions) return FALLBACK_WALLET.transactions;
+    if (!walletData?.transactions) return [];
     return walletData.transactions.map((txn, index) => {
       const type =
         txn?.transactionType?.toLowerCase() === 'debit' ? 'debit' : 'credit';
