@@ -7,7 +7,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -442,7 +444,10 @@ export default function WalletScreen() {
             transparent
             visible={topUpModalVisible}
             onRequestClose={() => setTopUpModalVisible(false)}>
-            <View className="flex-1 justify-end bg-black/40">
+            <KeyboardAvoidingView
+              className="flex-1 justify-end bg-black/40"
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}>
               <View className="rounded-t-[32px] bg-white px-6 pb-10 pt-6">
                 <View className="mb-6 h-1 w-14 self-center rounded-full bg-slate-200" />
                 <View className="flex-row items-start justify-between">
@@ -488,7 +493,7 @@ export default function WalletScreen() {
                   <Text className="text-base font-semibold text-white">Top up</Text>
                 </Pressable>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </Modal>
         </>
       )}
