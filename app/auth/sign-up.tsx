@@ -249,6 +249,7 @@ export default function SignUpScreen() {
   const [callingCode, setCallingCode] = useState('234');
   const [countryName, setCountryName] = useState('Nigeria');
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
   const modalMaxHeight = Math.min(560, Dimensions.get('window').height * 0.7);
 
   const isEmailValid = emailRegex.test(email.trim());
@@ -275,6 +276,7 @@ export default function SignUpScreen() {
     setCallingCode(country.callingCode);
     setCountryName(country.name);
     setPickerVisible(false);
+    setCountrySearch('');
   };
 
   const handleCreateAccount = async () => {
@@ -341,6 +343,21 @@ export default function SignUpScreen() {
   };
 
   const inputWrapperClass = 'rounded-2xl border border-slate-200 bg-slate-50/50 px-4';
+  const normalizedSearch = countrySearch.trim().toLowerCase();
+  const filteredCountries = useMemo(() => {
+    if (!normalizedSearch) return COUNTRIES;
+    return COUNTRIES.filter((country) => {
+      const name = country.name.toLowerCase();
+      const code = country.code.toLowerCase();
+      const calling = country.callingCode.replace(/[^0-9]/g, '');
+      const queryDigits = normalizedSearch.replace(/[^0-9]/g, '');
+      return (
+        name.includes(normalizedSearch) ||
+        code.includes(normalizedSearch) ||
+        (queryDigits && calling.includes(queryDigits))
+      );
+    });
+  }, [normalizedSearch]);
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -531,7 +548,10 @@ export default function SignUpScreen() {
         animationType="slide"
         visible={pickerVisible}
         onRequestClose={() => setPickerVisible(false)}>
-        <View className="flex-1 justify-end bg-black/30">
+        <KeyboardAvoidingView
+          className="flex-1 justify-end bg-black/30"
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}>
           <View
             className="rounded-t-3xl bg-white px-6 pb-8 pt-4"
             style={{ maxHeight: modalMaxHeight }}>
@@ -541,25 +561,47 @@ export default function SignUpScreen() {
                 <Text className="text-sm font-semibold text-blue-600">Close</Text>
               </Pressable>
             </View>
+            <View className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4">
+              <TextInput
+                className="py-3 text-sm text-slate-900"
+                placeholder="Search country or code"
+                placeholderTextColor="#94a3b8"
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+              />
+            </View>
             <ScrollView
               className="mt-4"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ gap: 12, paddingBottom: 12 }}>
-              {COUNTRIES.map((country) => (
-                <Pressable
-                  key={country.code}
-                  className="flex-row items-center justify-between rounded-2xl border border-slate-200 px-4 py-3"
-                  onPress={() => handleSelectCountry(country)}>
-                  <View>
-                    <Text className="text-sm font-semibold text-slate-900">{country.name}</Text>
-                    <Text className="text-xs text-slate-500">+{country.callingCode}</Text>
-                  </View>
-                  <Text className="text-sm font-semibold text-blue-600">{country.code}</Text>
-                </Pressable>
-              ))}
+              {filteredCountries.length === 0 ? (
+                <View className="items-center rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-6">
+                  <Text className="text-sm font-semibold text-slate-600">
+                    No matches found.
+                  </Text>
+                  <Text className="mt-1 text-xs text-slate-500">
+                    Try another country name or dialing code.
+                  </Text>
+                </View>
+              ) : (
+                filteredCountries.map((country) => (
+                  <Pressable
+                    key={country.code}
+                    className="flex-row items-center justify-between rounded-2xl border border-slate-200 px-4 py-3"
+                    onPress={() => handleSelectCountry(country)}>
+                    <View>
+                      <Text className="text-sm font-semibold text-slate-900">
+                        {country.name}
+                      </Text>
+                      <Text className="text-xs text-slate-500">+{country.callingCode}</Text>
+                    </View>
+                    <Text className="text-sm font-semibold text-blue-600">{country.code}</Text>
+                  </Pressable>
+                ))
+              )}
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
