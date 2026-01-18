@@ -20,6 +20,7 @@ import {
   Animated,
   Dimensions,
   FlatList,
+  Modal,
   Linking,
   Pressable,
   SafeAreaView,
@@ -357,11 +358,18 @@ function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
 
 function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentProps) {
   const [activeImage, setActiveImage] = useState(0);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const handleOpenAttraction = (mapUrl: string) => {
     if (!mapUrl) return;
     Linking.openURL(mapUrl).catch(() => null);
+  };
+
+  const handleOpenGallery = () => {
+    setPreviewIndex(activeImage);
+    setGalleryVisible(true);
   };
 
   const renderBookingOptions = () => (
@@ -426,8 +434,17 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
             </View>
           )}
         />
-        <View style={{ position: 'absolute', top: 50, left: 15, right: 24 }}>
+        <View
+          className="flex-row items-center justify-between"
+          style={{ position: 'absolute', top: 50, left: 15, right: 24 }}>
           <BackButton onPress={onBack} />
+          <Pressable
+            className="flex-row items-center gap-2 rounded-full border border-white/60 bg-white/90 px-3 py-2"
+            onPress={handleOpenGallery}
+            disabled={listing.gallery.length === 0}>
+            <Feather name="image" size={16} color="#0f172a" />
+            <Text className="text-xs font-semibold text-slate-900">View photos</Text>
+          </Pressable>
         </View>
         <View
           className="flex-row items-center justify-center gap-2"
@@ -604,6 +621,50 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
           Discounts apply for weekly stays and above
         </Text>
       </Animated.View>
+
+      <Modal
+        visible={galleryVisible}
+        animationType="fade"
+        transparent={false}
+        onRequestClose={() => setGalleryVisible(false)}>
+        <SafeAreaView className="flex-1 bg-black">
+          <View className="flex-row items-center justify-between px-6 pt-4">
+            <Pressable
+              className="rounded-full border border-white/30 px-3 py-1.5"
+              onPress={() => setGalleryVisible(false)}>
+              <Text className="text-xs font-semibold text-white">Close</Text>
+            </Pressable>
+            <Text className="text-xs font-semibold text-white">
+              {previewIndex + 1} / {listing.gallery.length}
+            </Text>
+            <View className="w-16" />
+          </View>
+          <FlatList
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            data={listing.gallery}
+            keyExtractor={(uri, index) => `${uri}-${index}`}
+            initialScrollIndex={
+              listing.gallery.length > 0 ? previewIndex : undefined
+            }
+            getItemLayout={(_, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(event.nativeEvent.contentOffset.x / width);
+              setPreviewIndex(index);
+            }}
+            renderItem={({ item }) => (
+              <View style={{ width, height: '100%' }}>
+                <LoadingImageBackground source={{ uri: item }} className="flex-1" contentFit="contain" />
+              </View>
+            )}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
