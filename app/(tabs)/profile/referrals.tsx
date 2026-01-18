@@ -54,7 +54,6 @@ const referralSteps = [
   { label: 'Friend books a stay', detail: 'They enjoy a welcome perk on their first booking.' },
   { label: 'Booking completes', detail: 'Rewards unlock after their stay is confirmed.' },
   { label: 'You earn credits', detail: 'Travel credits go straight to your wallet.' },
-  { label: 'You earn points', detail: 'Points help you level up your rewards.' },
 ];
 
 const PAGE_SIZE = 10;
