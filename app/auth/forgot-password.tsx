@@ -1,7 +1,7 @@
+import { useMutation } from '@apollo/client';
 import { Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,33 +11,65 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RESET_PASSWORD } from '@/mutations/resetPassword';
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type ResetPasswordResponse = {
+  resetPassword: {
+    success: boolean | null;
+    errors: string[] | string | null;
+  } | null;
+};
+
+type ResetPasswordVariables = {
+  email: string;
+};
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resetPassword, { loading: isSubmitting }] = useMutation<
+    ResetPasswordResponse,
+    ResetPasswordVariables
+  >(RESET_PASSWORD);
 
   const isEmailValid = useMemo(() => emailRegex.test(email.trim()), [email]);
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!isEmailValid) {
       setError('Enter a valid email address before continuing.');
       return;
     }
 
-    setIsSubmitting(true);
     setError(null);
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      Alert.alert('Reset email sent', 'We just sent a temporary password to your inbox.');
+    try {
+      const { data } = await resetPassword({ variables: { email: email.trim() } });
+      const result = data?.resetPassword;
+      const errors = result?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setError(errors);
+        return;
+      }
+      if (!result?.success) {
+        setError('Unable to reset password right now. Please try again.');
+        return;
+      }
       router.push({
         pathname: '/auth/new-password',
         params: { email: email.trim() },
       });
-    }, 500);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to reset password right now.';
+      setError(message);
+    }
   };
 
   return (
