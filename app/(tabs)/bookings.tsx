@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -7,6 +7,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
+  Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   Text,
@@ -20,6 +23,7 @@ import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { AuthStatus } from '@/lib/authStatus';
 import { DELETE_BOOKING } from '@/mutations/deleteBooking';
 import { FIND_BOOKINGS } from '@/queries/findBookings';
+import { FIND_CONFIRMED_BOOKING_DETAILS } from '@/queries/findConfirmedBookingDetails';
 
 type BookingStatus = 'current' | 'upcoming' | 'past';
 
@@ -70,6 +74,27 @@ type FindBookingsVariables = {
   status?: string | null;
   limit: number;
   offset: number;
+};
+
+type ConfirmedBookingDetails = {
+  id: string | null;
+  referenceNumber: string | null;
+  name: string | null;
+  address: string | null;
+  checkIn: string | null;
+  checkOut: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  googleMapLocation: string | null;
+  contact: string | null;
+};
+
+type ConfirmedBookingDetailsResponse = {
+  confirmedBookingDetails: ConfirmedBookingDetails | null;
+};
+
+type ConfirmedBookingDetailsVariables = {
+  bookingId: string;
 };
 
 type DeleteBookingResponse = {
@@ -193,6 +218,8 @@ export default function BookingsScreen() {
   const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(
     null
   );
+  const [reservationVisible, setReservationVisible] = useState(false);
+  const [reservationError, setReservationError] = useState<string | null>(null);
   const { paymentStatus, message } = useLocalSearchParams<{
     paymentStatus?: string | string[];
     message?: string | string[];
@@ -218,6 +245,13 @@ export default function BookingsScreen() {
     notifyOnNetworkStatusChange: true,
     skip: authStatus !== 'signed-in',
   });
+  const [loadConfirmedDetails, confirmedDetailsQuery] = useLazyQuery<
+    ConfirmedBookingDetailsResponse,
+    ConfirmedBookingDetailsVariables
+  >(FIND_CONFIRMED_BOOKING_DETAILS, {
+    fetchPolicy: 'network-only',
+  });
+  console.log('Error', confirmedDetailsQuery.error);
   const [deleteBooking] = useMutation<DeleteBookingResponse, DeleteBookingVariables>(
     DELETE_BOOKING
   );
@@ -377,6 +411,41 @@ export default function BookingsScreen() {
     );
   };
 
+  const handleViewReservation = (booking: BookingListItem) => {
+    if (!booking.id) return;
+    setReservationError(null);
+    setReservationVisible(true);
+    loadConfirmedDetails({ variables: { bookingId: booking.id } }).catch((err) => {
+      const message =
+        err instanceof Error ? err.message : 'Unable to load reservation details.';
+      setReservationError(message);
+    });
+  };
+
+  const formatDateTime = (dateValue?: string | null, timeValue?: string | null) => {
+    const trimmedDate = dateValue?.trim() ?? '';
+    const trimmedTime = timeValue?.trim() ?? '';
+    if (!trimmedDate && !trimmedTime) return '—';
+    if (!trimmedDate) return trimmedTime;
+    const parsed = new Date(trimmedDate);
+    const dateLabel = Number.isNaN(parsed.getTime())
+      ? trimmedDate
+      : parsed.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+    return trimmedTime ? `${dateLabel} • ${trimmedTime}` : dateLabel;
+  };
+
+  const handleCallContact = (contact?: string | null) => {
+    const trimmed = contact?.trim();
+    if (!trimmed) return;
+    const digits = trimmed.replace(/[^\d+]/g, '');
+    const url = Platform.OS === 'ios' ? `telprompt:${digits}` : `tel:${digits}`;
+    Linking.openURL(url).catch(() => null);
+  };
+
   const renderBookingCard = ({ item }: { item: BookingListItem }) => {
     const paymentState = item.state?.trim().toLowerCase();
     const isPaymentPending = paymentState === 'payment_pending';
@@ -493,6 +562,16 @@ export default function BookingsScreen() {
                 </Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+
+        {isPaymentConfirmed ? (
+          <View className="mt-4 border-t border-slate-100 pt-3">
+            <Pressable
+              className="items-center justify-center rounded-full border border-blue-200 bg-blue-50 py-3"
+              onPress={() => handleViewReservation(item)}>
+              <Text className="text-sm font-semibold text-blue-700">View reservation</Text>
+            </Pressable>
           </View>
         ) : null}
       </View>
@@ -614,6 +693,119 @@ export default function BookingsScreen() {
               )
             }
           />
+
+          <Modal
+            animationType="slide"
+            transparent
+            visible={reservationVisible}
+            onRequestClose={() => setReservationVisible(false)}>
+            <View className="flex-1 justify-end bg-black/40">
+              <View className="rounded-t-[32px] bg-white px-6 pb-10 pt-6">
+                <View className="mb-6 h-1 w-14 self-center rounded-full bg-slate-200" />
+                <View className="flex-row items-start justify-between">
+                  <View>
+                    <Text className="text-2xl font-bold text-slate-900">
+                      Reservation details
+                    </Text>
+                    <Text className="mt-1 text-sm text-slate-500">
+                      Your confirmed stay information.
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => setReservationVisible(false)}>
+                    <Feather name="x" size={22} color="#0f172a" />
+                  </Pressable>
+                </View>
+
+                {confirmedDetailsQuery.loading ? (
+                  <View className="mt-6 items-center">
+                    <ActivityIndicator color="#2563eb" />
+                  </View>
+                ) : reservationError ? (
+                  <View className="mt-6 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3">
+                    <Text className="text-sm font-semibold text-rose-600">
+                      {reservationError}
+                    </Text>
+                  </View>
+                ) : confirmedDetailsQuery.error ? (
+                  <View className="mt-6 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3">
+                    <Text className="text-sm font-semibold text-rose-600">
+                      Unable to load reservation details right now.
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="mt-6 gap-4">
+                    <View className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                      <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Listing
+                      </Text>
+                      <Text className="mt-1 text-base font-semibold text-slate-900">
+                        {confirmedDetailsQuery.data?.confirmedBookingDetails?.name ??
+                          '—'}
+                      </Text>
+                      <View className="mt-3 flex-row items-center justify-between">
+                        <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Reference
+                        </Text>
+                        <View className="rounded-full bg-slate-900 px-3 py-1">
+                          <Text className="text-xs font-semibold text-white">
+                            {confirmedDetailsQuery.data?.confirmedBookingDetails
+                              ?.referenceNumber ?? '—'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text className="mt-1 text-sm text-slate-500">
+                        {confirmedDetailsQuery.data?.confirmedBookingDetails?.address ??
+                          '—'}
+                      </Text>
+                    </View>
+
+                    <View className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm shadow-slate-50">
+                      <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Check-in
+                      </Text>
+                      <Text className="mt-1 text-base font-semibold text-slate-900">
+                        {formatDateTime(
+                          confirmedDetailsQuery.data?.confirmedBookingDetails?.checkIn,
+                          confirmedDetailsQuery.data?.confirmedBookingDetails?.checkInTime
+                        )}
+                      </Text>
+                    </View>
+
+                    <View className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm shadow-slate-50">
+                      <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Check-out
+                      </Text>
+                      <Text className="mt-1 text-base font-semibold text-slate-900">
+                        {formatDateTime(
+                          confirmedDetailsQuery.data?.confirmedBookingDetails?.checkOut,
+                          confirmedDetailsQuery.data?.confirmedBookingDetails?.checkOutTime
+                        )}
+                      </Text>
+                    </View>
+
+                    <View className="rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-4">
+                      <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+                        Contact
+                      </Text>
+                      <Pressable
+                        className="mt-2 flex-row items-center gap-2"
+                        onPress={() =>
+                          handleCallContact(
+                            confirmedDetailsQuery.data?.confirmedBookingDetails?.contact
+                          )
+                        }>
+                        <Feather name="phone-call" size={16} color="#1d4ed8" />
+                        <Text className="text-base font-semibold text-blue-700">
+                          {confirmedDetailsQuery.data?.confirmedBookingDetails?.contact ??
+                            '—'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          </Modal>
 
         </>
       )}
