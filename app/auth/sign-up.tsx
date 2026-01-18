@@ -227,7 +227,7 @@ export default function SignUpScreen() {
               <Text className="text-sm font-medium text-slate-600">First name</Text>
               <TextInput
                 className={`mt-2 ${inputWrapperClass} py-4 text-base text-slate-900`}
-                placeholder="Adim"
+                placeholder="John"
                 placeholderTextColor="#94a3b8"
                 value={firstName}
                 onChangeText={(value) => {
@@ -241,7 +241,7 @@ export default function SignUpScreen() {
               <Text className="text-sm font-medium text-slate-600">Last name</Text>
               <TextInput
                 className={`mt-2 ${inputWrapperClass} py-4 text-base text-slate-900`}
-                placeholder="Eze"
+                placeholder="Franklin"
                 placeholderTextColor="#94a3b8"
                 value={lastName}
                 onChangeText={(value) => {
