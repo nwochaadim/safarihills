@@ -79,6 +79,11 @@ export default function ForgotPasswordScreen() {
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View className="flex-1 px-6 pb-10 pt-8">
+          <Pressable
+            className="h-10 w-10 items-center justify-center rounded-full border border-slate-200"
+            onPress={() => router.back()}>
+            <Text className="text-lg font-semibold text-slate-700">←</Text>
+          </Pressable>
           <Text className="mt-3 text-4xl font-bold text-slate-900">Forgot password</Text>
           <Text className="mt-2 text-base text-slate-500">
             Enter the email linked to your Safarihills account so we can send you a new password.
