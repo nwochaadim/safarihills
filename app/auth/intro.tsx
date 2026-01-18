@@ -34,7 +34,7 @@ const SLIDES: IntroSlide[] = [
     id: 'slide-rewards',
     title: 'Earn rewards every time you book.',
     description:
-      'Collect points, climb tiers, and redeem perks that keep the motivation flowing.',
+      'Earn rewards with every booking to keep the motivation flowing.',
     image:
       'https://storage.googleapis.com/safarihills-mobile-assets/cover-photo.jpeg',
   },
