@@ -251,7 +251,6 @@ export default function BookingsScreen() {
   >(FIND_CONFIRMED_BOOKING_DETAILS, {
     fetchPolicy: 'network-only',
   });
-  console.log('Error', confirmedDetailsQuery.error);
   const [deleteBooking] = useMutation<DeleteBookingResponse, DeleteBookingVariables>(
     DELETE_BOOKING
   );
@@ -742,7 +741,14 @@ export default function BookingsScreen() {
                         {confirmedDetailsQuery.data?.confirmedBookingDetails?.name ??
                           '—'}
                       </Text>
-                      <View className="mt-3 flex-row items-center justify-between">
+                      <Text className="mt-1 text-sm text-slate-500">
+                        {confirmedDetailsQuery.data?.confirmedBookingDetails?.address ??
+                          '—'}
+                      </Text>
+                    </View>
+
+                    <View className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm shadow-slate-50">
+                      <View className="mt-2 flex-row items-center justify-between">
                         <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Reference
                         </Text>
@@ -753,10 +759,6 @@ export default function BookingsScreen() {
                           </Text>
                         </View>
                       </View>
-                      <Text className="mt-1 text-sm text-slate-500">
-                        {confirmedDetailsQuery.data?.confirmedBookingDetails?.address ??
-                          '—'}
-                      </Text>
                     </View>
 
                     <View className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm shadow-slate-50">
