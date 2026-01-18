@@ -28,7 +28,7 @@ const SLIDES: IntroSlide[] = [
     description:
       'Safarihills brings premium listings and limited offers that make every luxury stay more rewarding.',
     image:
-      'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=1080&q=80',
+      'https://storage.googleapis.com/safarihills-mobile-assets/cover-4.jpeg',
   },
   {
     id: 'slide-rewards',
@@ -36,7 +36,7 @@ const SLIDES: IntroSlide[] = [
     description:
       'Collect points, climb tiers, and redeem perks that keep the motivation flowing.',
     image:
-      'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1080&q=80',
+      'https://storage.googleapis.com/safarihills-mobile-assets/cover-photo.jpeg',
   },
   {
     id: 'slide-support',
@@ -44,7 +44,7 @@ const SLIDES: IntroSlide[] = [
     description:
       'See availability in real time, get updates from Safarihills experts, and book with confidence.',
     image:
-      'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1080&q=80',
+      'https://storage.googleapis.com/safarihills-mobile-assets/cover-photo2.jpeg',
   },
 ];
 

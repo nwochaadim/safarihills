@@ -648,7 +648,7 @@ export default function BookingsScreen() {
             </Text>
             <Text className="mt-1 text-3xl font-bold text-slate-900">Guest bookings</Text>
             <Text className="mt-1 text-sm text-slate-500">
-              Track every stay you refer and monitor rewards in real time.
+              Track every booking using the current, upcoming and past filters
             </Text>
           </View>
 
