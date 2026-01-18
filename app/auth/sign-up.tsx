@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -248,6 +249,7 @@ export default function SignUpScreen() {
   const [callingCode, setCallingCode] = useState('234');
   const [countryName, setCountryName] = useState('Nigeria');
   const [pickerVisible, setPickerVisible] = useState(false);
+  const modalMaxHeight = Math.min(560, Dimensions.get('window').height * 0.7);
 
   const isEmailValid = emailRegex.test(email.trim());
   const showEmailError = email.length > 0 && !isEmailValid;
@@ -530,14 +532,19 @@ export default function SignUpScreen() {
         visible={pickerVisible}
         onRequestClose={() => setPickerVisible(false)}>
         <View className="flex-1 justify-end bg-black/30">
-          <View className="rounded-t-3xl bg-white px-6 pb-8 pt-4">
+          <View
+            className="rounded-t-3xl bg-white px-6 pb-8 pt-4"
+            style={{ maxHeight: modalMaxHeight }}>
             <View className="flex-row items-center justify-between">
               <Text className="text-base font-semibold text-slate-900">Select country</Text>
               <Pressable onPress={() => setPickerVisible(false)}>
                 <Text className="text-sm font-semibold text-blue-600">Close</Text>
               </Pressable>
             </View>
-            <View className="mt-4 flex-col gap-3">
+            <ScrollView
+              className="mt-4"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: 12, paddingBottom: 12 }}>
               {COUNTRIES.map((country) => (
                 <Pressable
                   key={country.code}
@@ -550,7 +557,7 @@ export default function SignUpScreen() {
                   <Text className="text-sm font-semibold text-blue-600">{country.code}</Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
