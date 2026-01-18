@@ -1,6 +1,7 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -220,6 +221,7 @@ export default function BookingsScreen() {
   );
   const [reservationVisible, setReservationVisible] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
+  const [referenceCopied, setReferenceCopied] = useState(false);
   const { paymentStatus, message } = useLocalSearchParams<{
     paymentStatus?: string | string[];
     message?: string | string[];
@@ -413,6 +415,7 @@ export default function BookingsScreen() {
   const handleViewReservation = (booking: BookingListItem) => {
     if (!booking.id) return;
     setReservationError(null);
+    setReferenceCopied(false);
     setReservationVisible(true);
     loadConfirmedDetails({ variables: { bookingId: booking.id } }).catch((err) => {
       const message =
@@ -443,6 +446,14 @@ export default function BookingsScreen() {
     const digits = trimmed.replace(/[^\d+]/g, '');
     const url = Platform.OS === 'ios' ? `telprompt:${digits}` : `tel:${digits}`;
     Linking.openURL(url).catch(() => null);
+  };
+
+  const handleCopyReference = async (reference?: string | null) => {
+    const value = reference?.trim();
+    if (!value) return;
+    await Clipboard.setStringAsync(value);
+    setReferenceCopied(true);
+    setTimeout(() => setReferenceCopied(false), 1500);
   };
 
   const renderBookingCard = ({ item }: { item: BookingListItem }) => {
@@ -748,16 +759,36 @@ export default function BookingsScreen() {
                     </View>
 
                     <View className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm shadow-slate-50">
+                      <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Reference
+                      </Text>
                       <View className="mt-2 flex-row items-center justify-between">
-                        <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Reference
-                        </Text>
                         <View className="rounded-full bg-slate-900 px-3 py-1">
                           <Text className="text-xs font-semibold text-white">
                             {confirmedDetailsQuery.data?.confirmedBookingDetails
                               ?.referenceNumber ?? '—'}
                           </Text>
                         </View>
+                        <Pressable
+                          className="flex-row items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1"
+                          onPress={() =>
+                            handleCopyReference(
+                              confirmedDetailsQuery.data?.confirmedBookingDetails
+                                ?.referenceNumber
+                            )
+                          }>
+                          <Feather
+                            name={referenceCopied ? 'check' : 'copy'}
+                            size={12}
+                            color={referenceCopied ? '#16a34a' : '#64748b'}
+                          />
+                          <Text
+                            className={`text-xs font-semibold ${
+                              referenceCopied ? 'text-emerald-600' : 'text-slate-500'
+                            }`}>
+                            {referenceCopied ? 'Copied' : 'Copy'}
+                          </Text>
+                        </Pressable>
                       </View>
                     </View>
 
