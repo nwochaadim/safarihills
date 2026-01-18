@@ -1,8 +1,8 @@
+import { useMutation } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +11,33 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { CONFIRM_PASSWORD } from '@/mutations/confirmPassword';
+import { RESET_PASSWORD } from '@/mutations/resetPassword';
+
+type ConfirmPasswordResponse = {
+  confirmPassword: {
+    success: boolean | null;
+    errors: string[] | string | null;
+  } | null;
+};
+
+type ConfirmPasswordVariables = {
+  email: string;
+  password: string;
+  newPassword: string;
+};
+
+type ResetPasswordResponse = {
+  resetPassword: {
+    success: boolean | null;
+    errors: string[] | string | null;
+  } | null;
+};
+
+type ResetPasswordVariables = {
+  email: string;
+};
 
 export default function NewPasswordScreen() {
   const router = useRouter();
@@ -21,8 +48,14 @@ export default function NewPasswordScreen() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showTempPassword, setShowTempPassword] = useState(false);
-  const [isResending, setIsResending] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmPassword, { loading: isSubmitting }] = useMutation<
+    ConfirmPasswordResponse,
+    ConfirmPasswordVariables
+  >(CONFIRM_PASSWORD);
+  const [resetPassword, { loading: isResending }] = useMutation<
+    ResetPasswordResponse,
+    ResetPasswordVariables
+  >(RESET_PASSWORD);
 
   const isFormValid = useMemo(() => {
     return tempPassword.trim().length > 0 && newPassword.trim().length >= 6;
@@ -33,7 +66,7 @@ export default function NewPasswordScreen() {
     if (serverError) setServerError(null);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isFormValid || isSubmitting) {
       if (!isFormValid) {
         setError('Enter the temporary password and a new password with 6+ characters.');
@@ -48,26 +81,64 @@ export default function NewPasswordScreen() {
       return;
     }
 
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      Alert.alert('Password updated', 'You can now log in with your new password.');
+    try {
+      const { data } = await confirmPassword({
+        variables: {
+          email: trimmedEmail,
+          password: tempPassword.trim(),
+          newPassword: newPassword.trim(),
+        },
+      });
+      const result = data?.confirmPassword;
+      const errors = result?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setServerError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setServerError(errors);
+        return;
+      }
+      if (!result?.success) {
+        setServerError('Unable to update password right now. Please try again.');
+        return;
+      }
       router.replace('/auth/login');
-    }, 600);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to update password right now.';
+      setServerError(message);
+    }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     const trimmedEmail = (email || '').trim();
     if (!trimmedEmail) {
       setServerError('Email is missing. Please return and enter your email.');
       return;
     }
 
-    setIsResending(true);
-    setTimeout(() => {
-      setIsResending(false);
-      Alert.alert('Password resent', 'We just sent the temporary password to your email again.');
-    }, 500);
+    clearErrors();
+    try {
+      const { data } = await resetPassword({ variables: { email: trimmedEmail } });
+      const result = data?.resetPassword;
+      const errors = result?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setServerError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setServerError(errors);
+        return;
+      }
+      if (!result?.success) {
+        setServerError('Unable to resend password right now. Please try again.');
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to resend password right now.';
+      setServerError(message);
+    }
   };
 
   const inputWrapperClass = 'rounded-2xl border border-slate-200 bg-slate-50/50 px-4';
