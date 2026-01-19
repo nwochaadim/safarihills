@@ -504,6 +504,14 @@ export default function BookingScreen() {
   const hasPrice = baseNightlyRate > 0;
   const hasPurpose = Boolean(purpose.trim());
   const canReview = acceptedTerms && hasDates && hasPrice && hasPurpose && !isCreating;
+  const missingRequirements = useMemo(() => {
+    const missing: string[] = [];
+    if (!hasDates) missing.push('Select check-in and check-out dates.');
+    if (!hasPurpose) missing.push('Select purpose of stay.');
+    if (!acceptedTerms) missing.push('Accept the Terms of use.');
+    if (!hasPrice) missing.push('Pricing is unavailable.');
+    return missing;
+  }, [acceptedTerms, hasDates, hasPrice, hasPurpose]);
 
   const handleCreateBooking = async () => {
     if (!checkIn || !checkOut) return;
@@ -887,6 +895,13 @@ export default function BookingScreen() {
                 </Text>
               </View>
             </Pressable>
+            {!hasPurpose ? (
+              <View className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-amber-700">
+                  Select a purpose of stay to continue.
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -960,6 +975,13 @@ export default function BookingScreen() {
             {bookingError ? (
               <View className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2">
                 <Text className="text-xs font-semibold text-rose-600">{bookingError}</Text>
+              </View>
+            ) : null}
+            {!canReview && missingRequirements.length > 0 ? (
+              <View className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2">
+                <Text className="text-xs font-semibold text-amber-700">
+                  {missingRequirements.join(' ')}
+                </Text>
               </View>
             ) : null}
             <Pressable
