@@ -4,6 +4,7 @@ import { WALLET_AND_TRANSACTIONS } from '@/queries/walletAndTransactions';
 import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -168,6 +169,91 @@ export default function WalletScreen() {
 
   const paystackReference = paystackConfig?.reference ?? '';
   const paystackAmount = paystackConfig?.amount ?? 0;
+  const paystackBridgeScript = `
+    (function() {
+      function postClipboardText(text) {
+        try {
+          if (!text) return;
+          var payload = JSON.stringify({
+            type: 'clipboard',
+            text: String(text)
+          });
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(payload);
+            return;
+          }
+          try {
+            if (window.top && window.top.ReactNativeWebView && window.top.ReactNativeWebView.postMessage) {
+              window.top.ReactNativeWebView.postMessage(payload);
+              return;
+            }
+          } catch (err) {}
+          try {
+            if (window.parent && window.parent.ReactNativeWebView && window.parent.ReactNativeWebView.postMessage) {
+              window.parent.ReactNativeWebView.postMessage(payload);
+            }
+          } catch (err) {}
+        } catch (err) {}
+      }
+      function readSelectedText() {
+        try {
+          const selection =
+            window.getSelection && window.getSelection().toString
+              ? window.getSelection().toString()
+              : '';
+          if (selection) return selection;
+        } catch (err) {}
+        try {
+          const active = document.activeElement;
+          if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+            const start = active.selectionStart;
+            const end = active.selectionEnd;
+            if (typeof start === 'number' && typeof end === 'number') {
+              const value = active.value || '';
+              return value.substring(start, end) || value;
+            }
+            return active.value || '';
+          }
+        } catch (err) {}
+        return '';
+      }
+      try {
+        if (!navigator.clipboard) {
+          navigator.clipboard = {};
+        }
+        const originalWriteText = navigator.clipboard.writeText;
+        navigator.clipboard.writeText = function(text) {
+          postClipboardText(text);
+          if (typeof originalWriteText === 'function') {
+            try {
+              return originalWriteText.call(navigator.clipboard, text);
+            } catch (err) {}
+          }
+          return Promise.resolve();
+        };
+      } catch (err) {}
+      try {
+        const originalExecCommand = document.execCommand;
+        document.execCommand = function(command, showUI, value) {
+          if (command && String(command).toLowerCase() === 'copy') {
+            postClipboardText(readSelectedText());
+          }
+          if (typeof originalExecCommand === 'function') {
+            try {
+              return originalExecCommand.call(document, command, showUI, value);
+            } catch (err) {}
+          }
+          return false;
+        };
+      } catch (err) {}
+      try {
+        document.addEventListener('copy', function() {
+          postClipboardText(readSelectedText());
+        });
+      } catch (err) {}
+    })();
+    true;
+  `;
   const paystackHtml = useMemo(() => {
     if (!paystackConfig) return '';
     const configJson = JSON.stringify({
@@ -226,6 +312,13 @@ export default function WalletScreen() {
   const handlePaystackMessage = (event: { nativeEvent: { data: string } }) => {
     try {
       const payload = JSON.parse(event.nativeEvent.data);
+      if (payload?.type === 'clipboard') {
+        const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+        if (text) {
+          Clipboard.setStringAsync(text).catch(() => null);
+        }
+        return;
+      }
       if (payload?.type === 'close') {
         setPaystackVisible(false);
       }
@@ -475,6 +568,10 @@ export default function WalletScreen() {
           <WebView
             key={`${paystackReference}-${paystackAmount}`}
             originWhitelist={['*']}
+            injectedJavaScriptBeforeContentLoaded={paystackBridgeScript}
+            injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
+            injectedJavaScript={paystackBridgeScript}
+            injectedJavaScriptForMainFrameOnly={false}
             source={{ html: paystackHtml }}
             onMessage={handlePaystackMessage}
           />
