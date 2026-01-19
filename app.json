@@ -7,6 +7,11 @@
     "icon": "./assets/images/icon.png",
     "scheme": "safarihills",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/safarihills-splash-4.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
@@ -22,11 +27,20 @@
       "package": "com.safarihills.listings",
       "googleServicesFile": "./google-services.json",
       "versionCode": 1,
+      "notification": {
+        "icon": "./assets/images/android-safarihills-logo.png",
+        "color": "#fff"
+      },
+      "splash": {
+        "image": "./assets/images/safari-splash.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/SafariLogo.png",
+        "backgroundImage": "./assets/images/SafariLogo.png",
+        "monochromeImage": "./assets/images/SafariLogo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -40,7 +54,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/safari-splash.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -52,7 +66,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/android-icon-monochrome.png",
+          "icon": "./assets/images/SafariLogo.png",
           "color": "#1d4ed8"
         }
       ]
