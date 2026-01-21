@@ -53,7 +53,7 @@ const referralSteps = [
   { label: 'Invite a friend', detail: 'Share your code with friends who love to travel.' },
   { label: 'Friend books a stay', detail: 'They enjoy a welcome perk on their first booking.' },
   { label: 'Booking completes', detail: 'Rewards unlock after their stay is confirmed.' },
-  { label: 'You earn credits', detail: 'Travel credits go straight to your wallet.' },
+  { label: 'You earn credits', detail: 'Credits go straight to your wallet.' },
 ];
 
 const PAGE_SIZE = 10;
