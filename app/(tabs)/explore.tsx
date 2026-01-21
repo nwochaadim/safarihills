@@ -505,15 +505,15 @@ export default function ExploreScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
-      <View className="flex-row items-center justify-between px-6 pt-4">
-        <View>
+      <View className="flex-row items-center px-6 pt-4">
+        <View className="flex-1 pr-4">
           <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
             Safarihills
           </Text>
           <Text className="mt-1 text-3xl font-bold text-slate-900">{welcomeMessage}</Text>
         </View>
         <Pressable
-          className="h-12 w-12 items-center justify-center rounded-full bg-blue-100"
+          className="h-12 w-12 items-center justify-center rounded-full bg-blue-100 shrink-0"
           onPress={() => router.push('/(tabs)/profile')}>
           <Text className="text-lg font-bold text-blue-900">{profileInitials}</Text>
         </Pressable>
