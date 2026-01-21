@@ -1,8 +1,10 @@
 import { useMutation } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,9 +13,9 @@ import {
   Text,
   TextInput,
   View,
-  Dimensions,
+  findNodeHandle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SIGNUP_GUEST } from '@/mutations/signupGuest';
 
@@ -232,6 +234,11 @@ const normalizeErrors = (errors: unknown): string[] => {
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+  const referralInputRef = useRef<TextInput>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -269,6 +276,29 @@ export default function SignUpScreen() {
   const resetErrors = () => {
     if (serverError) setServerError(null);
     if (errorMessages.length) setErrorMessages([]);
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showListener = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardInset(event.endCoordinates.height);
+    });
+    const hideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showListener.remove();
+      hideListener.remove();
+    };
+  }, []);
+
+  const focusInput = (inputRef: RefObject<TextInput>) => {
+    if (Platform.OS !== 'android') return;
+    const target = inputRef.current ? findNodeHandle(inputRef.current) : null;
+    const scrollResponder = scrollViewRef.current?.getScrollResponder();
+    if (!target || !scrollResponder) return;
+    scrollResponder.scrollResponderScrollNativeHandleToKeyboard(target, 80, true);
   };
 
   const handleSelectCountry = (country: CountryOption) => {
@@ -359,15 +389,21 @@ export default function SignUpScreen() {
     });
   }, [normalizedSearch]);
 
+  const keyboardOffset = Platform.OS === 'ios' ? insets.top : 0;
+  const scrollPaddingBottom =
+    40 + insets.bottom + (Platform.OS === 'android' ? keyboardInset : 0);
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={keyboardOffset}>
         <ScrollView
+          ref={scrollViewRef}
           className="flex-1"
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: scrollPaddingBottom }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           <View className="px-6 pt-8">
@@ -494,7 +530,9 @@ export default function SignUpScreen() {
                   placeholder="At least 6 characters"
                   placeholderTextColor="#94a3b8"
                   secureTextEntry={!showPassword}
+                  ref={passwordInputRef}
                   value={password}
+                  onFocus={() => focusInput(passwordInputRef)}
                   onChangeText={(value) => {
                     setPassword(value);
                     resetErrors();
@@ -519,7 +557,9 @@ export default function SignUpScreen() {
                 placeholder="Enter referral code"
                 placeholderTextColor="#94a3b8"
                 autoCapitalize="characters"
+                ref={referralInputRef}
                 value={referralCode}
+                onFocus={() => focusInput(referralInputRef)}
                 onChangeText={(value) => {
                   setReferralCode(value);
                   resetErrors();
