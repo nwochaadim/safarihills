@@ -2,7 +2,7 @@
   "expo": {
     "name": "safarihills",
     "slug": "safarihill",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/SafariLogo.png",
     "scheme": "safarihills",
@@ -27,9 +27,9 @@
       "package": "com.safarihills.listings",
       "googleServicesFile": "./google-services.json",
       "versionCode": 11,
-      "icon": "./assets/images/android-safarihills-logo.png",
+      "icon": "./assets/images/android-safarihills-logo2.png",
       "notification": {
-        "icon": "./assets/images/android-safarihills-logo.png",
+        "icon": "./assets/images/android-safarihills-logo2.png",
         "color": "#fff"
       },
       "splash": {
