@@ -4,7 +4,7 @@
     "slug": "safarihill",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/SafariLogo.png",
     "scheme": "safarihills",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -26,7 +26,7 @@
     "android": {
       "package": "com.safarihills.listings",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 1,
+      "versionCode": 10,
       "notification": {
         "icon": "./assets/images/android-safarihills-logo.png",
         "color": "#fff"
