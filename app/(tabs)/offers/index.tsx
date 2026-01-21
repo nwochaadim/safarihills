@@ -8,11 +8,11 @@ import {
   NativeSyntheticEvent,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';

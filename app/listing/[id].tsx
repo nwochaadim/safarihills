@@ -23,11 +23,11 @@ import {
   Modal,
   Linking,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = width * 0.9;

@@ -8,12 +8,12 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { V2_EXPLORE_LISTINGS } from '@/queries/v2ExploreListings';

@@ -2,7 +2,8 @@ import { BackButton } from '@/components/BackButton';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { Linking, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ContactOption = {
   label: string;

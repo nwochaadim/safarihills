@@ -9,12 +9,12 @@ import {
   Alert,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { UPDATE_PERSONAL_INFO } from '@/mutations/updatePersonalInfo';
 import { GET_USER_INFO_V2 } from '@/queries/getUserInfoV2';

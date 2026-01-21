@@ -7,10 +7,10 @@ import {
   Dimensions,
   FlatList,
   Pressable,
-  SafeAreaView,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/BackButton';
 import { HtmlViewer } from '@/components/HtmlViewer';

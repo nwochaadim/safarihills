@@ -26,7 +26,7 @@
     "android": {
       "package": "com.safarihills.listings",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 10,
+      "versionCode": 11,
       "notification": {
         "icon": "./assets/images/android-safarihills-logo.png",
         "color": "#fff"
