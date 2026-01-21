@@ -27,6 +27,7 @@
       "package": "com.safarihills.listings",
       "googleServicesFile": "./google-services.json",
       "versionCode": 11,
+      "icon": "./assets/images/android-safarihills-logo.png",
       "notification": {
         "icon": "./assets/images/android-safarihills-logo.png",
         "color": "#fff"
@@ -35,12 +36,6 @@
         "image": "./assets/images/safari-splash.png",
         "resizeMode": "contain",
         "backgroundColor": "#ffffff"
-      },
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/SafariLogo.png",
-        "backgroundImage": "./assets/images/SafariLogo.png",
-        "monochromeImage": "./assets/images/SafariLogo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
