@@ -2,15 +2,15 @@ import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
-  Dimensions,
   FlatList,
   ListRenderItem,
   Pressable,
   Text,
+  useWindowDimensions,
   View,
   ViewToken,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 
@@ -48,12 +48,13 @@ const SLIDES: IntroSlide[] = [
   },
 ];
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - 48;
-
 export default function IntroScreen() {
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(0);
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const pageWidth = windowWidth - insets.left - insets.right;
+  const cardWidth = pageWidth - 48;
 
   const viewConfigRef = useRef({
     viewAreaCoveragePercentThreshold: 60,
@@ -68,11 +69,11 @@ export default function IntroScreen() {
   );
 
   const renderSlide: ListRenderItem<IntroSlide> = ({ item }) => (
-    <View style={{ width }}>
+    <View style={{ width: pageWidth }}>
       <View className="mt-6 w-full items-center">
         <LoadingImageBackground
           source={{ uri: item.image }}
-          style={{ width: CARD_WIDTH, minHeight: width * 1.15 }}
+          style={{ width: cardWidth, minHeight: pageWidth * 1.15 }}
           imageStyle={{ borderRadius: 32 }}
           className="overflow-hidden rounded-[32px] bg-blue-100">
           <View className="flex-1 justify-end bg-black/30 px-6 pb-20">
@@ -105,9 +106,15 @@ export default function IntroScreen() {
         showsHorizontalScrollIndicator={false}
         className="flex-1"
         decelerationRate="fast"
-        snapToAlignment="start"
+        snapToAlignment="center"
+        snapToInterval={pageWidth}
         viewabilityConfig={viewConfigRef.current}
         onViewableItemsChanged={onViewableItemsChanged.current}
+        getItemLayout={(_, index) => ({
+          length: pageWidth,
+          offset: pageWidth * index,
+          index,
+        })}
       />
 
       <View className="px-6 pb-10 pt-4">
