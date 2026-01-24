@@ -18,7 +18,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from '@/components/tab-safe-area-view';
+import { SafeAreaView as TabSafeAreaView } from '@/components/tab-safe-area-view';
+import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { BlankSlate } from '@/components/BlankSlate';
@@ -494,7 +495,7 @@ export default function WalletScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <TabSafeAreaView className="flex-1 bg-slate-50">
       <Stack.Screen options={{ headerShown: false }} />
       {authStatus === 'signed-out' ? (
         <View className="flex-1 px-6 pt-2">
@@ -675,7 +676,9 @@ export default function WalletScreen() {
         visible={paystackVisible}
         animationType="slide"
         onRequestClose={() => setPaystackVisible(false)}>
-        <SafeAreaView className="flex-1 bg-white">
+        <BaseSafeAreaView
+          edges={['top', 'left', 'right', 'bottom']}
+          style={{ flex: 1, backgroundColor: '#fff' }}>
           <View className="flex-row items-center justify-between border-b border-slate-200 px-6 pb-4 pt-16">
             <Text className="text-base font-semibold text-slate-900">Pay with Paystack</Text>
             <Pressable
@@ -694,8 +697,8 @@ export default function WalletScreen() {
             source={{ html: paystackHtml }}
             onMessage={handlePaystackMessage}
           />
-        </SafeAreaView>
+        </BaseSafeAreaView>
       </Modal>
-    </SafeAreaView>
+    </TabSafeAreaView>
   );
 }

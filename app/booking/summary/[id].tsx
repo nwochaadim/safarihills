@@ -18,7 +18,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView as TabSafeAreaView } from '@/components/tab-safe-area-view';
+import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
@@ -723,7 +724,7 @@ export default function BookingSummaryScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <TabSafeAreaView className="flex-1 bg-slate-50" edges={['top', 'left', 'right', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -1118,7 +1119,9 @@ export default function BookingSummaryScreen() {
         visible={paystackVisible}
         animationType="slide"
         onRequestClose={() => setPaystackVisible(false)}>
-        <SafeAreaView className="flex-1 bg-white">
+        <BaseSafeAreaView
+          edges={['top', 'left', 'right', 'bottom']}
+          style={{ flex: 1, backgroundColor: '#fff' }}>
           <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
             <Text className="text-base font-semibold text-slate-900">Pay with Paystack</Text>
             <Pressable
@@ -1137,8 +1140,8 @@ export default function BookingSummaryScreen() {
             source={{ html: paystackHtml }}
             onMessage={handlePaystackMessage}
           />
-        </SafeAreaView>
+        </BaseSafeAreaView>
       </Modal>
-    </SafeAreaView>
+    </TabSafeAreaView>
   );
 }
