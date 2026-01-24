@@ -2,8 +2,8 @@ import { ApolloClient, HttpLink, InMemoryCache, from } from '@apollo/client';
 import { loadDevMessages, loadErrorMessages } from '@apollo/client/dev';
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
-import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
 
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:3000/graphql';
@@ -29,8 +29,14 @@ const handleUnauthorized = async () => {
 };
 
 const errorLink = onError(({ graphQLErrors, networkError }) => {
-  const isGraphqlUnauthorized = graphQLErrors?.some(
-    (error) => error.extensions?.code === 'UNAUTHENTICATED'
+  console.log('graphqlErrors', graphQLErrors);
+  const gqlErrors = Array.isArray(graphQLErrors)
+    ? graphQLErrors
+    : graphQLErrors
+    ? [graphQLErrors]
+    : [];
+  const isGraphqlUnauthorized = gqlErrors.some(
+    (error) => error?.extensions?.code === 'UNAUTHENTICATED'
   );
   const statusCode = (networkError as { statusCode?: number })?.statusCode;
   if (isGraphqlUnauthorized || statusCode === 401) {
