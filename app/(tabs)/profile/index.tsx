@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { AuthStatus } from '@/lib/authStatus';

@@ -29,7 +29,6 @@ const handleUnauthorized = async () => {
 };
 
 const errorLink = onError(({ graphQLErrors, networkError }) => {
-  console.log('graphqlErrors', graphQLErrors);
   const gqlErrors = Array.isArray(graphQLErrors)
     ? graphQLErrors
     : graphQLErrors

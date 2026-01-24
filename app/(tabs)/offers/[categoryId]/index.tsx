@@ -3,7 +3,7 @@ import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
 
 import { BackButton } from '@/components/BackButton';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';

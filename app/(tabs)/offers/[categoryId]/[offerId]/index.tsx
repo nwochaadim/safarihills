@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
 
 import { BackButton } from '@/components/BackButton';
 import { HtmlViewer } from '@/components/HtmlViewer';

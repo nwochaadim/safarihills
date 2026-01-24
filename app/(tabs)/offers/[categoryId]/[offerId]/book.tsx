@@ -20,7 +20,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
 
 const { width } = Dimensions.get('window');
 const GALLERY_HORIZONTAL_PADDING = 24;

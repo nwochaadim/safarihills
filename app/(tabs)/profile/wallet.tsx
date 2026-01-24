@@ -18,7 +18,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
 import { WebView } from 'react-native-webview';
 
 import { BlankSlate } from '@/components/BlankSlate';

@@ -14,7 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
 
 import { UPDATE_PERSONAL_INFO } from '@/mutations/updatePersonalInfo';
 import { GET_USER_INFO_V2 } from '@/queries/getUserInfoV2';
