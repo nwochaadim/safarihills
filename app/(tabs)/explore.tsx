@@ -139,34 +139,6 @@ const DISCOVER_FILTERS: DiscoverFilterConfig[] = [
   },
 ];
 
-type BookingOptionMeta = {
-  label: string;
-  icon: ComponentProps<typeof Feather>['name'];
-  containerClass: string;
-  textClass: string;
-  iconColor: string;
-};
-
-const getBookingOptionMeta = (option: BookingOption): BookingOptionMeta => {
-  if (option === 'room') {
-    return {
-      label: 'Single room',
-      icon: 'key',
-      containerClass: 'border-amber-200 bg-amber-50',
-      textClass: 'text-amber-700',
-      iconColor: '#b45309',
-    };
-  }
-
-  return {
-    label: 'Entire apartment',
-    icon: 'home',
-    containerClass: 'border-blue-200 bg-blue-50',
-    textClass: 'text-blue-700',
-    iconColor: '#1d4ed8',
-  };
-};
-
 const normalizeArea = (area: string) => area.trim().toLowerCase();
 
 const areaIncludes = (area: string, query: string) => normalizeArea(area).includes(query);
@@ -811,25 +783,7 @@ export default function ExploreScreen() {
           <Text className="text-sm text-slate-500" numberOfLines={2} ellipsizeMode="tail">
             {item.description}
           </Text>
-          <View className="mt-3">
-            <Text className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Bookable as
-            </Text>
-            <View className="mt-2 flex-row flex-wrap gap-2">
-              {item.bookingOptions.map((option) => {
-                const meta = getBookingOptionMeta(option);
-                return (
-                  <View
-                    key={`${item.id}-${option}`}
-                    className={`flex-row items-center gap-2 rounded-full border px-3 py-1.5 ${meta.containerClass}`}>
-                    <Feather name={meta.icon} size={12} color={meta.iconColor} />
-                    <Text className={`text-xs font-semibold ${meta.textClass}`}>{meta.label}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-          <View className="flex-row items-center justify-between">
+          <View className="mt-3 flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
               <Feather name="users" size={16} color="#64748b" />
               <Text className="text-sm font-medium text-slate-600">
