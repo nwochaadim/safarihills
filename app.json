@@ -18,6 +18,7 @@
       "bundleIdentifier": "com.safarihills.app",
       "buildNumber": "1",
       "icon": "./assets/images/SafariLogo.png",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "notification": {
         "icon": "./assets/images/SafariLogo.png",
         "color": "#fff"
@@ -68,7 +69,8 @@
           "icon": "./assets/images/android-notification-icon.png",
           "color": "#1d4ed8"
         }
-      ]
+      ],
+      "@react-native-firebase/app"
     ],
     "experiments": {
       "typedRoutes": true,
