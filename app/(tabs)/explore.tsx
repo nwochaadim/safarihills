@@ -1,5 +1,6 @@
 import { useLazyQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
 import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -14,6 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoadingImage } from '@/components/LoadingImage';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 
@@ -465,6 +467,8 @@ const mapExploreListing = (listing: ExploreListingResponse, index: number): Expl
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
   const [activeDiscoverFilter, setActiveDiscoverFilter] = useState<DiscoverFilterId>('all');
@@ -530,6 +534,7 @@ export default function ExploreScreen() {
   const profileName = data?.profile?.firstName ?? '';
   const profileInitials = data?.profile?.initials ?? 'SH';
   const welcomeMessage = profileName ? `Welcome back, ${profileName}` : 'Welcome back';
+  const bookingAlertBottomOffset = Math.max(tabBarHeight + 16, insets.bottom + 88);
   const activeFilterCount = useMemo(() => {
     let count = 0;
 
@@ -1154,15 +1159,23 @@ export default function ExploreScreen() {
         </View>
       )}
 
-      <View pointerEvents="box-none" className="absolute bottom-8 left-0 right-0 z-10 px-6">
+      <View
+        pointerEvents="box-none"
+        className="absolute left-0 right-0 z-50 px-5"
+        style={{ bottom: bookingAlertBottomOffset }}>
         {activeBookingAlert ? (
           <Animated.View
             pointerEvents="none"
             style={{
               opacity: alertOpacity,
               transform: [{ translateY: alertTranslateY }],
+              shadowColor: '#020617',
+              shadowOpacity: 0.28,
+              shadowRadius: 22,
+              shadowOffset: { width: 0, height: 14 },
+              elevation: 22,
             }}
-            className="overflow-hidden rounded-[28px] border border-white/70 bg-slate-950/92 shadow-2xl shadow-slate-900/30">
+            className="overflow-hidden rounded-[28px] border border-slate-200 bg-white">
             <View className="flex-row items-center gap-4 px-4 py-4">
               <LoadingImage
                 source={{ uri: activeBookingAlert.avatar }}
@@ -1177,14 +1190,14 @@ export default function ExploreScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text className="mt-2 text-sm font-semibold leading-5 text-white">
+                <Text className="mt-2 text-sm font-semibold leading-5 text-slate-900">
                   {activeBookingAlert.guestName} just booked {activeBookingAlert.listingName} in{' '}
                   {activeBookingAlert.area}.
                 </Text>
-                <Text className="mt-1 text-xs text-slate-300">{activeBookingAlert.bookedAgoLabel}</Text>
+                <Text className="mt-1 text-xs text-slate-500">{activeBookingAlert.bookedAgoLabel}</Text>
               </View>
             </View>
-            <View className="h-1.5 bg-white/10">
+            <View className="h-1.5 bg-slate-100">
               <Animated.View
                 className="h-full bg-emerald-400"
                 style={{ transform: [{ scaleX: alertProgress }] }}
@@ -1216,7 +1229,11 @@ export default function ExploreScreen() {
         data={listings}
         renderItem={renderApartment}
         keyExtractor={(item, index) => `${item.id || 'listing'}-${index}`}
-        contentContainerStyle={{ padding: 24, paddingTop: 16 }}
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: 16,
+          paddingBottom: bookingAlertBottomOffset + 88,
+        }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
