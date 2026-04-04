@@ -4,6 +4,12 @@ import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
 import {
+  buildMockOffersForListing,
+  formatListingOfferExpiry,
+  isListingOfferExpired,
+  ListingOffer,
+} from '@/data/listingOffers';
+import {
   BookingOption,
   findListingById,
   ListingAttraction,
@@ -15,7 +21,7 @@ import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ComponentProps, useMemo, useRef, useState } from 'react';
+import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -163,6 +169,51 @@ const mapAttractions = (
     .filter((item) => item.name.length > 0);
 };
 
+const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
+  if (theme === 'emerald') {
+    return {
+      cardClass: 'border-emerald-200 bg-emerald-50/80',
+      badgeClass: 'bg-emerald-600',
+      badgeTextClass: 'text-white',
+      savingsClass: 'border-emerald-200 bg-white',
+      savingsTextClass: 'text-emerald-700',
+      chipClass: 'border-emerald-200 bg-white/95',
+      chipTextClass: 'text-emerald-700',
+      footerClass: 'border-emerald-200 bg-white/85',
+      copyClass: 'text-emerald-900',
+      actionClass: 'bg-emerald-600',
+    };
+  }
+
+  if (theme === 'sky') {
+    return {
+      cardClass: 'border-sky-200 bg-sky-50/85',
+      badgeClass: 'bg-sky-600',
+      badgeTextClass: 'text-white',
+      savingsClass: 'border-sky-200 bg-white',
+      savingsTextClass: 'text-sky-700',
+      chipClass: 'border-sky-200 bg-white/95',
+      chipTextClass: 'text-sky-700',
+      footerClass: 'border-sky-200 bg-white/85',
+      copyClass: 'text-sky-950',
+      actionClass: 'bg-sky-600',
+    };
+  }
+
+  return {
+    cardClass: 'border-amber-200 bg-amber-50/90',
+    badgeClass: 'bg-amber-500',
+    badgeTextClass: 'text-amber-950',
+    savingsClass: 'border-amber-200 bg-white',
+    savingsTextClass: 'text-amber-700',
+    chipClass: 'border-amber-200 bg-white/95',
+    chipTextClass: 'text-amber-700',
+    footerClass: 'border-amber-200 bg-white/85',
+    copyClass: 'text-amber-950',
+    actionClass: 'bg-slate-900',
+  };
+};
+
 export default function ListingDetailScreen() {
   const router = useRouter();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
@@ -226,7 +277,6 @@ export default function ListingDetailScreen() {
       id: remoteListing.id ?? baseListing.id,
       name: remoteListing.name ?? baseListing.name,
       apartmentType: remoteListing.apartmentType ?? baseListing.apartmentType,
-      coverPhoto: remoteListing.coverPhoto ?? baseListing.coverPhoto,
       description: remoteListing.description ?? baseListing.description,
       minimumPrice: remoteListing.minimumPrice ?? baseListing.minimumPrice,
       rating: remoteListing.rating ?? baseListing.rating,
@@ -357,9 +407,12 @@ function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
 }
 
 function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentProps) {
+  const router = useRouter();
   const [activeImage, setActiveImage] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [offerSeedTimestamp] = useState(() => Date.now());
+  const [offerNow, setOfferNow] = useState(() => Date.now());
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const handleOpenAttraction = (mapUrl: string) => {
@@ -400,6 +453,52 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
   });
 
   const attractions = useMemo(() => listing.attractions ?? [], [listing]);
+  const offers = useMemo(
+    () =>
+      buildMockOffersForListing(
+        {
+          id: listing.id,
+          name: listing.name,
+          area: listing.area,
+          minimumPrice: listing.minimumPrice,
+          bookingOptions: listing.bookingOptions,
+        },
+        offerSeedTimestamp
+      ),
+    [
+      listing.id,
+      listing.name,
+      listing.area,
+      listing.minimumPrice,
+      listing.bookingOptions,
+      offerSeedTimestamp,
+    ]
+  );
+
+  useEffect(() => {
+    const hasCountdownOffer = offers.some((offer) => offer.expirationMode === 'countdown');
+    if (!hasCountdownOffer) return undefined;
+
+    const interval = setInterval(() => {
+      setOfferNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [offers]);
+
+  const handleClaimOffer = (offer: ListingOffer) => {
+    router.push({
+      pathname: '/offer-booking/[listingId]',
+      params: {
+        listingId: listing.id,
+        listingName: listing.name,
+        listingArea: listing.area,
+        listingImage: listing.coverPhoto || listing.gallery[0] || '',
+        minimumPrice: `${listing.minimumPrice}`,
+        offer: JSON.stringify(offer),
+      },
+    });
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -496,6 +595,113 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
               Bookable as
             </Text>
             <View className="mt-2">{renderBookingOptions()}</View>
+          </View>
+
+          <View className="mt-8">
+            <View className="flex-row items-start justify-between gap-4">
+              <View className="flex-1">
+                <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-500">
+                  Offers for this stay
+                </Text>
+                <Text className="mt-2 text-sm leading-6 text-slate-500">
+                  Claim an offer before booking so the best fit is right in front of you.
+                </Text>
+              </View>
+              <View className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2">
+                <Text className="text-xs font-semibold text-amber-700">
+                  {offers.length} offer{offers.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+            </View>
+
+            <View className="mt-4 gap-4">
+              {offers.map((offer) => {
+                const theme = getOfferThemeMeta(offer.theme);
+                const expiryLabel = formatListingOfferExpiry(offer, offerNow);
+                const isExpired = isListingOfferExpired(offer, offerNow);
+
+                return (
+                  <View
+                    key={offer.id}
+                    className={`rounded-[28px] border p-5 shadow-sm shadow-slate-100 ${theme.cardClass}`}>
+                    <View className="flex-row items-start justify-between gap-4">
+                      <View className="flex-1">
+                        <View
+                          className={`self-start rounded-full px-3 py-1.5 ${theme.badgeClass}`}>
+                          <Text
+                            className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.badgeTextClass}`}>
+                            {offer.badge}
+                          </Text>
+                        </View>
+                        <Text className="mt-4 text-xl font-bold text-slate-900">
+                          {offer.title}
+                        </Text>
+                        <Text className={`mt-2 text-sm leading-6 ${theme.copyClass}`}>
+                          {offer.subtitle}
+                        </Text>
+                      </View>
+
+                      <View
+                        className={`min-w-[92px] rounded-2xl border px-3 py-3 ${theme.savingsClass}`}>
+                        <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                          Savings
+                        </Text>
+                        <Text className={`mt-1 text-base font-semibold ${theme.savingsTextClass}`}>
+                          {offer.savingsLabel}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View className="mt-4 flex-row flex-wrap gap-2">
+                      {offer.highlights.map((highlight) => (
+                        <View
+                          key={`${offer.id}-${highlight}`}
+                          className={`rounded-full border px-3 py-1.5 ${theme.chipClass}`}>
+                          <Text className={`text-xs font-semibold ${theme.chipTextClass}`}>
+                            {highlight}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View className={`mt-5 rounded-2xl border px-4 py-4 ${theme.footerClass}`}>
+                      <View className="flex-row items-center justify-between gap-4">
+                        <View className="flex-1">
+                          <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                            {offer.expirationMode === 'countdown'
+                              ? 'Expires soon'
+                              : 'Offer window'}
+                          </Text>
+                          <Text
+                            className={`mt-1 text-base font-semibold ${
+                              isExpired ? 'text-rose-600' : 'text-slate-900'
+                            }`}>
+                            {expiryLabel}
+                          </Text>
+                          <Text className="mt-1 text-xs leading-5 text-slate-500">
+                            {offer.terms}
+                          </Text>
+                        </View>
+
+                        <Pressable
+                          className={`rounded-full px-4 py-3 ${
+                            isExpired ? 'bg-slate-200' : theme.actionClass
+                          }`}
+                          disabled={isExpired}
+                          onPress={() => handleClaimOffer(offer)}>
+                          <Text
+                            className={`text-sm font-semibold ${
+                              isExpired ? 'text-slate-500' : 'text-white'
+                            }`}>
+                            {isExpired ? 'Offer ended' : offer.ctaLabel}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           </View>
 
           <Text className="mt-6 text-base leading-6 text-slate-600">{listing.description}</Text>

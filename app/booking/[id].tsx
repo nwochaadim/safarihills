@@ -344,12 +344,30 @@ export default function BookingScreen() {
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
     'checking'
   );
-  const { id: idParam, referenceNumber: referenceParam } = useLocalSearchParams<{
-    id?: string;
-    referenceNumber?: string;
+  const {
+    id: idParam,
+    referenceNumber: referenceParam,
+    claimedOfferTitle: claimedOfferTitleParam,
+    claimedOfferSavingsLabel: claimedOfferSavingsLabelParam,
+    claimedOfferExpiryLabel: claimedOfferExpiryLabelParam,
+  } = useLocalSearchParams<{
+    id?: string | string[];
+    referenceNumber?: string | string[];
+    claimedOfferTitle?: string | string[];
+    claimedOfferSavingsLabel?: string | string[];
+    claimedOfferExpiryLabel?: string | string[];
   }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
   const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
+  const claimedOfferTitle = Array.isArray(claimedOfferTitleParam)
+    ? claimedOfferTitleParam[0]
+    : claimedOfferTitleParam;
+  const claimedOfferSavingsLabel = Array.isArray(claimedOfferSavingsLabelParam)
+    ? claimedOfferSavingsLabelParam[0]
+    : claimedOfferSavingsLabelParam;
+  const claimedOfferExpiryLabel = Array.isArray(claimedOfferExpiryLabelParam)
+    ? claimedOfferExpiryLabelParam[0]
+    : claimedOfferExpiryLabelParam;
   const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
     variables: { listingId: id ?? '' },
     skip: !id || authStatus !== 'signed-in',
@@ -691,6 +709,35 @@ export default function BookingScreen() {
             {listingName}
             {listingArea ? ` \u00b7 ${listingArea}` : ''}
           </Text>
+          {claimedOfferTitle ? (
+            <View className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3">
+              <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                Offer selected
+              </Text>
+              <Text className="mt-1 text-base font-semibold text-slate-900">
+                {claimedOfferTitle}
+              </Text>
+              <View className="mt-2 flex-row flex-wrap gap-2">
+                {claimedOfferSavingsLabel ? (
+                  <View className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
+                    <Text className="text-xs font-semibold text-emerald-700">
+                      {claimedOfferSavingsLabel}
+                    </Text>
+                  </View>
+                ) : null}
+                {claimedOfferExpiryLabel ? (
+                  <View className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
+                    <Text className="text-xs font-semibold text-emerald-700">
+                      {claimedOfferExpiryLabel}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text className="mt-2 text-sm text-slate-600">
+                Complete your stay details while this offer is still active.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View className="mt-6 px-6">
