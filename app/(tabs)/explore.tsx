@@ -506,7 +506,7 @@ export default function ExploreScreen() {
   const profileName = data?.profile?.firstName ?? '';
   const profileInitials = data?.profile?.initials ?? 'SH';
   const welcomeMessage = profileName ? `Welcome back, ${profileName}` : 'Welcome back';
-  const bookingAlertBottomOffset = Math.max(tabBarHeight + 16, insets.bottom + 88);
+  const bookingAlertBottomOffset = Math.max(tabBarHeight + 6, insets.bottom + 64);
   const activeFilterCount = useMemo(() => {
     let count = 0;
 

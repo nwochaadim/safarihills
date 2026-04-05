@@ -37,6 +37,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = width * 0.9;
+const OFFER_CARD_WIDTH = width - 64;
+const OFFER_CARD_GAP = 12;
 
 type BookingOptionMeta = {
   label: string;
@@ -409,6 +411,7 @@ function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
 function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentProps) {
   const router = useRouter();
   const [activeImage, setActiveImage] = useState(0);
+  const [activeOfferIndex, setActiveOfferIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [offerSeedTimestamp] = useState(() => Date.now());
@@ -485,6 +488,10 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
 
     return () => clearInterval(interval);
   }, [offers]);
+
+  useEffect(() => {
+    setActiveOfferIndex(0);
+  }, [offers.length, listing.id]);
 
   const handleClaimOffer = (offer: ListingOffer) => {
     router.push({
@@ -615,92 +622,132 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
             </View>
 
             <View className="mt-4 gap-4">
-              {offers.map((offer) => {
-                const theme = getOfferThemeMeta(offer.theme);
-                const expiryLabel = formatListingOfferExpiry(offer, offerNow);
-                const isExpired = isListingOfferExpired(offer, offerNow);
+              <View className="-mx-6">
+                <FlatList
+                  horizontal
+                  data={offers}
+                  keyExtractor={(offer) => offer.id}
+                  showsHorizontalScrollIndicator={false}
+                  decelerationRate="fast"
+                  snapToInterval={OFFER_CARD_WIDTH + OFFER_CARD_GAP}
+                  disableIntervalMomentum
+                  contentContainerStyle={{ paddingHorizontal: 24, paddingRight: 36 }}
+                  onMomentumScrollEnd={(event) => {
+                    const cardSpan = OFFER_CARD_WIDTH + OFFER_CARD_GAP;
+                    const index = Math.round(event.nativeEvent.contentOffset.x / cardSpan);
+                    const boundedIndex = Math.max(0, Math.min(index, offers.length - 1));
+                    setActiveOfferIndex(boundedIndex);
+                  }}
+                  renderItem={({ item: offer, index }) => {
+                    const theme = getOfferThemeMeta(offer.theme);
+                    const expiryLabel = formatListingOfferExpiry(offer, offerNow);
+                    const isExpired = isListingOfferExpired(offer, offerNow);
 
-                return (
-                  <View
-                    key={offer.id}
-                    className={`rounded-[28px] border p-5 shadow-sm shadow-slate-100 ${theme.cardClass}`}>
-                    <View className="flex-row items-start justify-between gap-4">
-                      <View className="flex-1">
-                        <View
-                          className={`self-start rounded-full px-3 py-1.5 ${theme.badgeClass}`}>
-                          <Text
-                            className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.badgeTextClass}`}>
-                            {offer.badge}
-                          </Text>
-                        </View>
-                        <Text className="mt-4 text-xl font-bold text-slate-900">
-                          {offer.title}
-                        </Text>
-                        <Text className={`mt-2 text-sm leading-6 ${theme.copyClass}`}>
-                          {offer.subtitle}
-                        </Text>
-                      </View>
-
+                    return (
                       <View
-                        className={`min-w-[92px] rounded-2xl border px-3 py-3 ${theme.savingsClass}`}>
-                        <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                          Savings
-                        </Text>
-                        <Text className={`mt-1 text-base font-semibold ${theme.savingsTextClass}`}>
-                          {offer.savingsLabel}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View className="mt-4 flex-row flex-wrap gap-2">
-                      {offer.highlights.map((highlight) => (
+                        style={{
+                          width: OFFER_CARD_WIDTH,
+                          marginRight: index === offers.length - 1 ? 0 : OFFER_CARD_GAP,
+                        }}>
                         <View
-                          key={`${offer.id}-${highlight}`}
-                          className={`rounded-full border px-3 py-1.5 ${theme.chipClass}`}>
-                          <Text className={`text-xs font-semibold ${theme.chipTextClass}`}>
-                            {highlight}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
+                          className={`rounded-[28px] border p-5 shadow-sm shadow-slate-100 ${theme.cardClass}`}>
+                          <View className="flex-row items-start justify-between gap-4">
+                            <View className="flex-1">
+                              <View
+                                className={`self-start rounded-full px-3 py-1.5 ${theme.badgeClass}`}>
+                                <Text
+                                  className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.badgeTextClass}`}>
+                                  {offer.badge}
+                                </Text>
+                              </View>
+                              <Text className="mt-4 text-xl font-bold text-slate-900">
+                                {offer.title}
+                              </Text>
+                              <Text className={`mt-2 text-sm leading-6 ${theme.copyClass}`}>
+                                {offer.subtitle}
+                              </Text>
+                            </View>
 
-                    <View className={`mt-5 rounded-2xl border px-4 py-4 ${theme.footerClass}`}>
-                      <View className="flex-row items-center justify-between gap-4">
-                        <View className="flex-1">
-                          <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                            {offer.expirationMode === 'countdown'
-                              ? 'Expires soon'
-                              : 'Offer window'}
-                          </Text>
-                          <Text
-                            className={`mt-1 text-base font-semibold ${
-                              isExpired ? 'text-rose-600' : 'text-slate-900'
-                            }`}>
-                            {expiryLabel}
-                          </Text>
-                          <Text className="mt-1 text-xs leading-5 text-slate-500">
-                            {offer.terms}
-                          </Text>
-                        </View>
+                            <View
+                              className={`min-w-[92px] rounded-2xl border px-3 py-3 ${theme.savingsClass}`}>
+                              <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                Savings
+                              </Text>
+                              <Text
+                                className={`mt-1 text-base font-semibold ${theme.savingsTextClass}`}>
+                                {offer.savingsLabel}
+                              </Text>
+                            </View>
+                          </View>
 
-                        <Pressable
-                          className={`rounded-full px-4 py-3 ${
-                            isExpired ? 'bg-slate-200' : theme.actionClass
-                          }`}
-                          disabled={isExpired}
-                          onPress={() => handleClaimOffer(offer)}>
-                          <Text
-                            className={`text-sm font-semibold ${
-                              isExpired ? 'text-slate-500' : 'text-white'
-                            }`}>
-                            {isExpired ? 'Offer ended' : offer.ctaLabel}
-                          </Text>
-                        </Pressable>
+                          <View className="mt-4 flex-row flex-wrap gap-2">
+                            {offer.highlights.map((highlight) => (
+                              <View
+                                key={`${offer.id}-${highlight}`}
+                                className={`rounded-full border px-3 py-1.5 ${theme.chipClass}`}>
+                                <Text className={`text-xs font-semibold ${theme.chipTextClass}`}>
+                                  {highlight}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+
+                          <View className={`mt-5 rounded-2xl border px-4 py-4 ${theme.footerClass}`}>
+                            <View className="flex-row items-center justify-between gap-4">
+                              <View className="flex-1">
+                                <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                  {offer.expirationMode === 'countdown'
+                                    ? 'Expires soon'
+                                    : 'Offer window'}
+                                </Text>
+                                <Text
+                                  className={`mt-1 text-base font-semibold ${
+                                    isExpired ? 'text-rose-600' : 'text-slate-900'
+                                  }`}>
+                                  {expiryLabel}
+                                </Text>
+                                <Text className="mt-1 text-xs leading-5 text-slate-500">
+                                  {offer.terms}
+                                </Text>
+                              </View>
+
+                              <Pressable
+                                className={`rounded-full px-4 py-3 ${
+                                  isExpired ? 'bg-slate-200' : theme.actionClass
+                                }`}
+                                disabled={isExpired}
+                                onPress={() => handleClaimOffer(offer)}>
+                                <Text
+                                  className={`text-sm font-semibold ${
+                                    isExpired ? 'text-slate-500' : 'text-white'
+                                  }`}>
+                                  {isExpired ? 'Offer ended' : offer.ctaLabel}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        </View>
                       </View>
-                    </View>
-                  </View>
-                );
-              })}
+                    );
+                  }}
+                />
+              </View>
+
+              <View className="mt-4 flex-row items-center justify-between">
+                <View className="flex-row items-center gap-2">
+                  {offers.map((offer, index) => (
+                    <View
+                      key={`${offer.id}-dot`}
+                      className={`h-1.5 rounded-full ${
+                        index === activeOfferIndex ? 'w-8 bg-slate-900' : 'w-3 bg-slate-300'
+                      }`}
+                    />
+                  ))}
+                </View>
+                <Text className="text-xs font-medium text-slate-400">
+                  Swipe to see more offers
+                </Text>
+              </View>
             </View>
           </View>
 
