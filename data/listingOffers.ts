@@ -1,7 +1,8 @@
 import type { BookingOption } from '@/data/listings';
 
 export type ListingOfferTheme = 'sunrise' | 'emerald' | 'sky';
-export type ListingOfferExpirationMode = 'countdown' | 'days';
+export type ListingOfferUrgencyMode = 'countdown' | 'days';
+export type ListingOfferPublicStatus = 'live' | 'upcoming' | 'expired';
 
 export type ListingOffer = {
   id: string;
@@ -13,8 +14,11 @@ export type ListingOffer = {
   terms: string;
   highlights: string[];
   theme: ListingOfferTheme;
-  expirationMode: ListingOfferExpirationMode;
-  expiresAt: string;
+  urgencyMode: ListingOfferUrgencyMode;
+  publicStartsAt: string;
+  publicExpiresAt: string;
+  claimHoldMinutes: number;
+  lockHint: string;
 };
 
 type ListingOfferSeedInput = {
@@ -34,53 +38,62 @@ type OfferTemplate = {
   ctaLabel: string;
   terms: string;
   theme: ListingOfferTheme;
-  expirationMode: ListingOfferExpirationMode;
+  urgencyMode: ListingOfferUrgencyMode;
   duration: number;
   hint: string;
+  claimHoldMinutes: number;
+  lockHint: string;
 };
 
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const FLASH_WINDOW_STARTS = [11 * 60, 13 * 60 + 30, 16 * 60, 18 * 60 + 30];
 
 const COUNTDOWN_TEMPLATES: OfferTemplate[] = [
   {
     slug: 'flash-five',
     badge: 'Flash deal',
     title: 'Book at 5% discount',
-    subtitle: 'Claim this offer now to lock in a softer rate before it disappears.',
+    subtitle: 'A short public offer window for guests ready to move quickly on this stay.',
     savingsLabel: 'Save 5%',
-    ctaLabel: 'Claim this offer now',
-    terms: 'Available for new stays only and subject to availability.',
+    ctaLabel: 'Review & claim',
+    terms: 'Claim this offer to lock your rate for a short private hold while you book.',
     theme: 'sunrise',
-    expirationMode: 'countdown',
-    duration: 20,
+    urgencyMode: 'countdown',
+    duration: 150,
     hint: 'Best for quick plans',
+    claimHoldMinutes: 15,
+    lockHint: 'Claiming this offer locks your rate for 15 minutes.',
   },
   {
     slug: 'late-checkin',
     badge: 'Tonight only',
     title: 'Late arrival deal at 7% off',
-    subtitle: 'Perfect if you are booking close to check-in and want extra value tonight.',
+    subtitle: 'A timed rate drop for guests booking close to check-in without rushing the full flow.',
     savingsLabel: 'Save 7%',
-    ctaLabel: 'Claim this offer now',
-    terms: 'Valid on eligible dates for fresh bookings only.',
+    ctaLabel: 'Review & claim',
+    terms: 'Public offer windows are shared per listing. Claiming creates a short personal hold.',
     theme: 'sky',
-    expirationMode: 'countdown',
-    duration: 35,
+    urgencyMode: 'countdown',
+    duration: 180,
     hint: 'Ideal for same-day stays',
+    claimHoldMinutes: 20,
+    lockHint: 'Claiming this offer locks your rate for 20 minutes.',
   },
   {
     slug: 'weeknight-saver',
     badge: 'Fast moving',
     title: 'Book now and save 6%',
-    subtitle: 'A quick little nudge for flexible guests ready to book this listing now.',
+    subtitle: 'A stronger nudge for flexible guests while this listing-level flash window is open.',
     savingsLabel: 'Save 6%',
-    ctaLabel: 'Claim this offer now',
-    terms: 'Cannot be stacked with other promotions.',
+    ctaLabel: 'Review & claim',
+    terms: 'This offer refreshes by listing schedule. Claiming gives you a short private hold.',
     theme: 'emerald',
-    expirationMode: 'countdown',
-    duration: 45,
+    urgencyMode: 'countdown',
+    duration: 165,
     hint: 'Great for flexible guests',
+    claimHoldMinutes: 15,
+    lockHint: 'Claiming this offer locks your rate for 15 minutes.',
   },
 ];
 
@@ -89,69 +102,49 @@ const DAY_BASED_TEMPLATES: OfferTemplate[] = [
     slug: 'weekend-window',
     badge: 'Weekend window',
     title: 'Stay 2 nights and save 8%',
-    subtitle: 'A strong option if you want a little more time to plan without losing value.',
+    subtitle: 'A softer offer window that still rewards guests who are ready to commit this week.',
     savingsLabel: 'Save 8%',
-    ctaLabel: 'Claim offer',
-    terms: 'Applies to qualifying stay lengths during the offer window.',
+    ctaLabel: 'Review & claim',
+    terms: 'The public window stays open for a few days, and a short private hold starts after claim.',
     theme: 'emerald',
-    expirationMode: 'days',
+    urgencyMode: 'days',
     duration: 4,
     hint: 'Good for weekend plans',
-  },
-  {
-    slug: 'longer-stay',
-    badge: 'Extended offer',
-    title: 'Book a longer stay at 10% off',
-    subtitle: 'Made for guests turning a quick stay into a slower, more comfortable reset.',
-    savingsLabel: 'Save 10%',
-    ctaLabel: 'Claim offer',
-    terms: 'Discount applies to selected stay lengths while the offer is active.',
-    theme: 'sky',
-    expirationMode: 'days',
-    duration: 6,
-    hint: 'Works well for extended stays',
+    claimHoldMinutes: 20,
+    lockHint: 'Claiming this offer locks your rate for 20 minutes.',
   },
   {
     slug: 'couple-pick',
     badge: 'Popular pick',
     title: 'Claim a 9% stay discount',
-    subtitle: 'A polished little extra for guests ready to reserve this listing in the next few days.',
+    subtitle: 'A calmer multi-day offer that still gives guests a reason to lock in the stay soon.',
     savingsLabel: 'Save 9%',
-    ctaLabel: 'Claim offer',
-    terms: 'Offer window may close earlier if eligible slots fill up.',
+    ctaLabel: 'Review & claim',
+    terms: 'If this window closes, other softer offers may still be available for the listing.',
     theme: 'sunrise',
-    expirationMode: 'days',
+    urgencyMode: 'days',
     duration: 6,
     hint: 'Popular around busy dates',
+    claimHoldMinutes: 25,
+    lockHint: 'Claiming this offer locks your rate for 25 minutes.',
   },
 ];
 
 const BONUS_TEMPLATES: OfferTemplate[] = [
   {
-    slug: 'suite-upgrade',
-    badge: 'Member-style perk',
-    title: 'Claim a priority booking perk',
-    subtitle: 'Keep this stay in your shortlist with a softer price and a smoother checkout moment.',
-    savingsLabel: 'Bonus perk',
-    ctaLabel: 'Claim offer',
-    terms: 'Perks vary by availability and booking details.',
-    theme: 'emerald',
-    expirationMode: 'days',
-    duration: 4,
-    hint: 'Nice extra for decisive guests',
-  },
-  {
     slug: 'short-break',
     badge: 'Quick escape',
     title: 'Short break special at 6% off',
-    subtitle: 'A tidy little offer for guests booking a simpler, lighter stay.',
+    subtitle: 'A flexible offer window that keeps a lighter-value option available even if flash windows pass.',
     savingsLabel: 'Save 6%',
-    ctaLabel: 'Claim offer',
-    terms: 'Offer is shown per listing and may vary by check-in date.',
+    ctaLabel: 'Review & claim',
+    terms: 'Designed as a softer fallback so guests still have a good path into booking.',
     theme: 'sky',
-    expirationMode: 'days',
+    urgencyMode: 'days',
     duration: 4,
     hint: 'Easy value for shorter stays',
+    claimHoldMinutes: 20,
+    lockHint: 'Claiming this offer locks your rate for 20 minutes.',
   },
 ];
 
@@ -169,6 +162,12 @@ const pickTemplate = (templates: OfferTemplate[], seed: number) =>
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
+const startOfLocalDay = (timestamp: number) => {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
 const buildOfferHighlights = (
   listing: ListingOfferSeedInput,
   template: OfferTemplate
@@ -185,19 +184,49 @@ const buildOfferHighlights = (
   ].slice(0, 3);
 };
 
+const buildFlashWindow = (seed: number, durationMinutes: number, referenceTimestamp: number) => {
+  const dayStart = startOfLocalDay(referenceTimestamp);
+  const startMinutes = FLASH_WINDOW_STARTS[seed % FLASH_WINDOW_STARTS.length] + ((seed >> 3) % 4) * 15;
+
+  let publicStartsAt = new Date(dayStart.getTime() + startMinutes * MINUTE_MS);
+  let publicExpiresAt = new Date(publicStartsAt.getTime() + durationMinutes * MINUTE_MS);
+
+  if (referenceTimestamp > publicExpiresAt.getTime()) {
+    publicStartsAt = new Date(publicStartsAt.getTime() + DAY_MS);
+    publicExpiresAt = new Date(publicExpiresAt.getTime() + DAY_MS);
+  }
+
+  return {
+    publicStartsAt: publicStartsAt.toISOString(),
+    publicExpiresAt: publicExpiresAt.toISOString(),
+  };
+};
+
+const buildMultiDayWindow = (seed: number, durationDays: number, referenceTimestamp: number) => {
+  const dayStart = startOfLocalDay(referenceTimestamp);
+  const startOffsetDays = seed % 2;
+  const publicStartsAt = new Date(dayStart.getTime() - startOffsetDays * DAY_MS);
+  const publicExpiresAt = new Date(publicStartsAt.getTime() + durationDays * DAY_MS);
+
+  return {
+    publicStartsAt: publicStartsAt.toISOString(),
+    publicExpiresAt: publicExpiresAt.toISOString(),
+  };
+};
+
 const buildOfferFromTemplate = (
   listing: ListingOfferSeedInput,
   template: OfferTemplate,
   seed: number,
-  baseTimestamp: number
+  referenceTimestamp: number
 ): ListingOffer => {
-  const durationMs =
-    template.expirationMode === 'countdown'
-      ? template.duration * MINUTE_MS
-      : template.duration * DAY_MS;
+  const publicWindow =
+    template.urgencyMode === 'countdown'
+      ? buildFlashWindow(seed, template.duration, referenceTimestamp)
+      : buildMultiDayWindow(seed, template.duration, referenceTimestamp);
 
   return {
-    id: `${listing.id}-${template.slug}-${seed}`,
+    id: `${listing.id}-${template.slug}`,
     badge: template.badge,
     title: template.title,
     subtitle: template.subtitle,
@@ -205,77 +234,125 @@ const buildOfferFromTemplate = (
     ctaLabel: template.ctaLabel,
     terms: template.terms,
     theme: template.theme,
-    expirationMode: template.expirationMode,
-    expiresAt: new Date(baseTimestamp + durationMs).toISOString(),
+    urgencyMode: template.urgencyMode,
+    publicStartsAt: publicWindow.publicStartsAt,
+    publicExpiresAt: publicWindow.publicExpiresAt,
+    claimHoldMinutes: template.claimHoldMinutes,
+    lockHint: template.lockHint,
     highlights: buildOfferHighlights(listing, template),
   };
 };
 
 export const buildMockOffersForListing = (
   listing: ListingOfferSeedInput,
-  baseTimestamp = Date.now()
+  referenceTimestamp = Date.now()
 ) => {
-  const daySeed = Math.floor(baseTimestamp / DAY_MS);
-  const seed = hashString(`${listing.id}-${daySeed}-${listing.name}`);
-  const offers = [
+  const daySeed = Math.floor(referenceTimestamp / DAY_MS);
+  const seed = hashString(`${listing.id}-${listing.name}-${daySeed}`);
+
+  return [
     buildOfferFromTemplate(
       listing,
       pickTemplate(COUNTDOWN_TEMPLATES, seed),
       seed,
-      baseTimestamp
+      referenceTimestamp
     ),
     buildOfferFromTemplate(
       listing,
       pickTemplate(DAY_BASED_TEMPLATES, seed + 5),
       seed + 5,
-      baseTimestamp
+      referenceTimestamp
+    ),
+    buildOfferFromTemplate(
+      listing,
+      pickTemplate(BONUS_TEMPLATES, seed + 11),
+      seed + 11,
+      referenceTimestamp
     ),
   ];
-
-  if (seed % 2 === 0) {
-    offers.push(
-      buildOfferFromTemplate(
-        listing,
-        pickTemplate(BONUS_TEMPLATES, seed + 11),
-        seed + 11,
-        baseTimestamp
-      )
-    );
-  }
-
-  return offers;
 };
 
-export const isListingOfferExpired = (offer: ListingOffer, now = Date.now()) =>
-  new Date(offer.expiresAt).getTime() <= now;
+export const getListingOfferPublicStatus = (
+  offer: ListingOffer,
+  now = Date.now()
+): ListingOfferPublicStatus => {
+  const publicStartsAt = new Date(offer.publicStartsAt).getTime();
+  const publicExpiresAt = new Date(offer.publicExpiresAt).getTime();
 
-export const formatListingOfferExpiry = (offer: ListingOffer, now = Date.now()) => {
-  const remainingMs = new Date(offer.expiresAt).getTime() - now;
+  if (now < publicStartsAt) return 'upcoming';
+  if (now >= publicExpiresAt) return 'expired';
+  return 'live';
+};
 
-  if (remainingMs <= 0) {
-    return 'Offer expired';
-  }
+const formatShortDateTime = (timestamp: number) =>
+  new Date(timestamp).toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 
-  if (offer.expirationMode === 'days') {
-    const days = Math.max(1, Math.ceil(remainingMs / DAY_MS));
-    return `Expires in ${days} day${days === 1 ? '' : 's'}`;
-  }
+const formatShortTime = (timestamp: number) =>
+  new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 
+const formatTimeRemaining = (remainingMs: number) => {
   const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
   if (hours > 0) {
-    return `Expires in ${hours}h ${String(minutes).padStart(2, '0')}m`;
+    return `${hours}h ${String(minutes).padStart(2, '0')}m`;
   }
 
   if (minutes > 0) {
-    return `Expires in ${minutes}m ${String(seconds).padStart(2, '0')}s`;
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
   }
 
-  return `Expires in ${seconds}s`;
+  return `${seconds}s`;
 };
+
+export const formatListingOfferPublicWindow = (offer: ListingOffer, now = Date.now()) => {
+  const publicStartsAt = new Date(offer.publicStartsAt).getTime();
+  const publicExpiresAt = new Date(offer.publicExpiresAt).getTime();
+  const status = getListingOfferPublicStatus(offer, now);
+
+  if (status === 'upcoming') {
+    const startsToday =
+      new Date(publicStartsAt).toDateString() === new Date(now).toDateString();
+    return startsToday
+      ? `Opens today at ${formatShortTime(publicStartsAt)}`
+      : `Opens ${formatShortDateTime(publicStartsAt)}`;
+  }
+
+  if (status === 'expired') {
+    return 'Public window closed';
+  }
+
+  if (offer.urgencyMode === 'days') {
+    const days = Math.max(1, Math.ceil((publicExpiresAt - now) / DAY_MS));
+    return `Ends in ${days} day${days === 1 ? '' : 's'}`;
+  }
+
+  return `Ends in ${formatTimeRemaining(publicExpiresAt - now)}`;
+};
+
+export const formatListingOfferClaimWindow = (holdExpiresAt: string, now = Date.now()) => {
+  const remainingMs = new Date(holdExpiresAt).getTime() - now;
+
+  if (remainingMs <= 0) {
+    return 'Your lock has expired';
+  }
+
+  return `Locked for ${formatTimeRemaining(remainingMs)}`;
+};
+
+export const formatListingOfferClaimDeadline = (holdExpiresAt: string) =>
+  `Locked until ${formatShortTime(new Date(holdExpiresAt).getTime())}`;
 
 const isListingOffer = (value: unknown): value is ListingOffer => {
   if (!value || typeof value !== 'object') return false;
@@ -288,8 +365,11 @@ const isListingOffer = (value: unknown): value is ListingOffer => {
     typeof candidate.ctaLabel === 'string' &&
     typeof candidate.terms === 'string' &&
     typeof candidate.theme === 'string' &&
-    typeof candidate.expirationMode === 'string' &&
-    typeof candidate.expiresAt === 'string' &&
+    typeof candidate.urgencyMode === 'string' &&
+    typeof candidate.publicStartsAt === 'string' &&
+    typeof candidate.publicExpiresAt === 'string' &&
+    typeof candidate.claimHoldMinutes === 'number' &&
+    typeof candidate.lockHint === 'string' &&
     Array.isArray(candidate.highlights)
   );
 };

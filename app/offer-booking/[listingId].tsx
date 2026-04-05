@@ -2,12 +2,19 @@ import { BackButton } from '@/components/BackButton';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import {
   buildMockOffersForListing,
-  formatListingOfferExpiry,
-  isListingOfferExpired,
+  formatListingOfferClaimDeadline,
+  formatListingOfferClaimWindow,
+  formatListingOfferPublicWindow,
+  getListingOfferPublicStatus,
   parseListingOfferParam,
   type ListingOffer,
 } from '@/data/listingOffers';
 import { findListingById } from '@/data/listings';
+import {
+  createListingOfferClaim,
+  getActiveListingOfferClaim,
+  type ListingOfferClaim,
+} from '@/lib/listingOfferClaims';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -23,6 +30,7 @@ const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
       chipTextClass: 'text-emerald-700',
       iconColor: '#059669',
       actionClass: 'bg-emerald-600',
+      cardClass: 'border-emerald-200 bg-emerald-50/85',
     };
   }
 
@@ -34,6 +42,7 @@ const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
       chipTextClass: 'text-sky-700',
       iconColor: '#0284c7',
       actionClass: 'bg-sky-600',
+      cardClass: 'border-sky-200 bg-sky-50/85',
     };
   }
 
@@ -44,6 +53,7 @@ const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
     chipTextClass: 'text-amber-700',
     iconColor: '#d97706',
     actionClass: 'bg-slate-900',
+    cardClass: 'border-amber-200 bg-amber-50/90',
   };
 };
 
@@ -87,6 +97,8 @@ export default function LocalOfferBookingScreen() {
   );
   const [offerSeedTimestamp] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
+  const [claim, setClaim] = useState<ListingOfferClaim | null>(null);
+  const [isLocking, setIsLocking] = useState(false);
 
   const resolvedListing = useMemo(
     () => ({
@@ -118,14 +130,39 @@ export default function LocalOfferBookingScreen() {
   );
 
   useEffect(() => {
-    if (!selectedOffer || selectedOffer.expirationMode !== 'countdown') return undefined;
+    if (!selectedOffer) return undefined;
+
+    let isActive = true;
+    const loadClaim = async () => {
+      const existingClaim = await getActiveListingOfferClaim(selectedOffer.id);
+      if (isActive) {
+        setClaim(existingClaim);
+      }
+    };
+
+    void loadClaim();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedOffer]);
+
+  useEffect(() => {
+    const shouldTick = Boolean(claim) || selectedOffer?.urgencyMode === 'countdown';
+    if (!shouldTick) return undefined;
 
     const interval = setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [selectedOffer]);
+  }, [claim, selectedOffer]);
+
+  useEffect(() => {
+    if (!claim) return;
+    if (new Date(claim.holdExpiresAt).getTime() > now) return;
+    setClaim(null);
+  }, [claim, now]);
 
   if (!selectedOffer) {
     return (
@@ -142,17 +179,41 @@ export default function LocalOfferBookingScreen() {
   }
 
   const theme = getOfferThemeMeta(selectedOffer.theme);
-  const expiryLabel = formatListingOfferExpiry(selectedOffer, now);
-  const isExpired = isListingOfferExpired(selectedOffer, now);
+  const publicStatus = getListingOfferPublicStatus(selectedOffer, now);
+  const publicWindowLabel = formatListingOfferPublicWindow(selectedOffer, now);
+  const claimWindowLabel = claim ? formatListingOfferClaimWindow(claim.holdExpiresAt, now) : null;
+  const claimDeadlineLabel = claim ? formatListingOfferClaimDeadline(claim.holdExpiresAt) : null;
+  const canLockOffer = publicStatus === 'live' && !claim;
+  const canContinueWithOffer = Boolean(claim);
+
+  const handleLockOffer = async () => {
+    if (!canLockOffer || isLocking) return;
+
+    setIsLocking(true);
+    try {
+      const nextClaim = await createListingOfferClaim({
+        offerId: selectedOffer.id,
+        listingId: resolvedListing.id,
+        holdMinutes: selectedOffer.claimHoldMinutes,
+      });
+      setClaim(nextClaim);
+      setNow(Date.now());
+    } finally {
+      setIsLocking(false);
+    }
+  };
 
   const handleContinueWithOffer = () => {
+    if (!claim) return;
+
     router.push({
       pathname: '/booking/[id]',
       params: {
         id: resolvedListing.id,
         claimedOfferTitle: selectedOffer.title,
         claimedOfferSavingsLabel: selectedOffer.savingsLabel,
-        claimedOfferExpiryLabel: expiryLabel,
+        claimedOfferExpiryLabel: claimDeadlineLabel ?? claimWindowLabel ?? '',
+        claimedOfferHoldExpiresAt: claim.holdExpiresAt,
       },
     });
   };
@@ -168,14 +229,15 @@ export default function LocalOfferBookingScreen() {
           <Text className="mt-5 text-xs font-semibold uppercase tracking-[0.35em] text-amber-500">
             Offer booking
           </Text>
-          <Text className="mt-2 text-3xl font-bold text-slate-900">Claim your offer</Text>
+          <Text className="mt-2 text-3xl font-bold text-slate-900">Review this offer</Text>
           <Text className="mt-2 text-base leading-6 text-slate-500">
-            Review the offer for {resolvedListing.name} before continuing to your booking details.
+            Public windows stay shared across guests. Your private countdown only begins after you
+            lock the offer.
           </Text>
         </View>
 
         <View className="mt-6 px-6">
-          <View className="overflow-hidden rounded-[30px] border border-slate-200 bg-slate-900">
+          <View className={`overflow-hidden rounded-[30px] border ${theme.cardClass}`}>
             <LoadingImageBackground
               source={{ uri: resolvedListing.image }}
               className="h-80 justify-end"
@@ -206,15 +268,43 @@ export default function LocalOfferBookingScreen() {
 
                   <View className="rounded-2xl border border-white/20 bg-black/20 px-4 py-3">
                     <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
-                      Expiry
+                      Public window
                     </Text>
-                    <Text className="mt-1 text-base font-semibold text-white">{expiryLabel}</Text>
+                    <Text className="mt-1 text-base font-semibold text-white">
+                      {publicWindowLabel}
+                    </Text>
                   </View>
+
+                  {claim ? (
+                    <View className="rounded-2xl border border-emerald-200 bg-emerald-500/25 px-4 py-3">
+                      <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                        Your lock
+                      </Text>
+                      <Text className="mt-1 text-base font-semibold text-white">
+                        {claimWindowLabel}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
             </LoadingImageBackground>
           </View>
         </View>
+
+        {claim ? (
+          <View className="mt-6 px-6">
+            <View className="rounded-3xl border border-emerald-200 bg-emerald-50/80 p-5">
+              <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                Rate locked for you
+              </Text>
+              <Text className="mt-2 text-2xl font-bold text-slate-900">{claimWindowLabel}</Text>
+              <Text className="mt-2 text-sm leading-6 text-slate-600">
+                {claimDeadlineLabel}. Finish your stay details before the lock ends and we will
+                keep this offer visible throughout the booking flow.
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <View className="mt-6 px-6">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
@@ -242,15 +332,15 @@ export default function LocalOfferBookingScreen() {
         </View>
 
         <View className="mt-6 px-6">
-          <View className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+          <View className="rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              What happens next
+              How this works
             </Text>
             <View className="mt-4 gap-3">
               {[
-                'Continue to booking and choose your dates.',
-                'Complete your stay details while the offer is still active.',
-                'Review the listing and finish your booking request.',
+                `The public window is ${publicStatus === 'live' ? 'open now' : 'shared for everyone viewing this listing'}.`,
+                `Locking the offer starts your own ${selectedOffer.claimHoldMinutes}-minute private timer.`,
+                'If this faster window closes, softer listing offers can still stay available.',
               ].map((step) => (
                 <View
                   key={step}
@@ -277,19 +367,32 @@ export default function LocalOfferBookingScreen() {
         </View>
 
         <View className="mt-8 px-6">
-          <Pressable
-            className={`items-center justify-center rounded-full py-4 ${
-              isExpired ? 'bg-slate-200' : theme.actionClass
-            }`}
-            disabled={isExpired}
-            onPress={handleContinueWithOffer}>
-            <Text
-              className={`text-base font-semibold ${
-                isExpired ? 'text-slate-500' : 'text-white'
-              }`}>
-              {isExpired ? 'This offer has ended' : 'Continue with this offer'}
-            </Text>
-          </Pressable>
+          {!claim ? (
+            <Pressable
+              className={`items-center justify-center rounded-full py-4 ${
+                canLockOffer && !isLocking ? theme.actionClass : 'bg-slate-200'
+              }`}
+              disabled={!canLockOffer || isLocking}
+              onPress={handleLockOffer}>
+              <Text
+                className={`text-base font-semibold ${
+                  canLockOffer && !isLocking ? 'text-white' : 'text-slate-500'
+                }`}>
+                {publicStatus === 'live'
+                  ? isLocking
+                    ? 'Locking your offer...'
+                    : `Lock this offer for ${selectedOffer.claimHoldMinutes} min`
+                  : 'Offer not live yet'}
+              </Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              className={`items-center justify-center rounded-full py-4 ${theme.actionClass}`}
+              disabled={!canContinueWithOffer}
+              onPress={handleContinueWithOffer}>
+              <Text className="text-base font-semibold text-white">Continue with locked offer</Text>
+            </Pressable>
+          )}
 
           <Pressable
             className="mt-3 items-center justify-center rounded-full border border-slate-200 bg-white py-4"

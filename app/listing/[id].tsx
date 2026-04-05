@@ -5,8 +5,10 @@ import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
 import {
   buildMockOffersForListing,
-  formatListingOfferExpiry,
-  isListingOfferExpired,
+  formatListingOfferClaimDeadline,
+  formatListingOfferClaimWindow,
+  formatListingOfferPublicWindow,
+  getListingOfferPublicStatus,
   ListingOffer,
 } from '@/data/listingOffers';
 import {
@@ -18,10 +20,12 @@ import {
   LISTINGS,
 } from '@/data/listings';
 import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
+import { getActiveListingOfferClaims, ListingOfferClaim } from '@/lib/listingOfferClaims';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
+import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -416,6 +420,7 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
   const [previewIndex, setPreviewIndex] = useState(0);
   const [offerSeedTimestamp] = useState(() => Date.now());
   const [offerNow, setOfferNow] = useState(() => Date.now());
+  const [activeOfferClaims, setActiveOfferClaims] = useState<Record<string, ListingOfferClaim>>({});
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const handleOpenAttraction = (mapUrl: string) => {
@@ -479,19 +484,48 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
   );
 
   useEffect(() => {
-    const hasCountdownOffer = offers.some((offer) => offer.expirationMode === 'countdown');
-    if (!hasCountdownOffer) return undefined;
+    const shouldTick =
+      offers.some((offer) => offer.urgencyMode === 'countdown') ||
+      Object.keys(activeOfferClaims).length > 0;
+    if (!shouldTick) return undefined;
 
     const interval = setInterval(() => {
       setOfferNow(Date.now());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [offers]);
+  }, [activeOfferClaims, offers]);
 
   useEffect(() => {
     setActiveOfferIndex(0);
   }, [offers.length, listing.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const loadClaims = async () => {
+        const claims = await getActiveListingOfferClaims();
+        if (!isActive) return;
+
+        const nextClaims = offers.reduce<Record<string, ListingOfferClaim>>((acc, offer) => {
+          const claim = claims[offer.id];
+          if (claim) {
+            acc[offer.id] = claim;
+          }
+          return acc;
+        }, {});
+
+        setActiveOfferClaims(nextClaims);
+      };
+
+      void loadClaims();
+
+      return () => {
+        isActive = false;
+      };
+    }, [offers])
+  );
 
   const handleClaimOffer = (offer: ListingOffer) => {
     router.push({
@@ -640,8 +674,32 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
                   }}
                   renderItem={({ item: offer, index }) => {
                     const theme = getOfferThemeMeta(offer.theme);
-                    const expiryLabel = formatListingOfferExpiry(offer, offerNow);
-                    const isExpired = isListingOfferExpired(offer, offerNow);
+                    const activeClaim = activeOfferClaims[offer.id];
+                    const publicStatus = getListingOfferPublicStatus(offer, offerNow);
+                    const publicWindowLabel = formatListingOfferPublicWindow(offer, offerNow);
+                    const claimWindowLabel = activeClaim
+                      ? formatListingOfferClaimWindow(activeClaim.holdExpiresAt, offerNow)
+                      : null;
+                    const claimDeadlineLabel = activeClaim
+                      ? formatListingOfferClaimDeadline(activeClaim.holdExpiresAt)
+                      : null;
+                    const actionDisabled = !activeClaim && publicStatus !== 'live';
+                    const actionLabel = activeClaim
+                      ? 'View locked offer'
+                      : publicStatus === 'live'
+                        ? offer.ctaLabel
+                        : 'Opens soon';
+                    const statusEyebrow = activeClaim
+                      ? 'Locked for you'
+                      : publicStatus === 'live'
+                        ? 'Shared public window'
+                        : 'Upcoming window';
+                    const statusLabel = activeClaim ? claimWindowLabel ?? 'Locked' : publicWindowLabel;
+                    const helperLabel = activeClaim
+                      ? `${claimDeadlineLabel}. Finish your stay details before the hold runs out.`
+                      : publicStatus === 'live'
+                        ? offer.lockHint
+                        : 'This window is shared across guests for this listing, so the next opening is the same for everyone.';
 
                     return (
                       <View
@@ -696,35 +754,40 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
                             <View className="flex-row items-center justify-between gap-4">
                               <View className="flex-1">
                                 <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                  {offer.expirationMode === 'countdown'
-                                    ? 'Expires soon'
-                                    : 'Offer window'}
+                                  {statusEyebrow}
                                 </Text>
                                 <Text
                                   className={`mt-1 text-base font-semibold ${
-                                    isExpired ? 'text-rose-600' : 'text-slate-900'
+                                    activeClaim
+                                      ? 'text-emerald-700'
+                                      : publicStatus === 'live'
+                                        ? 'text-slate-900'
+                                        : 'text-slate-700'
                                   }`}>
-                                  {expiryLabel}
+                                  {statusLabel}
                                 </Text>
                                 <Text className="mt-1 text-xs leading-5 text-slate-500">
-                                  {offer.terms}
+                                  {helperLabel}
                                 </Text>
                               </View>
 
                               <Pressable
                                 className={`rounded-full px-4 py-3 ${
-                                  isExpired ? 'bg-slate-200' : theme.actionClass
+                                  actionDisabled ? 'bg-slate-200' : theme.actionClass
                                 }`}
-                                disabled={isExpired}
+                                disabled={actionDisabled}
                                 onPress={() => handleClaimOffer(offer)}>
-                                <Text
+                                  <Text
                                   className={`text-sm font-semibold ${
-                                    isExpired ? 'text-slate-500' : 'text-white'
+                                    actionDisabled ? 'text-slate-500' : 'text-white'
                                   }`}>
-                                  {isExpired ? 'Offer ended' : offer.ctaLabel}
+                                  {actionLabel}
                                 </Text>
                               </Pressable>
                             </View>
+                            <Text className="mt-3 text-xs leading-5 text-slate-500">
+                              {offer.terms}
+                            </Text>
                           </View>
                         </View>
                       </View>

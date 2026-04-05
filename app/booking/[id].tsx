@@ -1,6 +1,10 @@
 import { BackButton } from '@/components/BackButton';
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import {
+  formatListingOfferClaimDeadline,
+  formatListingOfferClaimWindow,
+} from '@/data/listingOffers';
 import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_BOOKING_WITHOUT_OFFER } from '@/mutations/createBookingWithoutOffer';
 import { NEW_BOOKING_DETAILS } from '@/queries/newBookingDetails';
@@ -350,12 +354,14 @@ export default function BookingScreen() {
     claimedOfferTitle: claimedOfferTitleParam,
     claimedOfferSavingsLabel: claimedOfferSavingsLabelParam,
     claimedOfferExpiryLabel: claimedOfferExpiryLabelParam,
+    claimedOfferHoldExpiresAt: claimedOfferHoldExpiresAtParam,
   } = useLocalSearchParams<{
     id?: string | string[];
     referenceNumber?: string | string[];
     claimedOfferTitle?: string | string[];
     claimedOfferSavingsLabel?: string | string[];
     claimedOfferExpiryLabel?: string | string[];
+    claimedOfferHoldExpiresAt?: string | string[];
   }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
   const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
@@ -368,6 +374,9 @@ export default function BookingScreen() {
   const claimedOfferExpiryLabel = Array.isArray(claimedOfferExpiryLabelParam)
     ? claimedOfferExpiryLabelParam[0]
     : claimedOfferExpiryLabelParam;
+  const claimedOfferHoldExpiresAt = Array.isArray(claimedOfferHoldExpiresAtParam)
+    ? claimedOfferHoldExpiresAtParam[0]
+    : claimedOfferHoldExpiresAtParam;
   const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
     variables: { listingId: id ?? '' },
     skip: !id || authStatus !== 'signed-in',
@@ -410,6 +419,7 @@ export default function BookingScreen() {
   const [bookingReference, setBookingReference] = useState(
     () => referenceNumber ?? generateBookingReference()
   );
+  const [offerBannerNow, setOfferBannerNow] = useState(() => Date.now());
 
   useFocusEffect(
     useCallback(() => {
@@ -461,10 +471,26 @@ export default function BookingScreen() {
     setBookingReference(generateBookingReference());
   }, [id, referenceNumber]);
 
+  useEffect(() => {
+    if (!claimedOfferHoldExpiresAt) return undefined;
+
+    const interval = setInterval(() => {
+      setOfferBannerNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [claimedOfferHoldExpiresAt]);
+
   const selectedRoom = useMemo<BookingListable | undefined>(
     () => roomCategories.find((room) => room.id === selectedRoomId),
     [roomCategories, selectedRoomId]
   );
+  const claimedOfferHoldLabel = claimedOfferHoldExpiresAt
+    ? formatListingOfferClaimWindow(claimedOfferHoldExpiresAt, offerBannerNow)
+    : null;
+  const claimedOfferDeadlineLabel = claimedOfferHoldExpiresAt
+    ? formatListingOfferClaimDeadline(claimedOfferHoldExpiresAt)
+    : claimedOfferExpiryLabel;
   const activeListable = bookingType === 'room' ? selectedRoom : entireApartment;
   const baseNightlyRate = activeListable?.nightlyRate ?? 0;
   const soldOutDays = activeListable?.soldOutDays ?? {};
@@ -725,16 +751,18 @@ export default function BookingScreen() {
                     </Text>
                   </View>
                 ) : null}
-                {claimedOfferExpiryLabel ? (
+                {claimedOfferHoldLabel ? (
                   <View className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
                     <Text className="text-xs font-semibold text-emerald-700">
-                      {claimedOfferExpiryLabel}
+                      {claimedOfferHoldLabel}
                     </Text>
                   </View>
                 ) : null}
               </View>
               <Text className="mt-2 text-sm text-slate-600">
-                Complete your stay details while this offer is still active.
+                {claimedOfferDeadlineLabel
+                  ? `${claimedOfferDeadlineLabel}. Complete your stay details while the lock is active.`
+                  : 'Complete your stay details while the lock is active.'}
               </Text>
             </View>
           ) : null}
