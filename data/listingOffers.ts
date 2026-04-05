@@ -21,6 +21,65 @@ export type ListingOffer = {
   lockHint: string;
 };
 
+export type ListingOfferClaimSnapshot = {
+  id: string;
+  offerId: string;
+  listingId: string;
+  status: string;
+  claimedAt: string;
+  holdExpiresAt: string;
+};
+
+export type RemoteListingOfferReward = {
+  id?: string | null;
+  rewardType?: string | null;
+  name?: string | null;
+  description?: string | null;
+  numberOfNightsToApply?: number | null;
+  percentDiscount?: number | null;
+};
+
+export type RemoteListingOfferRule = {
+  id?: string | null;
+  ruleType?: string | null;
+  minNights?: number | null;
+  maxHours?: number | null;
+  validDays?: number[] | null;
+  validCheckInTime?: string | null;
+  validCheckOutTime?: string | null;
+};
+
+export type RemoteListingOfferClaim = {
+  id?: string | null;
+  status?: string | null;
+  claimedAt?: string | null;
+  holdExpiresAt?: string | null;
+};
+
+export type RemoteListingOffer = {
+  id?: string | null;
+  name?: string | null;
+  title?: string | null;
+  description?: string | null;
+  badgeText?: string | null;
+  ctaLabel?: string | null;
+  themeKey?: string | null;
+  iconKey?: string | null;
+  publicStatus?: ListingOfferPublicStatus | null;
+  publicStartsAt?: string | null;
+  publicEndsAt?: string | null;
+  claimHoldMinutes?: number | null;
+  bookableOption?: string | null;
+  isClaimedByCurrentUser?: boolean | null;
+  rewards?: RemoteListingOfferReward[] | null;
+  rules?: RemoteListingOfferRule[] | null;
+  activeClaim?: RemoteListingOfferClaim | null;
+};
+
+export type ListingOffersResponse = {
+  listingOffers: RemoteListingOffer[] | null;
+};
+
 type ListingOfferSeedInput = {
   id: string;
   name: string;
@@ -48,6 +107,7 @@ type OfferTemplate = {
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FLASH_WINDOW_STARTS = [11 * 60, 13 * 60 + 30, 16 * 60, 18 * 60 + 30];
+const FALLBACK_CLAIM_HOLD_MINUTES = 15;
 
 const COUNTDOWN_TEMPLATES: OfferTemplate[] = [
   {
@@ -162,6 +222,84 @@ const pickTemplate = (templates: OfferTemplate[], seed: number) =>
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
+const resolveTheme = (themeKey?: string | null, iconKey?: string | null): ListingOfferTheme => {
+  const value = `${themeKey ?? ''} ${iconKey ?? ''}`.toLowerCase();
+  if (
+    value.includes('sky') ||
+    value.includes('ocean') ||
+    value.includes('blue') ||
+    value.includes('moon') ||
+    value.includes('night')
+  ) {
+    return 'sky';
+  }
+  if (
+    value.includes('emerald') ||
+    value.includes('green') ||
+    value.includes('sage') ||
+    value.includes('leaf') ||
+    value.includes('forest')
+  ) {
+    return 'emerald';
+  }
+  return 'sunrise';
+};
+
+const resolveUrgencyMode = (publicStartsAt: string, publicExpiresAt: string): ListingOfferUrgencyMode => {
+  const startsAt = new Date(publicStartsAt).getTime();
+  const expiresAt = new Date(publicExpiresAt).getTime();
+  const durationMs = expiresAt - startsAt;
+  return durationMs > 0 && durationMs <= 12 * 60 * 60 * 1000 ? 'countdown' : 'days';
+};
+
+const resolveRewardSummary = (reward: RemoteListingOfferReward | null | undefined) => {
+  if (!reward) return null;
+  if (
+    reward.rewardType?.includes('Discount') &&
+    typeof reward.percentDiscount === 'number' &&
+    Number.isFinite(reward.percentDiscount)
+  ) {
+    return `Save ${reward.percentDiscount}%`;
+  }
+  return reward.name?.trim() || reward.description?.trim() || null;
+};
+
+const resolveSavingsLabel = (offer: RemoteListingOffer) => {
+  const rewardSummaries = (offer.rewards ?? [])
+    .map((reward) => resolveRewardSummary(reward))
+    .filter((reward): reward is string => Boolean(reward));
+
+  if (rewardSummaries.length > 0) return rewardSummaries[0];
+  if (offer.badgeText?.trim()) return offer.badgeText.trim();
+  return 'Special offer';
+};
+
+const resolveTerms = (offer: RemoteListingOffer) => {
+  const description = offer.description?.trim();
+  if (description) return description;
+  return 'Claim this offer to lock your rate for a short private hold while you book.';
+};
+
+const buildRemoteOfferHighlights = (
+  listing: ListingOfferSeedInput,
+  offer: RemoteListingOffer
+) => {
+  const stayLabel =
+    offer.bookableOption === 'time_based'
+      ? 'Short-stay eligible'
+      : listing.bookingOptions.includes('room')
+        ? 'Room or entire apartment'
+        : 'Entire apartment';
+
+  const rewardLabel = (offer.rewards ?? [])
+    .map((reward) => resolveRewardSummary(reward))
+    .filter((reward): reward is string => Boolean(reward))[0];
+
+  return [rewardLabel, stayLabel, `${listing.area} stay`, `From ${formatCurrency(listing.minimumPrice)}/night`]
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 3);
+};
+
 const startOfLocalDay = (timestamp: number) => {
   const date = new Date(timestamp);
   date.setHours(0, 0, 0, 0);
@@ -271,6 +409,91 @@ export const buildMockOffersForListing = (
     ),
   ];
 };
+
+export const mapRemoteListingOfferClaim = ({
+  claim,
+  listingId,
+  offerId,
+}: {
+  claim: RemoteListingOfferClaim | null | undefined;
+  listingId: string;
+  offerId: string;
+}): ListingOfferClaimSnapshot | null => {
+  if (!claim?.id || !claim.claimedAt || !claim.holdExpiresAt) return null;
+
+  return {
+    id: claim.id,
+    offerId,
+    listingId,
+    status: claim.status ?? 'active',
+    claimedAt: claim.claimedAt,
+    holdExpiresAt: claim.holdExpiresAt,
+  };
+};
+
+export const mapRemoteListingOffer = (
+  offer: RemoteListingOffer,
+  listing: ListingOfferSeedInput
+): ListingOffer | null => {
+  const id = offer.id?.trim();
+  const publicStartsAt = offer.publicStartsAt?.trim();
+  const publicExpiresAt = offer.publicEndsAt?.trim();
+
+  if (!id || !publicStartsAt || !publicExpiresAt) return null;
+
+  const claimHoldMinutes =
+    typeof offer.claimHoldMinutes === 'number' && offer.claimHoldMinutes > 0
+      ? offer.claimHoldMinutes
+      : FALLBACK_CLAIM_HOLD_MINUTES;
+  const title = offer.title?.trim() || offer.name?.trim() || 'Listing offer';
+  const subtitle = offer.description?.trim() || 'A limited offer is available for this stay.';
+
+  return {
+    id,
+    badge: offer.badgeText?.trim() || 'Listing offer',
+    title,
+    subtitle,
+    savingsLabel: resolveSavingsLabel(offer),
+    ctaLabel: offer.ctaLabel?.trim() || 'Review & claim',
+    terms: resolveTerms(offer),
+    highlights: buildRemoteOfferHighlights(listing, offer),
+    theme: resolveTheme(offer.themeKey, offer.iconKey),
+    urgencyMode: resolveUrgencyMode(publicStartsAt, publicExpiresAt),
+    publicStartsAt,
+    publicExpiresAt,
+    claimHoldMinutes,
+    lockHint: `Claiming this offer locks your rate for ${claimHoldMinutes} minutes.`,
+  };
+};
+
+export const mapRemoteListingOffers = (
+  offers: RemoteListingOffer[] | null | undefined,
+  listing: ListingOfferSeedInput
+) =>
+  (offers ?? [])
+    .map((offer) => mapRemoteListingOffer(offer, listing))
+    .filter((offer): offer is ListingOffer => Boolean(offer));
+
+export const buildActiveListingOfferClaimsById = ({
+  offers,
+  listingId,
+}: {
+  offers: RemoteListingOffer[] | null | undefined;
+  listingId: string;
+}) =>
+  (offers ?? []).reduce<Record<string, ListingOfferClaimSnapshot>>((acc, offer) => {
+    const offerId = offer.id?.trim();
+    if (!offerId) return acc;
+    const claim = mapRemoteListingOfferClaim({
+      claim: offer.activeClaim,
+      listingId,
+      offerId,
+    });
+    if (claim) {
+      acc[offerId] = claim;
+    }
+    return acc;
+  }, {});
 
 export const getListingOfferPublicStatus = (
   offer: ListingOffer,

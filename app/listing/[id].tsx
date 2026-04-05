@@ -4,12 +4,15 @@ import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
 import {
-  buildMockOffersForListing,
+  buildActiveListingOfferClaimsById,
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
   formatListingOfferPublicWindow,
   getListingOfferPublicStatus,
   ListingOffer,
+  ListingOffersResponse,
+  ListingOfferClaimSnapshot,
+  mapRemoteListingOffers,
 } from '@/data/listingOffers';
 import {
   BookingOption,
@@ -20,7 +23,7 @@ import {
   LISTINGS,
 } from '@/data/listings';
 import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
-import { getActiveListingOfferClaims, ListingOfferClaim } from '@/lib/listingOfferClaims';
+import { LISTING_OFFERS } from '@/queries/listingOffers';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -230,8 +233,28 @@ export default function ListingDetailScreen() {
     variables: { id: id ?? '' },
     skip: !id,
   });
+  const {
+    data: listingOffersData,
+    loading: listingOffersLoading,
+    refetch: refetchListingOffers,
+  } = useQuery<ListingOffersResponse>(LISTING_OFFERS, {
+    variables: { listingId: id ?? '' },
+    skip: !id,
+  });
 
   const remoteListing = data?.v2UserFindListing ?? null;
+  const listingOfferSeed = useMemo(
+    () => ({
+      id: remoteListing?.id ?? fallbackListing?.id ?? id ?? 'listing',
+      name: remoteListing?.name ?? fallbackListing?.name ?? 'Safarihills stay',
+      area: remoteListing?.area ?? fallbackListing?.area ?? 'Lagos',
+      minimumPrice: remoteListing?.minimumPrice ?? fallbackListing?.minimumPrice ?? 0,
+      bookingOptions: remoteListing?.bookableOptions
+        ? mapBookableOptions(remoteListing.bookableOptions)
+        : fallbackListing?.bookingOptions ?? ['entire'],
+    }),
+    [fallbackListing, id, remoteListing]
+  );
   const listing = useMemo<ListingDetail | undefined>(() => {
     if (!fallbackListing && !remoteListing) return undefined;
     const baseListing =
@@ -301,6 +324,18 @@ export default function ListingDetailScreen() {
         baseListing.coverPhoto,
     };
   }, [fallbackListing, remoteListing, error, id]);
+  const offers = useMemo(
+    () => mapRemoteListingOffers(listingOffersData?.listingOffers, listingOfferSeed),
+    [listingOfferSeed, listingOffersData?.listingOffers]
+  );
+  const activeOfferClaims = useMemo(
+    () =>
+      buildActiveListingOfferClaimsById({
+        offers: listingOffersData?.listingOffers,
+        listingId: listingOfferSeed.id,
+      }),
+    [listingOfferSeed.id, listingOffersData?.listingOffers]
+  );
 
   if (!listing) {
     if (loading) {
@@ -321,6 +356,10 @@ export default function ListingDetailScreen() {
   return (
     <ListingDetailContent
       listing={listing}
+      offers={offers}
+      offersLoading={listingOffersLoading}
+      activeOfferClaims={activeOfferClaims}
+      onRefreshOffers={() => refetchListingOffers({ listingId: listing.id })}
       onBack={() => router.back()}
       onBook={() => router.push({ pathname: '/booking/[id]', params: { id: listing.id } })}
     />
@@ -329,6 +368,10 @@ export default function ListingDetailScreen() {
 
 type ListingDetailContentProps = {
   listing: ListingDetail;
+  offers: ListingOffer[];
+  offersLoading: boolean;
+  activeOfferClaims: Record<string, ListingOfferClaimSnapshot>;
+  onRefreshOffers: () => Promise<unknown>;
   onBack: () => void;
   onBook: () => void;
 };
@@ -412,15 +455,21 @@ function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
   );
 }
 
-function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentProps) {
+function ListingDetailContent({
+  listing,
+  offers,
+  offersLoading,
+  activeOfferClaims,
+  onRefreshOffers,
+  onBack,
+  onBook,
+}: ListingDetailContentProps) {
   const router = useRouter();
   const [activeImage, setActiveImage] = useState(0);
   const [activeOfferIndex, setActiveOfferIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [offerSeedTimestamp] = useState(() => Date.now());
   const [offerNow, setOfferNow] = useState(() => Date.now());
-  const [activeOfferClaims, setActiveOfferClaims] = useState<Record<string, ListingOfferClaim>>({});
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const handleOpenAttraction = (mapUrl: string) => {
@@ -461,27 +510,6 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
   });
 
   const attractions = useMemo(() => listing.attractions ?? [], [listing]);
-  const offers = useMemo(
-    () =>
-      buildMockOffersForListing(
-        {
-          id: listing.id,
-          name: listing.name,
-          area: listing.area,
-          minimumPrice: listing.minimumPrice,
-          bookingOptions: listing.bookingOptions,
-        },
-        offerSeedTimestamp
-      ),
-    [
-      listing.id,
-      listing.name,
-      listing.area,
-      listing.minimumPrice,
-      listing.bookingOptions,
-      offerSeedTimestamp,
-    ]
-  );
 
   useEffect(() => {
     const shouldTick =
@@ -502,29 +530,8 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
 
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
-
-      const loadClaims = async () => {
-        const claims = await getActiveListingOfferClaims();
-        if (!isActive) return;
-
-        const nextClaims = offers.reduce<Record<string, ListingOfferClaim>>((acc, offer) => {
-          const claim = claims[offer.id];
-          if (claim) {
-            acc[offer.id] = claim;
-          }
-          return acc;
-        }, {});
-
-        setActiveOfferClaims(nextClaims);
-      };
-
-      void loadClaims();
-
-      return () => {
-        isActive = false;
-      };
-    }, [offers])
+      void onRefreshOffers();
+    }, [onRefreshOffers])
   );
 
   const handleClaimOffer = (offer: ListingOffer) => {
@@ -532,6 +539,7 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
       pathname: '/offer-booking/[listingId]',
       params: {
         listingId: listing.id,
+        offerId: offer.id,
         listingName: listing.name,
         listingArea: listing.area,
         listingImage: listing.coverPhoto || listing.gallery[0] || '',
@@ -650,167 +658,180 @@ function ListingDetailContent({ listing, onBack, onBook }: ListingDetailContentP
               </View>
               <View className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2">
                 <Text className="text-xs font-semibold text-amber-700">
-                  {offers.length} offer{offers.length === 1 ? '' : 's'}
+                  {offersLoading ? 'Loading…' : `${offers.length} offer${offers.length === 1 ? '' : 's'}`}
                 </Text>
               </View>
             </View>
 
             <View className="mt-4 gap-4">
-              <View className="-mx-6">
-                <FlatList
-                  horizontal
-                  data={offers}
-                  keyExtractor={(offer) => offer.id}
-                  showsHorizontalScrollIndicator={false}
-                  decelerationRate="fast"
-                  snapToInterval={OFFER_CARD_WIDTH + OFFER_CARD_GAP}
-                  disableIntervalMomentum
-                  contentContainerStyle={{ paddingHorizontal: 24, paddingRight: 36 }}
-                  onMomentumScrollEnd={(event) => {
-                    const cardSpan = OFFER_CARD_WIDTH + OFFER_CARD_GAP;
-                    const index = Math.round(event.nativeEvent.contentOffset.x / cardSpan);
-                    const boundedIndex = Math.max(0, Math.min(index, offers.length - 1));
-                    setActiveOfferIndex(boundedIndex);
-                  }}
-                  renderItem={({ item: offer, index }) => {
-                    const theme = getOfferThemeMeta(offer.theme);
-                    const activeClaim = activeOfferClaims[offer.id];
-                    const publicStatus = getListingOfferPublicStatus(offer, offerNow);
-                    const publicWindowLabel = formatListingOfferPublicWindow(offer, offerNow);
-                    const claimWindowLabel = activeClaim
-                      ? formatListingOfferClaimWindow(activeClaim.holdExpiresAt, offerNow)
-                      : null;
-                    const claimDeadlineLabel = activeClaim
-                      ? formatListingOfferClaimDeadline(activeClaim.holdExpiresAt)
-                      : null;
-                    const actionDisabled = !activeClaim && publicStatus !== 'live';
-                    const actionLabel = activeClaim
-                      ? 'View locked offer'
-                      : publicStatus === 'live'
-                        ? offer.ctaLabel
-                        : 'Opens soon';
-                    const statusEyebrow = activeClaim
-                      ? 'Locked for you'
-                      : publicStatus === 'live'
-                        ? 'Shared public window'
-                        : 'Upcoming window';
-                    const statusLabel = activeClaim ? claimWindowLabel ?? 'Locked' : publicWindowLabel;
-                    const helperLabel = activeClaim
-                      ? `${claimDeadlineLabel}. Finish your stay details before the hold runs out.`
-                      : publicStatus === 'live'
-                        ? offer.lockHint
-                        : 'This window is shared across guests for this listing, so the next opening is the same for everyone.';
-
-                    return (
-                      <View
-                        style={{
-                          width: OFFER_CARD_WIDTH,
-                          marginRight: index === offers.length - 1 ? 0 : OFFER_CARD_GAP,
-                        }}>
-                        <View
-                          className={`rounded-[28px] border p-5 shadow-sm shadow-slate-100 ${theme.cardClass}`}>
-                          <View className="flex-row items-start justify-between gap-4">
-                            <View className="flex-1">
-                              <View
-                                className={`self-start rounded-full px-3 py-1.5 ${theme.badgeClass}`}>
-                                <Text
-                                  className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.badgeTextClass}`}>
-                                  {offer.badge}
-                                </Text>
-                              </View>
-                              <Text className="mt-4 text-xl font-bold text-slate-900">
-                                {offer.title}
-                              </Text>
-                              <Text className={`mt-2 text-sm leading-6 ${theme.copyClass}`}>
-                                {offer.subtitle}
-                              </Text>
-                            </View>
-
-                            <View
-                              className={`min-w-[92px] rounded-2xl border px-3 py-3 ${theme.savingsClass}`}>
-                              <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                Savings
-                              </Text>
-                              <Text
-                                className={`mt-1 text-base font-semibold ${theme.savingsTextClass}`}>
-                                {offer.savingsLabel}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <View className="mt-4 flex-row flex-wrap gap-2">
-                            {offer.highlights.map((highlight) => (
-                              <View
-                                key={`${offer.id}-${highlight}`}
-                                className={`rounded-full border px-3 py-1.5 ${theme.chipClass}`}>
-                                <Text className={`text-xs font-semibold ${theme.chipTextClass}`}>
-                                  {highlight}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-
-                          <View className={`mt-5 rounded-2xl border px-4 py-4 ${theme.footerClass}`}>
-                            <View className="flex-row items-center justify-between gap-4">
-                              <View className="flex-1">
-                                <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                  {statusEyebrow}
-                                </Text>
-                                <Text
-                                  className={`mt-1 text-base font-semibold ${
-                                    activeClaim
-                                      ? 'text-emerald-700'
-                                      : publicStatus === 'live'
-                                        ? 'text-slate-900'
-                                        : 'text-slate-700'
-                                  }`}>
-                                  {statusLabel}
-                                </Text>
-                                <Text className="mt-1 text-xs leading-5 text-slate-500">
-                                  {helperLabel}
-                                </Text>
-                              </View>
-
-                              <Pressable
-                                className={`rounded-full px-4 py-3 ${
-                                  actionDisabled ? 'bg-slate-200' : theme.actionClass
-                                }`}
-                                disabled={actionDisabled}
-                                onPress={() => handleClaimOffer(offer)}>
-                                  <Text
-                                  className={`text-sm font-semibold ${
-                                    actionDisabled ? 'text-slate-500' : 'text-white'
-                                  }`}>
-                                  {actionLabel}
-                                </Text>
-                              </Pressable>
-                            </View>
-                            <Text className="mt-3 text-xs leading-5 text-slate-500">
-                              {offer.terms}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  }}
-                />
-              </View>
-
-              <View className="mt-4 flex-row items-center justify-between">
-                <View className="flex-row items-center gap-2">
-                  {offers.map((offer, index) => (
-                    <View
-                      key={`${offer.id}-dot`}
-                      className={`h-1.5 rounded-full ${
-                        index === activeOfferIndex ? 'w-8 bg-slate-900' : 'w-3 bg-slate-300'
-                      }`}
-                    />
-                  ))}
+              {offers.length === 0 ? (
+                <View className="rounded-3xl border border-slate-200 bg-slate-50/70 px-5 py-5">
+                  <Text className="text-sm font-semibold text-slate-900">
+                    No listing offers are available right now.
+                  </Text>
+                  <Text className="mt-1 text-sm leading-6 text-slate-500">
+                    Offer windows appear here automatically when this listing has active campaigns.
+                  </Text>
                 </View>
-                <Text className="text-xs font-medium text-slate-400">
-                  Swipe to see more offers
-                </Text>
-              </View>
+              ) : (
+                <>
+                  <View className="-mx-6">
+                    <FlatList
+                      horizontal
+                      data={offers}
+                      keyExtractor={(offer) => offer.id}
+                      showsHorizontalScrollIndicator={false}
+                      decelerationRate="fast"
+                      snapToInterval={OFFER_CARD_WIDTH + OFFER_CARD_GAP}
+                      disableIntervalMomentum
+                      contentContainerStyle={{ paddingHorizontal: 24, paddingRight: 36 }}
+                      onMomentumScrollEnd={(event) => {
+                        const cardSpan = OFFER_CARD_WIDTH + OFFER_CARD_GAP;
+                        const index = Math.round(event.nativeEvent.contentOffset.x / cardSpan);
+                        const boundedIndex = Math.max(0, Math.min(index, offers.length - 1));
+                        setActiveOfferIndex(boundedIndex);
+                      }}
+                      renderItem={({ item: offer, index }) => {
+                        const theme = getOfferThemeMeta(offer.theme);
+                        const activeClaim = activeOfferClaims[offer.id];
+                        const publicStatus = getListingOfferPublicStatus(offer, offerNow);
+                        const publicWindowLabel = formatListingOfferPublicWindow(offer, offerNow);
+                        const claimWindowLabel = activeClaim
+                          ? formatListingOfferClaimWindow(activeClaim.holdExpiresAt, offerNow)
+                          : null;
+                        const claimDeadlineLabel = activeClaim
+                          ? formatListingOfferClaimDeadline(activeClaim.holdExpiresAt)
+                          : null;
+                        const actionDisabled = !activeClaim && publicStatus !== 'live';
+                        const actionLabel = activeClaim
+                          ? 'View locked offer'
+                          : publicStatus === 'live'
+                            ? offer.ctaLabel
+                            : 'Opens soon';
+                        const statusEyebrow = activeClaim
+                          ? 'Locked for you'
+                          : publicStatus === 'live'
+                            ? 'Shared public window'
+                            : 'Upcoming window';
+                        const statusLabel = activeClaim ? claimWindowLabel ?? 'Locked' : publicWindowLabel;
+                        const helperLabel = activeClaim
+                          ? `${claimDeadlineLabel}. Finish your stay details before the hold runs out.`
+                          : publicStatus === 'live'
+                            ? offer.lockHint
+                            : 'This window is shared across guests for this listing, so the next opening is the same for everyone.';
+
+                        return (
+                          <View
+                            style={{
+                              width: OFFER_CARD_WIDTH,
+                              marginRight: index === offers.length - 1 ? 0 : OFFER_CARD_GAP,
+                            }}>
+                            <View
+                              className={`rounded-[28px] border p-5 shadow-sm shadow-slate-100 ${theme.cardClass}`}>
+                              <View className="flex-row items-start justify-between gap-4">
+                                <View className="flex-1">
+                                  <View
+                                    className={`self-start rounded-full px-3 py-1.5 ${theme.badgeClass}`}>
+                                    <Text
+                                      className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.badgeTextClass}`}>
+                                      {offer.badge}
+                                    </Text>
+                                  </View>
+                                  <Text className="mt-4 text-xl font-bold text-slate-900">
+                                    {offer.title}
+                                  </Text>
+                                  <Text className={`mt-2 text-sm leading-6 ${theme.copyClass}`}>
+                                    {offer.subtitle}
+                                  </Text>
+                                </View>
+
+                                <View
+                                  className={`min-w-[92px] rounded-2xl border px-3 py-3 ${theme.savingsClass}`}>
+                                  <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                    Savings
+                                  </Text>
+                                  <Text
+                                    className={`mt-1 text-base font-semibold ${theme.savingsTextClass}`}>
+                                    {offer.savingsLabel}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <View className="mt-4 flex-row flex-wrap gap-2">
+                                {offer.highlights.map((highlight) => (
+                                  <View
+                                    key={`${offer.id}-${highlight}`}
+                                    className={`rounded-full border px-3 py-1.5 ${theme.chipClass}`}>
+                                    <Text className={`text-xs font-semibold ${theme.chipTextClass}`}>
+                                      {highlight}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+
+                              <View className={`mt-5 rounded-2xl border px-4 py-4 ${theme.footerClass}`}>
+                                <View className="flex-row items-center justify-between gap-4">
+                                  <View className="flex-1">
+                                    <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                      {statusEyebrow}
+                                    </Text>
+                                    <Text
+                                      className={`mt-1 text-base font-semibold ${
+                                        activeClaim
+                                          ? 'text-emerald-700'
+                                          : publicStatus === 'live'
+                                            ? 'text-slate-900'
+                                            : 'text-slate-700'
+                                      }`}>
+                                      {statusLabel}
+                                    </Text>
+                                    <Text className="mt-1 text-xs leading-5 text-slate-500">
+                                      {helperLabel}
+                                    </Text>
+                                  </View>
+
+                                  <Pressable
+                                    className={`rounded-full px-4 py-3 ${
+                                      actionDisabled ? 'bg-slate-200' : theme.actionClass
+                                    }`}
+                                    disabled={actionDisabled}
+                                    onPress={() => handleClaimOffer(offer)}>
+                                    <Text
+                                      className={`text-sm font-semibold ${
+                                        actionDisabled ? 'text-slate-500' : 'text-white'
+                                      }`}>
+                                      {actionLabel}
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                                <Text className="mt-3 text-xs leading-5 text-slate-500">
+                                  {offer.terms}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      }}
+                    />
+                  </View>
+
+                  <View className="mt-4 flex-row items-center justify-between">
+                    <View className="flex-row items-center gap-2">
+                      {offers.map((offer, index) => (
+                        <View
+                          key={`${offer.id}-dot`}
+                          className={`h-1.5 rounded-full ${
+                            index === activeOfferIndex ? 'w-8 bg-slate-900' : 'w-3 bg-slate-300'
+                          }`}
+                        />
+                      ))}
+                    </View>
+                    <Text className="text-xs font-medium text-slate-400">
+                      Swipe to see more offers
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
 

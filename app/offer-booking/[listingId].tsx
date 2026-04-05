@@ -1,24 +1,26 @@
+import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import {
-  buildMockOffersForListing,
+  buildActiveListingOfferClaimsById,
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
   formatListingOfferPublicWindow,
   getListingOfferPublicStatus,
+  ListingOfferClaimSnapshot,
+  ListingOffersResponse,
+  mapRemoteListingOffers,
   parseListingOfferParam,
   type ListingOffer,
 } from '@/data/listingOffers';
 import { findListingById } from '@/data/listings';
-import {
-  createListingOfferClaim,
-  getActiveListingOfferClaim,
-  type ListingOfferClaim,
-} from '@/lib/listingOfferClaims';
+import { AuthStatus } from '@/lib/authStatus';
+import { CLAIM_LISTING_OFFER } from '@/mutations/claimListingOffer';
+import { LISTING_OFFERS } from '@/queries/listingOffers';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
@@ -67,10 +69,30 @@ const parseNumberParam = (value: string | string[] | undefined) => {
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
+type ClaimListingOfferResponse = {
+  claimListingOffer: {
+    success?: boolean | null;
+    message?: string | null;
+    errors?: string[] | string | null;
+    claim?: {
+      id?: string | null;
+      status?: string | null;
+      claimedAt?: string | null;
+      holdExpiresAt?: string | null;
+    } | null;
+  } | null;
+};
+
+type ClaimListingOfferVariables = {
+  offerId: string;
+  listingId: string;
+};
+
 export default function LocalOfferBookingScreen() {
   const router = useRouter();
   const {
     listingId: listingIdParam,
+    offerId: offerIdParam,
     listingName: listingNameParam,
     listingArea: listingAreaParam,
     listingImage: listingImageParam,
@@ -78,6 +100,7 @@ export default function LocalOfferBookingScreen() {
     offer: offerParam,
   } = useLocalSearchParams<{
     listingId?: string | string[];
+    offerId?: string | string[];
     listingName?: string | string[];
     listingArea?: string | string[];
     listingImage?: string | string[];
@@ -86,6 +109,7 @@ export default function LocalOfferBookingScreen() {
   }>();
 
   const listingId = Array.isArray(listingIdParam) ? listingIdParam[0] : listingIdParam;
+  const offerId = Array.isArray(offerIdParam) ? offerIdParam[0] : offerIdParam;
   const listingName = Array.isArray(listingNameParam) ? listingNameParam[0] : listingNameParam;
   const listingArea = Array.isArray(listingAreaParam) ? listingAreaParam[0] : listingAreaParam;
   const listingImage = Array.isArray(listingImageParam) ? listingImageParam[0] : listingImageParam;
@@ -95,10 +119,21 @@ export default function LocalOfferBookingScreen() {
     () => (listingId ? findListingById(listingId) : undefined),
     [listingId]
   );
-  const [offerSeedTimestamp] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
-  const [claim, setClaim] = useState<ListingOfferClaim | null>(null);
+  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
+    'checking'
+  );
+  const [claimOverride, setClaimOverride] = useState<ListingOfferClaimSnapshot | null>(null);
   const [isLocking, setIsLocking] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const { data, loading, refetch } = useQuery<ListingOffersResponse>(LISTING_OFFERS, {
+    variables: { listingId: listingId ?? '' },
+    skip: !listingId,
+  });
+  const [claimListingOffer] = useMutation<
+    ClaimListingOfferResponse,
+    ClaimListingOfferVariables
+  >(CLAIM_LISTING_OFFER);
 
   const resolvedListing = useMemo(
     () => ({
@@ -111,41 +146,41 @@ export default function LocalOfferBookingScreen() {
     }),
     [fallbackListing, listingArea, listingId, listingImage, listingName, minimumPrice]
   );
-
-  const selectedOffer = useMemo(
+  const remoteOffers = useMemo(
+    () => mapRemoteListingOffers(data?.listingOffers, resolvedListing),
+    [data?.listingOffers, resolvedListing]
+  );
+  const remoteClaimsById = useMemo(
     () =>
-      parsedOffer ??
-      buildMockOffersForListing(
-        {
-          id: resolvedListing.id,
-          name: resolvedListing.name,
-          area: resolvedListing.area,
-          minimumPrice: resolvedListing.minimumPrice,
-          bookingOptions: resolvedListing.bookingOptions,
-        },
-        offerSeedTimestamp
-      )[0] ??
-      null,
-    [offerSeedTimestamp, parsedOffer, resolvedListing]
+      buildActiveListingOfferClaimsById({
+        offers: data?.listingOffers,
+        listingId: resolvedListing.id,
+      }),
+    [data?.listingOffers, resolvedListing.id]
   );
 
+  const selectedOffer = useMemo(
+    () => remoteOffers.find((offer) => offer.id === offerId) ?? parsedOffer ?? null,
+    [offerId, parsedOffer, remoteOffers]
+  );
+  const claim = useMemo(() => {
+    if (!selectedOffer) return null;
+    if (claimOverride && claimOverride.offerId === selectedOffer.id) return claimOverride;
+    return remoteClaimsById[selectedOffer.id] ?? null;
+  }, [claimOverride, remoteClaimsById, selectedOffer]);
+
   useEffect(() => {
-    if (!selectedOffer) return undefined;
-
     let isActive = true;
-    const loadClaim = async () => {
-      const existingClaim = await getActiveListingOfferClaim(selectedOffer.id);
+    AuthStatus.isSignedIn().then((signedIn) => {
       if (isActive) {
-        setClaim(existingClaim);
+        setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
       }
-    };
-
-    void loadClaim();
+    });
 
     return () => {
       isActive = false;
     };
-  }, [selectedOffer]);
+  }, []);
 
   useEffect(() => {
     const shouldTick = Boolean(claim) || selectedOffer?.urgencyMode === 'countdown';
@@ -161,10 +196,21 @@ export default function LocalOfferBookingScreen() {
   useEffect(() => {
     if (!claim) return;
     if (new Date(claim.holdExpiresAt).getTime() > now) return;
-    setClaim(null);
-  }, [claim, now]);
+    setClaimOverride(null);
+    void refetch({ listingId: resolvedListing.id });
+  }, [claim, now, refetch, resolvedListing.id]);
 
   if (!selectedOffer) {
+    if (loading) {
+      return (
+        <SafeAreaView className="flex-1 bg-white">
+          <Stack.Screen options={{ headerShown: false }} />
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator color="#2563eb" />
+          </View>
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white px-6">
         <Stack.Screen options={{ headerShown: false }} />
@@ -188,16 +234,45 @@ export default function LocalOfferBookingScreen() {
 
   const handleLockOffer = async () => {
     if (!canLockOffer || isLocking) return;
+    if (authStatus !== 'signed-in') {
+      router.push('/auth/login');
+      return;
+    }
 
     setIsLocking(true);
+    setClaimError(null);
     try {
-      const nextClaim = await createListingOfferClaim({
+      const { data: response } = await claimListingOffer({
+        variables: {
+          offerId: selectedOffer.id,
+          listingId: resolvedListing.id,
+        },
+      });
+      const payload = response?.claimListingOffer;
+      const errors = payload?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        setClaimError(errors.join(' '));
+        return;
+      }
+      if (typeof errors === 'string' && errors.trim()) {
+        setClaimError(errors);
+        return;
+      }
+      if (!payload?.claim?.id || !payload.claim.claimedAt || !payload.claim.holdExpiresAt) {
+        setClaimError(payload?.message ?? 'Unable to lock this offer right now.');
+        return;
+      }
+
+      setClaimOverride({
+        id: payload.claim.id,
         offerId: selectedOffer.id,
         listingId: resolvedListing.id,
-        holdMinutes: selectedOffer.claimHoldMinutes,
+        status: payload.claim.status ?? 'active',
+        claimedAt: payload.claim.claimedAt,
+        holdExpiresAt: payload.claim.holdExpiresAt,
       });
-      setClaim(nextClaim);
       setNow(Date.now());
+      await refetch({ listingId: resolvedListing.id });
     } finally {
       setIsLocking(false);
     }
@@ -207,13 +282,11 @@ export default function LocalOfferBookingScreen() {
     if (!claim) return;
 
     router.push({
-      pathname: '/booking/[id]',
+      pathname: '/(tabs)/offers/[categoryId]/[offerId]/book',
       params: {
-        id: resolvedListing.id,
-        claimedOfferTitle: selectedOffer.title,
-        claimedOfferSavingsLabel: selectedOffer.savingsLabel,
-        claimedOfferExpiryLabel: claimDeadlineLabel ?? claimWindowLabel ?? '',
-        claimedOfferHoldExpiresAt: claim.holdExpiresAt,
+        categoryId: 'listing-offers',
+        offerId: selectedOffer.id,
+        listingId: resolvedListing.id,
       },
     });
   };
@@ -363,6 +436,11 @@ export default function LocalOfferBookingScreen() {
               Offer terms
             </Text>
             <Text className="mt-3 text-sm leading-6 text-slate-600">{selectedOffer.terms}</Text>
+            {claimError ? (
+              <View className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3">
+                <Text className="text-sm font-semibold text-rose-600">{claimError}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -379,9 +457,11 @@ export default function LocalOfferBookingScreen() {
                   canLockOffer && !isLocking ? 'text-white' : 'text-slate-500'
                 }`}>
                 {publicStatus === 'live'
-                  ? isLocking
-                    ? 'Locking your offer...'
-                    : `Lock this offer for ${selectedOffer.claimHoldMinutes} min`
+                  ? authStatus !== 'signed-in'
+                    ? 'Sign in to lock this offer'
+                    : isLocking
+                      ? 'Locking your offer...'
+                      : `Lock this offer for ${selectedOffer.claimHoldMinutes} min`
                   : 'Offer not live yet'}
               </Text>
             </Pressable>
