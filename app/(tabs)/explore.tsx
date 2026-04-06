@@ -1,8 +1,8 @@
-import { useLazyQuery } from '@apollo/client';
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
-import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -17,12 +17,24 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoadingImage } from '@/components/LoadingImage';
+import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
-
-import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { V2_EXPLORE_LISTINGS } from '@/queries/v2ExploreListings';
-
-type BookingOption = 'room' | 'entire';
+import {
+  ExploreFilterInput,
+  ExploreListing,
+  ExploreSection,
+  FilterState,
+  RemoteExploreSection,
+  buildExploreFilterInput,
+  createInitialFilters,
+  flattenPreviewListings,
+  formatCurrencyInput,
+  mapExploreSection,
+  serializeExploreFilterInput,
+  sortExploreSections,
+} from '@/lib/explore';
+import { PROFILE_QUERY } from '@/queries/profile';
+import { EXPLORE_SECTIONS } from '@/queries/exploreSections';
 
 const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
 
@@ -39,194 +51,10 @@ const AMENITIES = [
 ];
 
 const GUEST_OPTIONS = ['1', '2', '3', '4', '5', '6+'];
-const PAGE_SIZE = 10;
 const BOOKING_ALERT_DURATION_MS = 6000;
 const BOOKING_ALERT_INTERVAL_MS = 2 * 60 * 1000;
 const BOOKING_ALERT_INITIAL_DELAY_MS = 3000;
-const FALLBACK_LISTING_IMAGE =
-  'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80';
-const PROMO_TAGS = [
-  'Free Night',
-  'Late Night Discount',
-  '5% Off',
-  'Easter Promo',
-  'Weekend Escape',
-  'Long Stay Perk',
-  'Breakfast Bonus',
-];
 const BOOKING_ALERT_NAMES = ['Chinyere', 'Tobi', 'Mariam', 'Ifeanyi', 'Amaka', 'Dami'];
-const PROMO_TAG_TONES = [
-  {
-    containerClass: 'border-emerald-200 bg-emerald-50',
-    textClass: 'text-emerald-700',
-    iconColor: '#047857',
-  },
-  {
-    containerClass: 'border-amber-200 bg-amber-50',
-    textClass: 'text-amber-700',
-    iconColor: '#b45309',
-  },
-  {
-    containerClass: 'border-blue-200 bg-blue-50',
-    textClass: 'text-blue-700',
-    iconColor: '#1d4ed8',
-  },
-];
-
-type DiscoverFilterId =
-  | 'all'
-  | 'top-picks-lekki'
-  | 'trending-lekki'
-  | 'hot-picks-ikeja'
-  | 'best-deals-vi';
-
-type DiscoverFilterConfig = {
-  id: Exclude<DiscoverFilterId, 'all'>;
-  title: string;
-  subtitle: string;
-  eyebrow: string;
-  icon: ComponentProps<typeof Feather>['name'];
-  surfaceClass: string;
-  eyebrowClass: string;
-  countClass: string;
-  countTextClass: string;
-};
-
-const DISCOVER_FILTERS: DiscoverFilterConfig[] = [
-  {
-    id: 'top-picks-lekki',
-    title: 'Top picks in Lekki',
-    subtitle: 'High-rated stays with polished finishes and calm ambience.',
-    eyebrow: 'Lekki edit',
-    icon: 'award',
-    surfaceClass: 'border-blue-200 bg-blue-50',
-    eyebrowClass: 'text-blue-600',
-    countClass: 'bg-white',
-    countTextClass: 'text-blue-700',
-  },
-  {
-    id: 'trending-lekki',
-    title: 'Trending apartments in Lekki',
-    subtitle: 'Fresh favorites guests are most likely to open right now.',
-    eyebrow: 'Trending now',
-    icon: 'trending-up',
-    surfaceClass: 'border-emerald-200 bg-emerald-50',
-    eyebrowClass: 'text-emerald-600',
-    countClass: 'bg-white',
-    countTextClass: 'text-emerald-700',
-  },
-  {
-    id: 'hot-picks-ikeja',
-    title: 'Hot picks in Ikeja',
-    subtitle: 'Convenient, flexible stays tailored for busy city movement.',
-    eyebrow: 'City stays',
-    icon: 'zap',
-    surfaceClass: 'border-amber-200 bg-amber-50',
-    eyebrowClass: 'text-amber-700',
-    countClass: 'bg-white',
-    countTextClass: 'text-amber-700',
-  },
-  {
-    id: 'best-deals-vi',
-    title: 'Best deals in Victoria Island',
-    subtitle: 'Value-first picks that still feel elevated and well-located.',
-    eyebrow: 'Deal watch',
-    icon: 'tag',
-    surfaceClass: 'border-rose-200 bg-rose-50',
-    eyebrowClass: 'text-rose-600',
-    countClass: 'bg-white',
-    countTextClass: 'text-rose-700',
-  },
-];
-
-const normalizeArea = (area: string) => area.trim().toLowerCase();
-
-const areaIncludes = (area: string, query: string) => normalizeArea(area).includes(query);
-
-const sortByRatingThenPrice = (left: ExploreListing, right: ExploreListing) => {
-  if (right.rating !== left.rating) return right.rating - left.rating;
-  return left.minimumPrice - right.minimumPrice;
-};
-
-const sortByPriceThenRating = (left: ExploreListing, right: ExploreListing) => {
-  if (left.minimumPrice !== right.minimumPrice) return left.minimumPrice - right.minimumPrice;
-  return right.rating - left.rating;
-};
-
-const sortByGuestFlex = (left: ExploreListing, right: ExploreListing) => {
-  if (right.maxNumberOfGuestsAllowed !== left.maxNumberOfGuestsAllowed) {
-    return right.maxNumberOfGuestsAllowed - left.maxNumberOfGuestsAllowed;
-  }
-  return sortByRatingThenPrice(left, right);
-};
-
-const derivePromoTags = (listing: ExploreListing, index: number) => {
-  const seededTags = new Set<string>();
-
-  if (areaIncludes(listing.area, 'lekki')) {
-    seededTags.add('Free Night');
-    seededTags.add('Easter Promo');
-  }
-
-  if (areaIncludes(listing.area, 'ikeja')) {
-    seededTags.add('Late Night Discount');
-  }
-
-  if (areaIncludes(listing.area, 'victoria island')) {
-    seededTags.add('5% Off');
-    seededTags.add('Weekend Escape');
-  }
-
-  if (listing.minimumPrice <= 90000) {
-    seededTags.add('Best Value');
-  }
-
-  if (listing.rating >= 4.8) {
-    seededTags.add('Guest Favorite');
-  }
-
-  const preferred = Array.from(seededTags);
-  const rotated = PROMO_TAGS.map((_, tagIndex) => PROMO_TAGS[(index + tagIndex) % PROMO_TAGS.length]);
-
-  return Array.from(new Set([...preferred, ...rotated])).slice(0, 3);
-};
-
-const getListingsForDiscoverFilter = (
-  listings: ExploreListing[],
-  filterId: DiscoverFilterId
-): ExploreListing[] => {
-  if (filterId === 'all') return listings;
-
-  if (filterId === 'top-picks-lekki') {
-    return [...listings.filter((listing) => areaIncludes(listing.area, 'lekki'))].sort(
-      sortByRatingThenPrice
-    );
-  }
-
-  if (filterId === 'trending-lekki') {
-    return listings.filter((listing) => areaIncludes(listing.area, 'lekki'));
-  }
-
-  if (filterId === 'hot-picks-ikeja') {
-    return [...listings.filter((listing) => areaIncludes(listing.area, 'ikeja'))].sort(
-      sortByGuestFlex
-    );
-  }
-
-  return [...listings.filter((listing) => areaIncludes(listing.area, 'victoria island'))].sort(
-    sortByPriceThenRating
-  );
-};
-
-type FilterState = {
-  minBudget: string;
-  maxBudget: string;
-  type: string;
-  guests: string;
-  amenities: string[];
-  checkIn: Date | null;
-  checkOut: Date | null;
-};
 
 type CalendarDay = {
   date: Date;
@@ -237,26 +65,28 @@ type CalendarDay = {
   isBetween: boolean;
 };
 
-const createInitialFilters = (): FilterState => ({
-  minBudget: '',
-  maxBudget: '',
-  type: '',
-  guests: '',
-  amenities: [],
-  checkIn: null,
-  checkOut: null,
-});
-
-const formatCurrencyInput = (value: string) => {
-  const digitsOnly = value.replace(/[^\d]/g, '');
-  if (!digitsOnly) return '';
-  return Number(digitsOnly).toLocaleString();
+type BookingAlert = {
+  id: string;
+  guestName: string;
+  listingName: string;
+  area: string;
+  avatar: string;
+  bookedAgoLabel: string;
 };
 
-const parseCurrencyInput = (value: string) => {
-  const digitsOnly = value.replace(/[^\d]/g, '');
-  if (!digitsOnly) return null;
-  return Number(digitsOnly);
+type ExploreSectionsResponse = {
+  exploreSections?: RemoteExploreSection[] | null;
+};
+
+type ExploreSectionsVariables = {
+  filters?: ExploreFilterInput;
+};
+
+type ExploreProfileResponse = {
+  user?: {
+    name?: string | null;
+    initials?: string | null;
+  } | null;
 };
 
 const startOfDay = (date: Date) => {
@@ -271,13 +101,6 @@ const formatDateDisplay = (date: Date) =>
     day: 'numeric',
     year: 'numeric',
   });
-
-const formatQueryDate = (date: Date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 const startOfMonth = (date: Date) => {
   const next = new Date(date);
@@ -329,112 +152,10 @@ const buildCalendarDays = (
   return days;
 };
 
-type ExploreListing = {
-  id: string;
-  name: string;
-  apartmentType: string;
-  coverPhoto: string;
-  description: string;
-  minimumPrice: number;
-  rating: number;
-  area: string;
-  maxNumberOfGuestsAllowed: number;
-  bookingOptions: BookingOption[];
-  promoTags: string[];
-};
-
-type ExploreListingResponse = {
-  id: string;
-  name: string;
-  apartmentType: string;
-  coverPhoto: string | null;
-  description: string;
-  minimumPrice: number;
-  rating: number;
-  area: string;
-  maxNumberOfGuestsAllowed: number;
-  bookableOptions: string[];
-};
-
-type ProfileResponse = {
-  firstName?: string | null;
-  initials?: string | null;
-};
-
-type ProfileWithListingsResponse = {
-  profile?: ProfileResponse | null;
-  v2ExploreListings: ExploreListingResponse[];
-};
-
-type V2ExploreListingsVariables = {
-  minBudget?: number | null;
-  maxBudget?: number | null;
-  checkIn?: string | null;
-  checkOut?: string | null;
-  numberOfGuests?: number | null;
-  amenities?: string[] | null;
-  apartmentType?: string | null;
-  limit: number;
-  offset: number;
-};
-
-type BookingAlert = {
-  id: string;
-  guestName: string;
-  listingName: string;
-  area: string;
-  avatar: string;
-  bookedAgoLabel: string;
-};
-
-const buildQueryVariables = (filters: FilterState): V2ExploreListingsVariables => {
-  const minBudget = parseCurrencyInput(filters.minBudget);
-  const maxBudget = parseCurrencyInput(filters.maxBudget);
-  const numberOfGuests = filters.guests
-    ? filters.guests === '6+'
-      ? 6
-      : Number(filters.guests)
-    : null;
-
-  return {
-    minBudget,
-    maxBudget,
-    checkIn: filters.checkIn ? formatQueryDate(filters.checkIn) : null,
-    checkOut: filters.checkOut ? formatQueryDate(filters.checkOut) : null,
-    numberOfGuests,
-    amenities: filters.amenities.length > 0 ? filters.amenities : null,
-    apartmentType: filters.type ? filters.type : null,
-    limit: PAGE_SIZE,
-    offset: 0,
-  };
-};
-
-const mapBookableOptions = (options: string[] | null | undefined): BookingOption[] => {
-  const mapped: BookingOption[] = [];
-  if (options?.includes('single_room')) mapped.push('room');
-  if (options?.includes('entire_apartment')) mapped.push('entire');
-  return mapped.length ? mapped : ['entire'];
-};
-
-const mapExploreListing = (listing: ExploreListingResponse, index: number): ExploreListing => {
-  const mappedListing: ExploreListing = {
-    id: listing.id,
-    name: listing.name,
-    apartmentType: listing.apartmentType,
-    coverPhoto: listing.coverPhoto ?? FALLBACK_LISTING_IMAGE,
-    description: listing.description,
-    minimumPrice: listing.minimumPrice,
-    rating: listing.rating ?? 0,
-    area: listing.area,
-    maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
-    bookingOptions: mapBookableOptions(listing.bookableOptions),
-    promoTags: [],
-  };
-
-  return {
-    ...mappedListing,
-    promoTags: derivePromoTags(mappedListing, index),
-  };
+const rgbaFromHex = (color: string, alpha: string) => {
+  const normalized = color.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(normalized)) return `${normalized}${alpha}`;
+  return normalized;
 };
 
 export default function ExploreScreen() {
@@ -443,69 +164,64 @@ export default function ExploreScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
-  const [activeDiscoverFilter, setActiveDiscoverFilter] = useState<DiscoverFilterId>('all');
   const [isDiscoverExpanded, setIsDiscoverExpanded] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [filterAnchor, setFilterAnchor] = useState({ y: 0, height: 0 });
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [remoteHasMore, setRemoteHasMore] = useState(true);
   const [activeBookingAlert, setActiveBookingAlert] = useState<BookingAlert | null>(null);
-  const queryVariablesRef = useRef<V2ExploreListingsVariables | null>(null);
-  const hasLoadedRef = useRef(false);
   const alertOpacity = useRef(new Animated.Value(0)).current;
   const alertTranslateY = useRef(new Animated.Value(-18)).current;
   const alertProgress = useRef(new Animated.Value(1)).current;
   const alertIndexRef = useRef(0);
   const visibleListingsRef = useRef<ExploreListing[]>([]);
 
-  const [loadListings, { data, error, fetchMore, refetch, loading }] = useLazyQuery<
-    ProfileWithListingsResponse,
-    V2ExploreListingsVariables
+  const appliedExploreFilters = useMemo(
+    () => buildExploreFilterInput(appliedFilters),
+    [appliedFilters]
+  );
+
+  const { data, error, refetch, loading } = useQuery<
+    ExploreSectionsResponse,
+    ExploreSectionsVariables
   >(
-    V2_EXPLORE_LISTINGS,
+    EXPLORE_SECTIONS,
     {
+      variables: { filters: appliedExploreFilters },
       notifyOnNetworkStatusChange: true,
     }
   );
+  const { data: profileData, refetch: refetchProfile } = useQuery<ExploreProfileResponse>(PROFILE_QUERY, {
+    fetchPolicy: 'cache-and-network',
+  });
 
   const calendarDays = useMemo(
     () => buildCalendarDays(calendarMonth, filters.checkIn, filters.checkOut),
     [calendarMonth, filters.checkIn, filters.checkOut]
   );
 
-  const remoteListings = useMemo<ExploreListing[]>(() => {
-    const items = data?.v2ExploreListings ?? [];
-    return items.map(mapExploreListing);
-  }, [data]);
-
-  const discoverCounts = useMemo(
-    () =>
-      DISCOVER_FILTERS.reduce<Record<Exclude<DiscoverFilterId, 'all'>, number>>((counts, filter) => {
-        counts[filter.id] = getListingsForDiscoverFilter(remoteListings, filter.id).length;
-        return counts;
-      }, {} as Record<Exclude<DiscoverFilterId, 'all'>, number>),
-    [remoteListings]
+  const sections = useMemo<ExploreSection[]>(
+    () => sortExploreSections((data?.exploreSections ?? []).map(mapExploreSection)),
+    [data]
   );
-
-  const listings = useMemo(
-    () => getListingsForDiscoverFilter(remoteListings, activeDiscoverFilter),
-    [activeDiscoverFilter, remoteListings]
-  );
-
-  const remoteListingCount = data?.v2ExploreListings?.length ?? 0;
-  const hasMore = !error && remoteHasMore;
+  const previewListings = useMemo(() => flattenPreviewListings(sections), [sections]);
+  const sectionCount = sections.length;
   const isNetworkError = Boolean(error?.networkError);
-  const activeDiscoverConfig =
-    activeDiscoverFilter === 'all'
-      ? null
-      : DISCOVER_FILTERS.find((filter) => filter.id === activeDiscoverFilter) ?? null;
 
-  const profileName = data?.profile?.firstName ?? '';
-  const profileInitials = data?.profile?.initials ?? 'SH';
-  const welcomeMessage = profileName ? `Welcome back, ${profileName}` : 'Welcome back';
+  const profileName = profileData?.user?.name?.trim() ?? '';
+  const derivedInitials = profileName
+    ? profileName
+        .split(/\s+/)
+        .map((part) => part[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : '';
+  const profileInitials = profileData?.user?.initials?.trim() || derivedInitials || 'SH';
+  const firstName = profileName ? profileName.split(/\s+/)[0] : '';
+  const welcomeMessage = firstName ? `Welcome back, ${firstName}` : 'Welcome back';
   const bookingAlertBottomOffset = Math.max(tabBarHeight + 6, insets.bottom + 64);
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -520,25 +236,11 @@ export default function ExploreScreen() {
   }, [appliedFilters]);
 
   useEffect(() => {
-    if (hasLoadedRef.current) return;
-    hasLoadedRef.current = true;
-    const initialVariables = buildQueryVariables(createInitialFilters());
-    queryVariablesRef.current = initialVariables;
-    loadListings({ variables: initialVariables });
-  }, [loadListings]);
+    visibleListingsRef.current = previewListings;
+  }, [previewListings]);
 
   useEffect(() => {
-    if (data?.v2ExploreListings && data.v2ExploreListings.length < PAGE_SIZE) {
-      setRemoteHasMore(false);
-    }
-  }, [data]);
-
-  useEffect(() => {
-    visibleListingsRef.current = listings.length ? listings : remoteListings;
-  }, [listings, remoteListings]);
-
-  useEffect(() => {
-    if (!remoteListings.length) return;
+    if (!previewListings.length) return;
 
     const showNextBookingAlert = () => {
       const sourceListings = visibleListingsRef.current;
@@ -554,7 +256,7 @@ export default function ExploreScreen() {
         guestName,
         listingName: listing.name,
         area: listing.area,
-        avatar: listing.coverPhoto || FALLBACK_LISTING_IMAGE,
+        avatar: listing.coverPhoto,
         bookedAgoLabel: '2 minutes ago',
       });
     };
@@ -570,7 +272,7 @@ export default function ExploreScreen() {
       clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-  }, [remoteListings.length]);
+  }, [previewListings.length]);
 
   useEffect(() => {
     if (!activeBookingAlert) return;
@@ -622,54 +324,13 @@ export default function ExploreScreen() {
     };
   }, [activeBookingAlert, alertOpacity, alertProgress, alertTranslateY]);
 
-  const handleLoadMore = async () => {
-    if (!hasMore || loadingMore || loading || remoteListingCount === 0 || listings.length === 0)
-      return;
-    setLoadingMore(true);
-    try {
-      const variables = queryVariablesRef.current ?? buildQueryVariables(appliedFilters);
-      queryVariablesRef.current = variables;
-      const result = await fetchMore({
-        variables: {
-          ...variables,
-          offset: remoteListingCount,
-        },
-        updateQuery: (previous, { fetchMoreResult }) => {
-          if (!fetchMoreResult?.v2ExploreListings) return previous;
-          return {
-            profile: fetchMoreResult.profile ?? previous?.profile,
-            v2ExploreListings: [
-              ...(previous?.v2ExploreListings ?? []),
-              ...fetchMoreResult.v2ExploreListings,
-            ],
-          };
-        },
-      });
-      const fetched = result.data?.v2ExploreListings ?? [];
-      if (fetched.length < PAGE_SIZE) {
-        setRemoteHasMore(false);
-      }
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  const runSearch = async (nextVariables: V2ExploreListingsVariables) => {
-    queryVariablesRef.current = nextVariables;
-    setRemoteHasMore(true);
-    await loadListings({
-      variables: nextVariables,
-      fetchPolicy: 'network-only',
-    });
-  };
-
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const variables = queryVariablesRef.current ?? buildQueryVariables(appliedFilters);
-      queryVariablesRef.current = variables;
-      await refetch({ ...variables, offset: 0 });
-      setRemoteHasMore(true);
+      await Promise.all([
+        refetch({ filters: appliedExploreFilters }),
+        refetchProfile(),
+      ]);
     } finally {
       setRefreshing(false);
     }
@@ -680,7 +341,7 @@ export default function ExploreScreen() {
       const exists = prev.amenities.includes(amenity);
       return {
         ...prev,
-        amenities: exists ? prev.amenities.filter((a) => a !== amenity) : [...prev.amenities, amenity],
+        amenities: exists ? prev.amenities.filter((item) => item !== amenity) : [...prev.amenities, amenity],
       };
     });
   };
@@ -690,14 +351,11 @@ export default function ExploreScreen() {
     setFilters(nextFilters);
     setAppliedFilters(nextFilters);
     setFilterSheetOpen(false);
-    runSearch(buildQueryVariables(nextFilters)).catch(() => undefined);
   };
 
   const applyFilters = () => {
-    const nextApplied = { ...filters };
     setFilterSheetOpen(false);
-    setAppliedFilters(nextApplied);
-    runSearch(buildQueryVariables(nextApplied)).catch(() => undefined);
+    setAppliedFilters({ ...filters });
   };
 
   const handleSelectDate = (date: Date) => {
@@ -724,76 +382,17 @@ export default function ExploreScreen() {
   };
 
   const handleRetry = () => {
-    const variables = queryVariablesRef.current ?? buildQueryVariables(appliedFilters);
-    runSearch(variables).catch(() => undefined);
+    refetch({ filters: appliedExploreFilters }).catch(() => undefined);
   };
 
-  const renderApartment = ({ item }: { item: ExploreListing }) => {
-    return (
-      <Pressable
-        className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200"
-        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: item.id } })}>
-        <LoadingImageBackground
-          source={{ uri: item.coverPhoto }}
-          className="h-56 w-full overflow-hidden"
-          imageStyle={{ borderTopLeftRadius: 32, borderTopRightRadius: 32 }}>
-          <View className="flex-1 flex-row items-start justify-between p-4">
-            <Text className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-800">
-              {item.apartmentType || 'Apartment'}
-            </Text>
-            <View className="flex-row items-center gap-1 rounded-full bg-slate-900/60 px-3 py-1">
-              <Feather name="star" size={14} color="#fde047" />
-              <Text className="text-xs font-semibold text-white">{item.rating.toFixed(1)}</Text>
-            </View>
-          </View>
-        </LoadingImageBackground>
-
-        <View className="space-y-2 px-5 py-5">
-          <View className="flex-row items-start justify-between gap-3">
-            <Text className="flex-1 text-xl font-semibold text-slate-900" numberOfLines={2}>
-              {item.name}
-            </Text>
-            <View className="items-end">
-              <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                From
-              </Text>
-              <Text className="text-base font-semibold text-blue-600">
-                ₦{item.minimumPrice.toLocaleString()}
-              </Text>
-              <Text className="text-[10px] font-medium text-slate-500">/ night</Text>
-            </View>
-          </View>
-          <View className="mt-1 flex-row items-center gap-2">
-            <Feather name="map-pin" size={14} color="#94a3b8" />
-            <Text className="text-sm text-slate-500">{item.area}</Text>
-          </View>
-          <View className="mt-3 flex-row flex-wrap gap-2">
-            {item.promoTags.map((tag, index) => {
-              const tone = PROMO_TAG_TONES[index % PROMO_TAG_TONES.length];
-              return (
-                <View
-                  key={`${item.id}-${tag}`}
-                  className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${tone.containerClass}`}>
-                  <Feather name="tag" size={11} color={tone.iconColor} />
-                  <Text className={`text-[11px] font-semibold ${tone.textClass}`}>{tag}</Text>
-                </View>
-              );
-            })}
-          </View>
-          <Text className="text-sm text-slate-500" numberOfLines={2} ellipsizeMode="tail">
-            {item.description}
-          </Text>
-          <View className="mt-3 flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <Feather name="users" size={16} color="#64748b" />
-              <Text className="text-sm font-medium text-slate-600">
-                Up to {item.maxNumberOfGuestsAllowed} guests
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Pressable>
-    );
+  const openSection = (section: ExploreSection) => {
+    router.push({
+      pathname: '/explore/[slug]',
+      params: {
+        slug: section.slug,
+        filters: serializeExploreFilterInput(appliedExploreFilters),
+      },
+    });
   };
 
   return (
@@ -806,7 +405,7 @@ export default function ExploreScreen() {
           <Text className="mt-1 text-3xl font-bold text-slate-900">{welcomeMessage}</Text>
         </View>
         <Pressable
-          className="h-12 w-12 items-center justify-center rounded-full bg-blue-100 shrink-0"
+          className="h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100"
           onPress={() => router.push('/(tabs)/profile')}>
           <Text className="text-lg font-bold text-blue-900">{profileInitials}</Text>
         </Pressable>
@@ -863,17 +462,12 @@ export default function ExploreScreen() {
 
         <View className="mt-2 flex-row items-center justify-between">
           <Text className="flex-1 text-xs text-slate-500">
-            {activeDiscoverConfig
-              ? `Showing ${listings.length} stays for ${activeDiscoverConfig.title}.`
+            {sectionCount === 0
+              ? 'No explore sections available right now.'
               : isDiscoverExpanded
-                ? `${listings.length} stays ready to explore across Lagos.`
+                ? `${previewListings.length} preview ${previewListings.length === 1 ? 'stay' : 'stays'} across ${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'}. Tap a card to open the full list.`
                 : 'Expand discover to browse neighborhood picks, or jump straight into listings.'}
           </Text>
-          {activeDiscoverConfig ? (
-            <Pressable onPress={() => setActiveDiscoverFilter('all')}>
-              <Text className="text-sm font-semibold text-blue-600">Clear</Text>
-            </Pressable>
-          ) : null}
         </View>
 
         {isDiscoverExpanded ? (
@@ -882,63 +476,57 @@ export default function ExploreScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 2 }}>
             <View className="flex-row gap-3 pr-6">
-              {DISCOVER_FILTERS.map((filter) => {
-                const isActive = activeDiscoverFilter === filter.id;
-                const count = discoverCounts[filter.id] ?? 0;
-
-                return (
-                  <Pressable
-                    key={filter.id}
-                    className={`w-[168px] rounded-[24px] border px-3.5 py-3.5 ${
-                      isActive ? 'border-slate-900 bg-slate-900' : filter.surfaceClass
-                    }`}
-                    onPress={() =>
-                      setActiveDiscoverFilter((current) => (current === filter.id ? 'all' : filter.id))
-                    }>
-                    <View className="flex-row items-start justify-between gap-2">
-                      <View className="flex-1">
-                        <Text
-                          className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${
-                            isActive ? 'text-white/70' : filter.eyebrowClass
-                          }`}>
-                          {filter.eyebrow}
-                        </Text>
-                        <Text
-                          className={`mt-2 text-[16px] font-bold leading-5 ${
-                            isActive ? 'text-white' : 'text-slate-900'
-                          }`}
-                          numberOfLines={2}>
-                          {filter.title}
-                        </Text>
-                      </View>
-                      <View
-                        className={`rounded-2xl px-2.5 py-2.5 ${
-                          isActive ? 'bg-white/15' : 'bg-white/85'
-                        }`}>
-                        <Feather
-                          name={filter.icon}
-                          size={16}
-                          color={isActive ? '#ffffff' : '#0f172a'}
-                        />
-                      </View>
-                    </View>
-
-                    <View className="mt-3 flex-row items-center justify-between">
-                      <Text className={`text-[11px] font-medium ${isActive ? 'text-white/80' : 'text-slate-500'}`}>
-                        {count} {count === 1 ? 'stay' : 'stays'}
+              {sections.map((section) => (
+                <Pressable
+                  key={section.slug}
+                  className="w-[184px] rounded-[24px] border px-4 py-4"
+                  style={{
+                    backgroundColor: section.backgroundColor,
+                    borderColor: section.borderColor,
+                  }}
+                  onPress={() => openSection(section)}>
+                  <View className="flex-row items-start justify-between gap-3">
+                    <View className="flex-1">
+                      <Text
+                        className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+                        style={{ color: section.textColor, opacity: 0.72 }}>
+                        {section.eyebrow}
                       </Text>
-                      <View className={`rounded-full px-2.5 py-1 ${isActive ? 'bg-white/15' : filter.countClass}`}>
-                        <Text
-                          className={`text-[11px] font-semibold ${
-                            isActive ? 'text-white' : filter.countTextClass
-                          }`}>
-                          {isActive ? 'Selected' : 'Apply'}
-                        </Text>
-                      </View>
+                      <Text
+                        className="mt-2 text-[16px] font-bold leading-5"
+                        style={{ color: section.textColor }}
+                        numberOfLines={2}>
+                        {section.title}
+                      </Text>
                     </View>
-                  </Pressable>
-                );
-              })}
+                    <View
+                      className="rounded-2xl border px-2.5 py-2.5"
+                      style={{
+                        borderColor: section.borderColor,
+                        backgroundColor: rgbaFromHex(section.textColor, '18'),
+                      }}>
+                      <Feather name={section.iconName} size={16} color={section.textColor} />
+                    </View>
+                  </View>
+
+                  <Text
+                    className="mt-3 text-[12px] leading-5"
+                    style={{ color: section.textColor, opacity: 0.88 }}
+                    numberOfLines={3}>
+                    {section.subtitle}
+                  </Text>
+
+                  <View className="mt-4 flex-row items-center justify-between">
+                    <Text className="text-[11px] font-medium" style={{ color: section.textColor }}>
+                      {section.matchingCount} {section.matchingCount === 1 ? 'stay' : 'stays'}
+                    </Text>
+                    <View className="flex-row items-center gap-1 rounded-full bg-white/85 px-2.5 py-1">
+                      <Text className="text-[11px] font-semibold text-slate-900">Open</Text>
+                      <Feather name="arrow-right" size={12} color="#0f172a" />
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
             </View>
           </ScrollView>
         ) : null}
@@ -1105,7 +693,7 @@ export default function ExploreScreen() {
             </View>
 
             <Pressable
-              className="mt-6 mb-6 items-center justify-center rounded-2xl bg-blue-600 px-4 py-3"
+              className="mb-6 mt-6 items-center justify-center rounded-2xl bg-blue-600 px-4 py-3"
               onPress={applyFilters}>
               <Text className="text-base font-semibold text-white">Apply filters</Text>
             </Pressable>
@@ -1161,15 +749,15 @@ export default function ExploreScreen() {
         ) : null}
       </View>
 
-      {error && listings.length > 0 ? (
+      {error && previewListings.length > 0 ? (
         <View className="mx-6 mt-4 rounded-3xl border border-rose-200 bg-rose-50/70 px-4 py-3">
           <Text className="text-sm font-semibold text-rose-700">
-            {isNetworkError ? 'Network error' : 'Unable to load listings'}
+            {isNetworkError ? 'Network error' : 'Unable to load explore'}
           </Text>
           <Text className="mt-1 text-xs text-rose-600">
             {isNetworkError
               ? 'Check your connection and try again.'
-              : 'Something went wrong while fetching listings.'}
+              : 'Something went wrong while fetching explore sections.'}
           </Text>
           <Pressable
             className="mt-3 self-start rounded-full bg-rose-600 px-4 py-2"
@@ -1180,8 +768,15 @@ export default function ExploreScreen() {
       ) : null}
 
       <FlatList
-        data={listings}
-        renderItem={renderApartment}
+        data={previewListings}
+        renderItem={({ item }) => (
+          <ExploreListingCard
+            item={item}
+            onPress={(listing) =>
+              router.push({ pathname: '/listing/[id]', params: { id: listing.id } })
+            }
+          />
+        )}
         keyExtractor={(item, index) => `${item.id || 'listing'}-${index}`}
         contentContainerStyle={{
           padding: 24,
@@ -1197,35 +792,17 @@ export default function ExploreScreen() {
             colors={['#1d4ed8']}
           />
         }
-        onEndReachedThreshold={0.3}
-        onEndReached={() => {
-          if (!loadingMore && hasMore) {
-            handleLoadMore();
-          }
-        }}
-        ListFooterComponent={
-          <View className="py-4">
-            {loadingMore && (
-              <View className="items-center justify-center py-2">
-                <ActivityIndicator color="#1d4ed8" />
-              </View>
-            )}
-            {!loadingMore && !hasMore && listings.length > 0 && (
-              <Text className="text-center text-sm text-slate-400">You are all caught up.</Text>
-            )}
-          </View>
-        }
         ListEmptyComponent={
           <View className="py-24">
             {error ? (
               <View className="items-center justify-center px-6">
                 <Text className="text-base font-semibold text-slate-900">
-                  {isNetworkError ? 'Network error' : 'Unable to load listings'}
+                  {isNetworkError ? 'Network error' : 'Unable to load explore'}
                 </Text>
                 <Text className="mt-2 text-center text-sm text-slate-500">
                   {isNetworkError
                     ? 'Check your connection and try again.'
-                    : 'Something went wrong while fetching listings.'}
+                    : 'Something went wrong while fetching explore sections.'}
                 </Text>
                 <Pressable
                   className="mt-4 rounded-full bg-blue-600 px-5 py-2.5"
@@ -1237,28 +814,26 @@ export default function ExploreScreen() {
               <View className="items-center justify-center">
                 <ActivityIndicator color="#1d4ed8" size="large" />
                 <Text className="mt-3 text-sm font-semibold text-slate-500">
-                  Loading apartments...
+                  Loading explore sections...
+                </Text>
+              </View>
+            ) : sectionCount === 0 ? (
+              <View className="items-center justify-center px-6">
+                <Text className="text-center text-base font-semibold text-slate-900">
+                  No explore sections available yet.
+                </Text>
+                <Text className="mt-2 text-center text-sm text-slate-500">
+                  Pull to refresh and check back soon.
                 </Text>
               </View>
             ) : (
               <View className="items-center justify-center px-6">
                 <Text className="text-center text-base font-semibold text-slate-900">
-                  {activeDiscoverConfig
-                    ? `No stays found for ${activeDiscoverConfig.title}.`
-                    : 'No apartments found with the selected filters.'}
+                  No apartments found with the selected filters.
                 </Text>
                 <Text className="mt-2 text-center text-sm text-slate-500">
-                  {activeDiscoverConfig
-                    ? 'Try another neighborhood edit or clear the preset to browse everything.'
-                    : 'Adjust your filters and try again.'}
+                  Adjust your filters and try again.
                 </Text>
-                {activeDiscoverConfig ? (
-                  <Pressable
-                    className="mt-4 rounded-full bg-blue-600 px-5 py-2.5"
-                    onPress={() => setActiveDiscoverFilter('all')}>
-                    <Text className="text-sm font-semibold text-white">Show all stays</Text>
-                  </Pressable>
-                ) : null}
               </View>
             )}
           </View>
@@ -1322,51 +897,57 @@ export default function ExploreScreen() {
               ))}
             </View>
 
-            <View className="mt-2 flex-row flex-wrap">
+            <View className="mt-3 flex-row flex-wrap">
               {calendarDays.map((day) => {
                 const isDisabled = day.isPast;
                 const isSelected = day.isStart || day.isEnd;
-                const dayClasses = [
-                  'm-[2px] h-12 w-[13.6%] items-center justify-center rounded-full',
-                  isSelected ? 'bg-blue-600' : day.isBetween ? 'bg-blue-50' : 'bg-transparent',
-                  !day.isCurrentMonth ? 'opacity-40' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ');
-
                 return (
                   <Pressable
-                    key={day.date.toDateString()}
+                    key={day.date.toISOString()}
+                    className="w-[14.28%] p-1"
                     disabled={isDisabled}
-                    className={dayClasses}
                     onPress={() => handleSelectDate(day.date)}>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        isSelected ? 'text-white' : isDisabled ? 'text-slate-300' : 'text-slate-700'
+                    <View
+                      className={`aspect-square items-center justify-center rounded-2xl ${
+                        isSelected
+                          ? 'bg-blue-600'
+                          : day.isBetween
+                            ? 'bg-blue-50'
+                            : 'bg-transparent'
                       }`}>
-                      {day.date.getDate()}
-                    </Text>
+                      <Text
+                        className={`text-sm font-medium ${
+                          !day.isCurrentMonth
+                            ? 'text-slate-300'
+                            : isDisabled
+                              ? 'text-slate-300'
+                              : isSelected
+                                ? 'text-white'
+                                : day.isBetween
+                                  ? 'text-blue-700'
+                                  : 'text-slate-700'
+                        }`}>
+                        {day.date.getDate()}
+                      </Text>
+                    </View>
                   </Pressable>
                 );
               })}
             </View>
 
-            <View className="mt-4 flex-row items-center justify-between">
-              <Pressable className="rounded-2xl border border-slate-200 px-4 py-3" onPress={clearDates}>
-                <Text className="text-sm font-semibold text-slate-700">Clear dates</Text>
-              </Pressable>
-              <View className="flex-row gap-3">
-                <Pressable
-                  className="rounded-2xl border border-slate-200 px-4 py-3"
-                  onPress={() => setCalendarVisible(false)}>
-                  <Text className="text-sm font-semibold text-slate-700">Close</Text>
-                </Pressable>
-                <Pressable
-                  className="rounded-2xl bg-blue-600 px-4 py-3"
-                  onPress={() => setCalendarVisible(false)}>
-                  <Text className="text-sm font-semibold text-white">Save dates</Text>
-                </Pressable>
+            <View className="mt-5 flex-row items-center justify-between">
+              <View>
+                <Text className="text-xs font-semibold uppercase text-slate-400">Selected</Text>
+                <Text className="mt-1 text-sm font-semibold text-slate-900">
+                  {filters.checkIn ? formatDateDisplay(filters.checkIn) : 'Check-in'} {' - '}
+                  {filters.checkOut ? formatDateDisplay(filters.checkOut) : 'Check-out'}
+                </Text>
               </View>
+              <Pressable
+                className="rounded-full bg-blue-600 px-5 py-2.5"
+                onPress={() => setCalendarVisible(false)}>
+                <Text className="text-sm font-semibold text-white">Done</Text>
+              </Pressable>
             </View>
           </View>
         </View>
