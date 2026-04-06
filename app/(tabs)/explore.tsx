@@ -2,12 +2,14 @@ import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  GestureResponderEvent,
   LayoutAnimation,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   RefreshControl,
@@ -57,6 +59,10 @@ const AMENITIES = [
 const GUEST_OPTIONS = ['1', '2', '3', '4', '5', '6+'];
 const MAX_VISIBLE_LOCATION_OPTIONS = 5;
 const LOCATION_OPTION_ROW_HEIGHT = 52;
+const BUDGET_MIN_VALUE = 20000;
+const BUDGET_MAX_VALUE = 1000000;
+const BUDGET_STEP = 5000;
+const BUDGET_THUMB_SIZE = 24;
 const BOOKING_ALERT_DURATION_MS = 6000;
 const BOOKING_ALERT_INTERVAL_MS = 2 * 60 * 1000;
 const BOOKING_ALERT_INITIAL_DELAY_MS = 3000;
@@ -172,6 +178,205 @@ const rgbaFromHex = (color: string, alpha: string) => {
   if (/^#[0-9a-fA-F]{6}$/.test(normalized)) return `${normalized}${alpha}`;
   return normalized;
 };
+
+const clampBudgetValue = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const snapBudgetValue = (value: number) =>
+  Math.round(value / BUDGET_STEP) * BUDGET_STEP;
+
+const budgetValueToPosition = (value: number, width: number) => {
+  if (width <= 0) return 0;
+  return ((value - BUDGET_MIN_VALUE) / (BUDGET_MAX_VALUE - BUDGET_MIN_VALUE)) * width;
+};
+
+const budgetPositionToValue = (position: number, width: number) => {
+  if (width <= 0) return BUDGET_MIN_VALUE;
+
+  const ratio = clampBudgetValue(position / width, 0, 1);
+  const rawValue = BUDGET_MIN_VALUE + ratio * (BUDGET_MAX_VALUE - BUDGET_MIN_VALUE);
+  return clampBudgetValue(snapBudgetValue(rawValue), BUDGET_MIN_VALUE, BUDGET_MAX_VALUE);
+};
+
+const formatBudgetLabel = (value: number) => `₦${value.toLocaleString()}`;
+
+type BudgetRangeSliderProps = {
+  minValue: number;
+  maxValue: number;
+  onChange: (nextMin: number, nextMax: number) => void;
+};
+
+function BudgetRangeSlider({ minValue, maxValue, onChange }: BudgetRangeSliderProps) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [draftMin, setDraftMin] = useState(minValue);
+  const [draftMax, setDraftMax] = useState(maxValue);
+  const startMinRef = useRef(minValue);
+  const startMaxRef = useRef(maxValue);
+  const draftMinRef = useRef(minValue);
+  const draftMaxRef = useRef(maxValue);
+  const isDraggingRef = useRef(false);
+
+  useEffect(() => {
+    startMinRef.current = minValue;
+    startMaxRef.current = maxValue;
+  }, [maxValue, minValue]);
+
+  useEffect(() => {
+    if (isDraggingRef.current) return;
+
+    setDraftMin(minValue);
+    setDraftMax(maxValue);
+    draftMinRef.current = minValue;
+    draftMaxRef.current = maxValue;
+  }, [maxValue, minValue]);
+
+  const updateDraftRange = useCallback((nextMin: number, nextMax: number) => {
+    draftMinRef.current = nextMin;
+    draftMaxRef.current = nextMax;
+    setDraftMin(nextMin);
+    setDraftMax(nextMax);
+  }, []);
+
+  const moveThumb = useCallback(
+    (thumb: 'min' | 'max', position: number) => {
+      const nextValue = budgetPositionToValue(position, trackWidth);
+
+      if (thumb === 'min') {
+        updateDraftRange(Math.min(nextValue, draftMaxRef.current), draftMaxRef.current);
+        return;
+      }
+
+      updateDraftRange(draftMinRef.current, Math.max(nextValue, draftMinRef.current));
+    },
+    [trackWidth, updateDraftRange]
+  );
+
+  const commitDraftRange = useCallback(() => {
+    isDraggingRef.current = false;
+    onChange(draftMinRef.current, draftMaxRef.current);
+  }, [onChange]);
+
+  const beginDrag = useCallback(() => {
+    isDraggingRef.current = true;
+    startMinRef.current = draftMinRef.current;
+    startMaxRef.current = draftMaxRef.current;
+  }, []);
+
+  const handleTrackPress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (trackWidth <= 0) return;
+
+      const minPosition = budgetValueToPosition(draftMinRef.current, trackWidth);
+      const maxPosition = budgetValueToPosition(draftMaxRef.current, trackWidth);
+      const tappedPosition = clampBudgetValue(event.nativeEvent.locationX, 0, trackWidth);
+      const distanceToMin = Math.abs(tappedPosition - minPosition);
+      const distanceToMax = Math.abs(tappedPosition - maxPosition);
+      const thumb = distanceToMin <= distanceToMax ? 'min' : 'max';
+
+      moveThumb(thumb, tappedPosition);
+      onChange(draftMinRef.current, draftMaxRef.current);
+    },
+    [moveThumb, onChange, trackWidth]
+  );
+
+  const minThumbResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: beginDrag,
+        onPanResponderMove: (_, gestureState) => {
+          if (trackWidth <= 0) return;
+
+          const startPosition = budgetValueToPosition(startMinRef.current, trackWidth);
+          moveThumb('min', startPosition + gestureState.dx);
+        },
+        onPanResponderRelease: commitDraftRange,
+        onPanResponderTerminate: commitDraftRange,
+      }),
+    [beginDrag, commitDraftRange, moveThumb, trackWidth]
+  );
+
+  const maxThumbResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: beginDrag,
+        onPanResponderMove: (_, gestureState) => {
+          if (trackWidth <= 0) return;
+
+          const startPosition = budgetValueToPosition(startMaxRef.current, trackWidth);
+          moveThumb('max', startPosition + gestureState.dx);
+        },
+        onPanResponderRelease: commitDraftRange,
+        onPanResponderTerminate: commitDraftRange,
+      }),
+    [beginDrag, commitDraftRange, moveThumb, trackWidth]
+  );
+
+  const minPosition = budgetValueToPosition(draftMin, trackWidth);
+  const maxPosition = budgetValueToPosition(draftMax, trackWidth);
+  const selectedWidth = Math.max(maxPosition - minPosition, 0);
+
+  return (
+    <View className="mt-3">
+      <View className="flex-row items-center justify-between">
+        <View className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+          <Text className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Min
+          </Text>
+          <Text className="mt-1 text-sm font-semibold text-slate-900">{formatBudgetLabel(draftMin)}</Text>
+        </View>
+        <View className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+          <Text className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Max
+          </Text>
+          <Text className="mt-1 text-sm font-semibold text-slate-900">{formatBudgetLabel(draftMax)}</Text>
+        </View>
+      </View>
+
+      <Pressable className="mt-5 px-1 py-3" onPress={handleTrackPress}>
+        <View
+          className="h-2 rounded-full bg-slate-200"
+          onLayout={(event) => {
+            setTrackWidth(event.nativeEvent.layout.width);
+          }}>
+          <View
+            className="absolute h-2 rounded-full bg-blue-500"
+            style={{ left: minPosition, width: selectedWidth }}
+          />
+          <View
+            className="absolute -top-[8px] rounded-full border-4 border-blue-500 bg-white shadow-sm shadow-blue-200"
+            style={{
+              left: Math.max(minPosition - BUDGET_THUMB_SIZE / 2, 0),
+              width: BUDGET_THUMB_SIZE,
+              height: BUDGET_THUMB_SIZE,
+            }}
+            {...minThumbResponder.panHandlers}
+          />
+          <View
+            className="absolute -top-[8px] rounded-full border-4 border-blue-500 bg-white shadow-sm shadow-blue-200"
+            style={{
+              left: Math.min(
+                Math.max(maxPosition - BUDGET_THUMB_SIZE / 2, 0),
+                Math.max(trackWidth - BUDGET_THUMB_SIZE, 0)
+              ),
+              width: BUDGET_THUMB_SIZE,
+              height: BUDGET_THUMB_SIZE,
+            }}
+            {...maxThumbResponder.panHandlers}
+          />
+        </View>
+      </Pressable>
+
+      <View className="mt-3 flex-row items-center justify-between">
+        <Text className="text-xs font-medium text-slate-500">{formatBudgetLabel(BUDGET_MIN_VALUE)}</Text>
+        <Text className="text-xs font-medium text-slate-500">{formatBudgetLabel(BUDGET_MAX_VALUE)}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function ExploreScreen() {
   const router = useRouter();
@@ -443,6 +648,27 @@ export default function ExploreScreen() {
     setLocationDropdownOpen(false);
     setLocationSearchTerm('');
     setAppliedFilters({ ...filters });
+  };
+
+  const selectedBudgetRange = useMemo(() => {
+    const minBudget = filters.minBudget ? Number(filters.minBudget.replace(/[^\d]/g, '')) : BUDGET_MIN_VALUE;
+    const maxBudget = filters.maxBudget ? Number(filters.maxBudget.replace(/[^\d]/g, '')) : BUDGET_MAX_VALUE;
+
+    return {
+      min: clampBudgetValue(minBudget, BUDGET_MIN_VALUE, BUDGET_MAX_VALUE),
+      max: clampBudgetValue(Math.max(maxBudget, minBudget), BUDGET_MIN_VALUE, BUDGET_MAX_VALUE),
+    };
+  }, [filters.maxBudget, filters.minBudget]);
+
+  const setBudgetRange = (nextMin: number, nextMax: number) => {
+    const normalizedMin = clampBudgetValue(Math.min(nextMin, nextMax), BUDGET_MIN_VALUE, BUDGET_MAX_VALUE);
+    const normalizedMax = clampBudgetValue(Math.max(nextMax, normalizedMin), BUDGET_MIN_VALUE, BUDGET_MAX_VALUE);
+
+    setFilters((prev) => ({
+      ...prev,
+      minBudget: normalizedMin <= BUDGET_MIN_VALUE ? '' : formatCurrencyInput(`${normalizedMin}`),
+      maxBudget: normalizedMax >= BUDGET_MAX_VALUE ? '' : formatCurrencyInput(`${normalizedMax}`),
+    }));
   };
 
   const handleSelectDate = (date: Date) => {
@@ -893,33 +1119,23 @@ export default function ExploreScreen() {
 
             <View className="mt-5">
               <Text className="text-xs font-semibold uppercase text-slate-400">Budget per night (₦)</Text>
-              <View className="mt-3 flex-row gap-3">
-                <TextInput
-                  className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
-                  keyboardType="number-pad"
-                  placeholder="Min"
-                  placeholderTextColor="#94a3b8"
-                  value={filters.minBudget}
-                  onChangeText={(value) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      minBudget: formatCurrencyInput(value),
-                    }))
-                  }
-                />
-                <TextInput
-                  className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-base font-semibold text-slate-900"
-                  keyboardType="number-pad"
-                  placeholder="Max"
-                  placeholderTextColor="#94a3b8"
-                  value={filters.maxBudget}
-                  onChangeText={(value) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      maxBudget: formatCurrencyInput(value),
-                    }))
-                  }
-                />
+              <BudgetRangeSlider
+                minValue={selectedBudgetRange.min}
+                maxValue={selectedBudgetRange.max}
+                onChange={setBudgetRange}
+              />
+              <View className="mt-3 flex-row items-center justify-between">
+                <Text className="text-xs font-medium text-slate-500">
+                  {selectedBudgetRange.min === BUDGET_MIN_VALUE &&
+                  selectedBudgetRange.max === BUDGET_MAX_VALUE
+                    ? 'Any budget'
+                    : `Showing ₦${selectedBudgetRange.min.toLocaleString()} - ₦${selectedBudgetRange.max.toLocaleString()}`}
+                </Text>
+                {(filters.minBudget || filters.maxBudget) ? (
+                  <Pressable onPress={() => setBudgetRange(BUDGET_MIN_VALUE, BUDGET_MAX_VALUE)}>
+                    <Text className="text-sm font-semibold text-blue-600">Clear</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </View>
 
