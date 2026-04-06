@@ -4,6 +4,14 @@ import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
 import {
+  BookingOption,
+  findListingById,
+  ListingAttraction,
+  ListingDetail,
+  ListingReview,
+  LISTINGS,
+} from '@/data/listings';
+import {
   buildActiveListingOfferClaimsById,
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
@@ -13,15 +21,7 @@ import {
   ListingOfferClaimSnapshot,
   ListingOffersResponse,
   mapRemoteListingOffers,
-} from '@/data/listingOffers';
-import {
-  BookingOption,
-  findListingById,
-  ListingAttraction,
-  ListingDetail,
-  ListingReview,
-  LISTINGS,
-} from '@/data/listings';
+} from '@/data/remoteListingOffers';
 import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { LISTING_OFFERS } from '@/queries/listingOffers';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
@@ -807,9 +807,6 @@ function ListingDetailContent({
                                     </Text>
                                   </Pressable>
                                 </View>
-                                <Text className="mt-3 text-xs leading-5 text-slate-500">
-                                  {offer.terms}
-                                </Text>
                               </View>
                             </View>
                           </View>
