@@ -6,13 +6,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  FlatList,
+  LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -167,15 +169,24 @@ export default function ExploreScreen() {
   const [isDiscoverExpanded, setIsDiscoverExpanded] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [filterAnchor, setFilterAnchor] = useState({ y: 0, height: 0 });
+  const [topHeaderHeight, setTopHeaderHeight] = useState(0);
+  const [showCompactSections, setShowCompactSections] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
   const [activeBookingAlert, setActiveBookingAlert] = useState<BookingAlert | null>(null);
+  const scrollY = useState(() => new Animated.Value(0))[0];
   const alertOpacity = useRef(new Animated.Value(0)).current;
   const alertTranslateY = useRef(new Animated.Value(-18)).current;
   const alertProgress = useRef(new Animated.Value(1)).current;
   const alertIndexRef = useRef(0);
   const visibleListingsRef = useRef<ExploreListing[]>([]);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   const appliedExploreFilters = useMemo(
     () => buildExploreFilterInput(appliedFilters),
@@ -238,6 +249,26 @@ export default function ExploreScreen() {
   useEffect(() => {
     visibleListingsRef.current = previewListings;
   }, [previewListings]);
+
+  useEffect(() => {
+    const listener = scrollY.addListener(({ value }) => {
+      setShowCompactSections((current) => {
+        if (value > 96 && !current) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          return true;
+        }
+        if (value < 60 && current) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          return false;
+        }
+        return current;
+      });
+    });
+
+    return () => {
+      scrollY.removeListener(listener);
+    };
+  }, [scrollY]);
 
   useEffect(() => {
     if (!previewListings.length) return;
@@ -395,9 +426,28 @@ export default function ExploreScreen() {
     });
   };
 
+  const compactSectionTop = topHeaderHeight + 10;
+  const compactSectionsOpacity = scrollY.interpolate({
+    inputRange: [48, 140],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const compactSectionsTranslateY = scrollY.interpolate({
+    inputRange: [44, 132],
+    outputRange: [-16, 0],
+    extrapolate: 'clamp',
+  });
+  const compactSectionsScale = scrollY.interpolate({
+    inputRange: [44, 132],
+    outputRange: [0.95, 1],
+    extrapolate: 'clamp',
+  });
+
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
-      <View className="flex-row items-center px-6 pt-4">
+      <View
+        className="flex-row items-center px-6 pt-4"
+        onLayout={(event) => setTopHeaderHeight(event.nativeEvent.layout.height + 16)}>
         <View className="flex-1 pr-4">
           <Text className="text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
             Safarihills
@@ -410,6 +460,70 @@ export default function ExploreScreen() {
           <Text className="text-lg font-bold text-blue-900">{profileInitials}</Text>
         </Pressable>
       </View>
+
+      <Animated.View
+        pointerEvents={showCompactSections && isDiscoverExpanded ? 'box-none' : 'none'}
+        style={{
+          position: 'absolute',
+          top: compactSectionTop,
+          left: 0,
+          right: 0,
+          zIndex: 35,
+          opacity: isDiscoverExpanded ? compactSectionsOpacity : 0,
+          transform: [{ translateY: compactSectionsTranslateY }, { scale: compactSectionsScale }],
+        }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 2 }}>
+          <View className="flex-row gap-2.5">
+            {sections.map((section) => (
+              <Pressable
+                key={`compact-${section.slug}`}
+                className="w-[146px] rounded-[22px] border px-3.5 py-3 shadow-lg shadow-slate-200"
+                style={{
+                  backgroundColor: section.backgroundColor,
+                  borderColor: section.borderColor,
+                }}
+                onPress={() => openSection(section)}>
+                <View className="flex-row items-start justify-between gap-2">
+                  <View className="flex-1">
+                    <Text
+                      className="text-[9px] font-semibold uppercase tracking-[0.2em]"
+                      style={{ color: section.textColor, opacity: 0.72 }}
+                      numberOfLines={1}>
+                      {section.eyebrow}
+                    </Text>
+                    <Text
+                      className="mt-1.5 text-[13px] font-bold leading-4"
+                      style={{ color: section.textColor }}
+                      numberOfLines={2}>
+                      {section.title}
+                    </Text>
+                  </View>
+                  <View
+                    className="rounded-2xl border px-2.5 py-2"
+                    style={{
+                      borderColor: section.borderColor,
+                      backgroundColor: rgbaFromHex(section.textColor, '14'),
+                    }}>
+                    <Feather name={section.iconName} size={14} color={section.textColor} />
+                  </View>
+                </View>
+
+                <View className="mt-3 flex-row items-center justify-between">
+                  <Text
+                    className="text-[10px] font-semibold"
+                    style={{ color: section.textColor, opacity: 0.9 }}>
+                    {section.matchingCount} {section.matchingCount === 1 ? 'stay' : 'stays'}
+                  </Text>
+                  <Feather name="arrow-right" size={12} color={section.textColor} />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      </Animated.View>
 
       <View
         className="mt-5 px-6"
@@ -470,7 +584,7 @@ export default function ExploreScreen() {
           </Text>
         </View>
 
-        {isDiscoverExpanded ? (
+        {isDiscoverExpanded && !showCompactSections ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -767,7 +881,7 @@ export default function ExploreScreen() {
         </View>
       ) : null}
 
-      <FlatList
+      <Animated.FlatList
         data={previewListings}
         renderItem={({ item }) => (
           <ExploreListingCard
@@ -784,6 +898,10 @@ export default function ExploreScreen() {
           paddingBottom: bookingAlertBottomOffset + 88,
         }}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: true,
+        })}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
