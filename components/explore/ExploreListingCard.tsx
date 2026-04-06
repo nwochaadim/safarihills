@@ -27,7 +27,8 @@ type ExploreListingCardProps = {
 };
 
 export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
-  console.log('item', item);
+  const visiblePromoTags = item.promoTags.filter((tag) => tag.trim().length > 0).slice(0, 2);
+
   return (
     <Pressable
       className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200"
@@ -66,8 +67,8 @@ export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
           <Feather name="map-pin" size={14} color="#94a3b8" />
           <Text className="text-sm text-slate-500">{item.area}</Text>
         </View>
-        <View className="mt-3 flex-row flex-wrap gap-2">
-          {item.promoTags.map((tag, index) => {
+        <View className="mt-3 min-h-[34px] flex-row flex-wrap gap-2">
+          {visiblePromoTags.map((tag, index) => {
             const tone = PROMO_TAG_TONES[index % PROMO_TAG_TONES.length];
             return (
               <View

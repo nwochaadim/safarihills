@@ -76,6 +76,7 @@ export type RemoteExploreListing = {
   area?: string | null;
   maxNumberOfGuestsAllowed?: number | null;
   bookableOptions?: (string | null)[] | null;
+  promoTags?: (string | null)[] | null;
 };
 
 export type RemoteExploreLocation = {
@@ -103,15 +104,6 @@ export type RemoteExploreSection = {
 
 const FALLBACK_LISTING_IMAGE =
   'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80';
-const PROMO_TAGS = [
-  'Free Night',
-  'Late Night Discount',
-  '5% Off',
-  'Easter Promo',
-  'Weekend Escape',
-  'Long Stay Perk',
-  'Breakfast Bonus',
-];
 
 const SECTION_ICON_ALIASES: Record<string, FeatherIconName> = {
   award: 'award',
@@ -164,6 +156,21 @@ const sortByGuestFlex = (left: ExploreListing, right: ExploreListing) => {
 };
 
 const cleanString = (value: string | null | undefined) => value?.trim() ?? '';
+const normalizePromoTags = (value: (string | null)[] | null | undefined) => {
+  const seen = new Set<string>();
+
+  return (value ?? []).reduce<string[]>((tags, tag) => {
+    const cleaned = cleanString(tag);
+    if (!cleaned) return tags;
+
+    const normalized = cleaned.toLowerCase();
+    if (seen.has(normalized)) return tags;
+
+    seen.add(normalized);
+    tags.push(cleaned);
+    return tags;
+  }, []);
+};
 
 export const createInitialFilters = (): FilterState => ({
   minBudget: '',
@@ -261,37 +268,6 @@ const mapBookableOptions = (options: (string | null)[] | null | undefined): Book
   return mapped.length ? mapped : ['entire'];
 };
 
-const derivePromoTags = (listing: ExploreListing, index: number) => {
-  const seededTags = new Set<string>();
-
-  if (areaIncludes(listing.area, 'lekki')) {
-    seededTags.add('Free Night');
-    seededTags.add('Easter Promo');
-  }
-
-  if (areaIncludes(listing.area, 'ikeja')) {
-    seededTags.add('Late Night Discount');
-  }
-
-  if (areaIncludes(listing.area, 'victoria island')) {
-    seededTags.add('5% Off');
-    seededTags.add('Weekend Escape');
-  }
-
-  if (listing.minimumPrice <= 90000) {
-    seededTags.add('Best Value');
-  }
-
-  if (listing.rating >= 4.8) {
-    seededTags.add('Guest Favorite');
-  }
-
-  const preferred = Array.from(seededTags);
-  const rotated = PROMO_TAGS.map((_, tagIndex) => PROMO_TAGS[(index + tagIndex) % PROMO_TAGS.length]);
-
-  return Array.from(new Set([...preferred, ...rotated])).slice(0, 3);
-};
-
 export const getSectionIconName = (iconKey: string | null | undefined): FeatherIconName => {
   const raw = cleanString(iconKey);
   if (!raw) return 'compass';
@@ -309,6 +285,7 @@ export const mapExploreListing = (
   index: number,
   fallbackArea = ''
 ): ExploreListing => {
+  console.log('listing', listing);
   const bookingOptions = mapBookableOptions(listing.bookableOptions);
   const area = cleanString(listing.area) || cleanString(fallbackArea) || 'Lagos';
   const apartmentType =
@@ -331,13 +308,10 @@ export const mapExploreListing = (
         ? listing.maxNumberOfGuestsAllowed
         : 1,
     bookingOptions,
-    promoTags: [],
+    promoTags: normalizePromoTags(listing.promoTags),
   };
 
-  return {
-    ...mappedListing,
-    promoTags: derivePromoTags(mappedListing, index),
-  };
+  return mappedListing;
 };
 
 export const mapExploreSection = (section: RemoteExploreSection): ExploreSection => {

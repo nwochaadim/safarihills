@@ -31,6 +31,7 @@ export const EXPLORE_SECTIONS = gql`
         area
         maxNumberOfGuestsAllowed
         bookableOptions
+        promoTags
       }
     }
   }
@@ -67,6 +68,7 @@ export const EXPLORE_SECTION = gql`
         area
         maxNumberOfGuestsAllowed
         bookableOptions
+        promoTags
       }
     }
   }
