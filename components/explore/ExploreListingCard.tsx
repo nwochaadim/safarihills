@@ -1,7 +1,7 @@
-import { Feather } from '@expo/vector-icons';
-import { Pressable, Text, View } from 'react-native';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { ExploreListing } from '@/lib/explore';
+import { Feather } from '@expo/vector-icons';
+import { Pressable, Text, View } from 'react-native';
 
 const PROMO_TAG_TONES = [
   {
@@ -27,6 +27,7 @@ type ExploreListingCardProps = {
 };
 
 export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
+  console.log('item', item);
   return (
     <Pressable
       className="mb-6 overflow-hidden rounded-[32px] bg-white shadow-lg shadow-slate-200"

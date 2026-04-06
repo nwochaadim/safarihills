@@ -392,6 +392,7 @@ export default function ExploreScreen() {
   const [showCompactSections, setShowCompactSections] = useState(false);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
@@ -502,6 +503,29 @@ export default function ExploreScreen() {
 
     return count;
   }, [appliedFilters]);
+  const advancedFilterCount = useMemo(() => {
+    let count = 0;
+
+    if (filters.checkIn || filters.checkOut) count += 1;
+    if (filters.minBudget || filters.maxBudget) count += 1;
+    if (filters.type) count += 1;
+    if (filters.guests) count += 1;
+    if (filters.amenities.length) count += 1;
+
+    return count;
+  }, [filters]);
+  const advancedFilterSummary = useMemo(() => {
+    const parts: string[] = [];
+
+    if (filters.type) parts.push(filters.type);
+    if (filters.guests) parts.push(`${filters.guests} guests`);
+    if (filters.amenities.length) parts.push(`${filters.amenities.length} amenities`);
+    if (filters.checkIn || filters.checkOut) parts.push('dates set');
+    if (filters.minBudget || filters.maxBudget) parts.push('budget set');
+
+    if (!parts.length) return 'Dates, budget, apartment type, guests, and amenities';
+    return parts.slice(0, 3).join(' • ');
+  }, [filters]);
 
   useEffect(() => {
     visibleListingsRef.current = previewListings;
@@ -640,6 +664,7 @@ export default function ExploreScreen() {
     setAppliedFilters(nextFilters);
     setLocationDropdownOpen(false);
     setLocationSearchTerm('');
+    setAdvancedFiltersOpen(false);
     setFilterSheetOpen(false);
   };
 
@@ -834,14 +859,15 @@ export default function ExploreScreen() {
                     : 'border-slate-200 bg-white'
                 }`}
                 onPress={() =>
-                  setFilterSheetOpen((prev) => {
-                    const nextState = !prev;
-                    if (!nextState) {
-                      setLocationDropdownOpen(false);
-                      setLocationSearchTerm('');
-                    }
-                    return nextState;
-                  })
+                    setFilterSheetOpen((prev) => {
+                      const nextState = !prev;
+                      if (!nextState) {
+                        setLocationDropdownOpen(false);
+                        setLocationSearchTerm('');
+                        setAdvancedFiltersOpen(false);
+                      }
+                      return nextState;
+                    })
                 }>
                 <Feather name="sliders" size={16} color={filterSheetOpen ? '#1d4ed8' : '#475569'} />
                 <Text
@@ -1089,138 +1115,176 @@ export default function ExploreScreen() {
               ) : null}
             </View>
 
-            <View className="mt-5">
-              <Text className="text-xs font-semibold uppercase text-slate-400">Dates</Text>
-              <View className="mt-3 flex-row gap-3">
-                <Pressable
-                  className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
-                  onPress={() => setCalendarVisible(true)}>
-                  <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
-                  <Text className="mt-1 text-base font-semibold text-slate-900">
-                    {filters.checkIn ? formatDateDisplay(filters.checkIn) : 'Add date'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3"
-                  onPress={() => setCalendarVisible(true)}>
-                  <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
-                  <Text className="mt-1 text-base font-semibold text-slate-900">
-                    {filters.checkOut ? formatDateDisplay(filters.checkOut) : 'Add date'}
-                  </Text>
-                </Pressable>
-              </View>
-              <View className="mt-2 flex-row items-center justify-between">
-                <Pressable onPress={clearDates}>
-                  <Text className="text-sm font-semibold text-blue-600">Clear dates</Text>
-                </Pressable>
-                <Text className="text-xs font-medium text-slate-500">Past dates disabled</Text>
-              </View>
-            </View>
+            <View className="mt-5 rounded-[28px] border border-slate-200 bg-slate-50/70">
+              <Pressable
+                className="flex-row items-center justify-between px-4 py-4"
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setAdvancedFiltersOpen((prev) => !prev);
+                }}>
+                <View className="flex-1 pr-4">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-sm font-semibold text-slate-900">Advanced filters</Text>
+                    {advancedFilterCount > 0 ? (
+                      <View className="rounded-full bg-blue-100 px-2.5 py-1">
+                        <Text className="text-[11px] font-semibold text-blue-700">
+                          {advancedFilterCount} active
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text className="mt-1 text-sm text-slate-500">{advancedFilterSummary}</Text>
+                </View>
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-white">
+                  <Feather
+                    name={advancedFiltersOpen ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color="#334155"
+                  />
+                </View>
+              </Pressable>
 
-            <View className="mt-5">
-              <Text className="text-xs font-semibold uppercase text-slate-400">Budget per night (₦)</Text>
-              <BudgetRangeSlider
-                minValue={selectedBudgetRange.min}
-                maxValue={selectedBudgetRange.max}
-                onChange={setBudgetRange}
-              />
-              <View className="mt-3 flex-row items-center justify-between">
-                <Text className="text-xs font-medium text-slate-500">
-                  {selectedBudgetRange.min === BUDGET_MIN_VALUE &&
-                  selectedBudgetRange.max === BUDGET_MAX_VALUE
-                    ? 'Any budget'
-                    : `Showing ₦${selectedBudgetRange.min.toLocaleString()} - ₦${selectedBudgetRange.max.toLocaleString()}`}
-                </Text>
-                {(filters.minBudget || filters.maxBudget) ? (
-                  <Pressable onPress={() => setBudgetRange(BUDGET_MIN_VALUE, BUDGET_MAX_VALUE)}>
-                    <Text className="text-sm font-semibold text-blue-600">Clear</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-
-            <View className="mt-5">
-              <Text className="text-xs font-semibold uppercase text-slate-400">Apartment type</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
-                <View className="flex-row gap-3">
-                  {TYPES.map((type) => {
-                    const isActive = filters.type === type;
-                    return (
+              {advancedFiltersOpen ? (
+                <View className="border-t border-slate-200 px-4 pb-4 pt-2">
+                  <View className="mt-4">
+                    <Text className="text-xs font-semibold uppercase text-slate-400">Dates</Text>
+                    <View className="mt-3 flex-row gap-3">
                       <Pressable
-                        key={type}
-                        className={`rounded-full px-4 py-2 ${
-                          isActive ? 'bg-blue-600' : 'border border-slate-200 bg-white'
-                        }`}
-                        onPress={() =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            type: isActive ? '' : type,
-                          }))
-                        }>
-                        <Text
-                          className={`text-sm font-semibold ${
-                            isActive ? 'text-white' : 'text-slate-600'
-                          }`}>
-                          {type}
+                        className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                        onPress={() => setCalendarVisible(true)}>
+                        <Text className="text-xs font-semibold uppercase text-slate-500">Check-in</Text>
+                        <Text className="mt-1 text-base font-semibold text-slate-900">
+                          {filters.checkIn ? formatDateDisplay(filters.checkIn) : 'Add date'}
                         </Text>
                       </Pressable>
-                    );
-                  })}
+                      <Pressable
+                        className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                        onPress={() => setCalendarVisible(true)}>
+                        <Text className="text-xs font-semibold uppercase text-slate-500">Check-out</Text>
+                        <Text className="mt-1 text-base font-semibold text-slate-900">
+                          {filters.checkOut ? formatDateDisplay(filters.checkOut) : 'Add date'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <View className="mt-2 flex-row items-center justify-between">
+                      <Pressable onPress={clearDates}>
+                        <Text className="text-sm font-semibold text-blue-600">Clear dates</Text>
+                      </Pressable>
+                      <Text className="text-xs font-medium text-slate-500">Past dates disabled</Text>
+                    </View>
+                  </View>
+
+                  <View className="mt-5">
+                    <Text className="text-xs font-semibold uppercase text-slate-400">
+                      Budget per night (₦)
+                    </Text>
+                    <BudgetRangeSlider
+                      minValue={selectedBudgetRange.min}
+                      maxValue={selectedBudgetRange.max}
+                      onChange={setBudgetRange}
+                    />
+                    <View className="mt-3 flex-row items-center justify-between">
+                      <Text className="text-xs font-medium text-slate-500">
+                        {selectedBudgetRange.min === BUDGET_MIN_VALUE &&
+                        selectedBudgetRange.max === BUDGET_MAX_VALUE
+                          ? 'Any budget'
+                          : `Showing ₦${selectedBudgetRange.min.toLocaleString()} - ₦${selectedBudgetRange.max.toLocaleString()}`}
+                      </Text>
+                      {(filters.minBudget || filters.maxBudget) ? (
+                        <Pressable onPress={() => setBudgetRange(BUDGET_MIN_VALUE, BUDGET_MAX_VALUE)}>
+                          <Text className="text-sm font-semibold text-blue-600">Clear</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View className="mt-5">
+                    <Text className="text-xs font-semibold uppercase text-slate-400">Apartment type</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
+                      <View className="flex-row gap-3">
+                        {TYPES.map((type) => {
+                          const isActive = filters.type === type;
+                          return (
+                            <Pressable
+                              key={type}
+                              className={`rounded-full px-4 py-2 ${
+                                isActive ? 'bg-blue-600' : 'border border-slate-200 bg-white'
+                              }`}
+                              onPress={() =>
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  type: isActive ? '' : type,
+                                }))
+                              }>
+                              <Text
+                                className={`text-sm font-semibold ${
+                                  isActive ? 'text-white' : 'text-slate-600'
+                                }`}>
+                                {type}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+
+                  <View className="mt-5">
+                    <Text className="text-xs font-semibold uppercase text-slate-400">Guests</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
+                      <View className="flex-row gap-3">
+                        {GUEST_OPTIONS.map((option) => {
+                          const isActive = filters.guests === option;
+                          return (
+                            <Pressable
+                              key={option}
+                              className={`rounded-full px-4 py-2 ${
+                                isActive ? 'bg-blue-600' : 'border border-slate-200 bg-white'
+                              }`}
+                              onPress={() =>
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  guests: isActive ? '' : option,
+                                }))
+                              }>
+                              <Text
+                                className={`text-sm font-semibold ${
+                                  isActive ? 'text-white' : 'text-slate-600'
+                                }`}>
+                                {option} guests
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+
+                  <View className="mt-5">
+                    <Text className="text-xs font-semibold uppercase text-slate-400">Amenities</Text>
+                    <View className="mt-3 flex-row flex-wrap gap-3">
+                      {AMENITIES.map((amenity) => {
+                        const isActive = filters.amenities.includes(amenity);
+                        return (
+                          <Pressable
+                            key={amenity}
+                            className={`rounded-full border px-4 py-2 ${
+                              isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
+                            }`}
+                            onPress={() => toggleAmenity(amenity)}>
+                            <Text
+                              className={`text-sm font-semibold ${
+                                isActive ? 'text-blue-700' : 'text-slate-600'
+                              }`}>
+                              {amenity}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
                 </View>
-              </ScrollView>
-            </View>
-
-            <View className="mt-5">
-              <Text className="text-xs font-semibold uppercase text-slate-400">Guests</Text>
-              <View className="mt-3 flex-row flex-wrap gap-3">
-                {GUEST_OPTIONS.map((option) => {
-                  const isActive = filters.guests === option;
-                  return (
-                    <Pressable
-                      key={option}
-                      className={`rounded-full border px-4 py-2 ${
-                        isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
-                      }`}
-                      onPress={() =>
-                        setFilters((prev) => ({
-                          ...prev,
-                          guests: isActive ? '' : option,
-                        }))
-                      }>
-                      <Text
-                        className={`text-sm font-semibold ${
-                          isActive ? 'text-blue-700' : 'text-slate-600'
-                        }`}>
-                        {option} guests
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View className="mt-5">
-              <Text className="text-xs font-semibold uppercase text-slate-400">Amenities</Text>
-              <View className="mt-3 flex-row flex-wrap gap-3">
-                {AMENITIES.map((amenity) => {
-                  const isActive = filters.amenities.includes(amenity);
-                  return (
-                    <Pressable
-                      key={amenity}
-                      className={`rounded-full border px-4 py-2 ${
-                        isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
-                      }`}
-                      onPress={() => toggleAmenity(amenity)}>
-                      <Text
-                        className={`text-sm font-semibold ${
-                          isActive ? 'text-blue-700' : 'text-slate-600'
-                        }`}>
-                        {amenity}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              ) : null}
             </View>
 
             <Pressable

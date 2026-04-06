@@ -23,6 +23,7 @@ export const EXPLORE_SECTIONS = gql`
       listings {
         id
         name
+        apartmentType
         description
         coverPhoto
         minimumPrice
@@ -58,6 +59,7 @@ export const EXPLORE_SECTION = gql`
       listings {
         id
         name
+        apartmentType
         description
         coverPhoto
         minimumPrice

@@ -68,6 +68,7 @@ export type ExploreSection = {
 export type RemoteExploreListing = {
   id?: string | null;
   name?: string | null;
+  apartmentType?: string | null;
   description?: string | null;
   coverPhoto?: string | null;
   minimumPrice?: number | null;
@@ -310,9 +311,11 @@ export const mapExploreListing = (
 ): ExploreListing => {
   const bookingOptions = mapBookableOptions(listing.bookableOptions);
   const area = cleanString(listing.area) || cleanString(fallbackArea) || 'Lagos';
-  const apartmentType = bookingOptions.includes('room') && !bookingOptions.includes('entire')
-    ? 'Single room'
-    : 'Apartment';
+  const apartmentType =
+    cleanString(listing.apartmentType) ||
+    (bookingOptions.includes('room') && !bookingOptions.includes('entire')
+      ? 'Single room'
+      : 'Apartment');
 
   const mappedListing: ExploreListing = {
     id: cleanString(listing.id) || `explore-listing-${index + 1}`,
