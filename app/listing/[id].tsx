@@ -499,16 +499,23 @@ function ListingDetailContent({
     </View>
   );
 
-  const headerHeight = scrollY.interpolate({
-    inputRange: [-100, 0, IMAGE_HEIGHT],
-    outputRange: [IMAGE_HEIGHT + 120, IMAGE_HEIGHT, IMAGE_HEIGHT * 0.65],
-    extrapolate: 'clamp',
-  });
   const headerTranslate = scrollY.interpolate({
-    inputRange: [0, IMAGE_HEIGHT],
-    outputRange: [0, -IMAGE_HEIGHT * 0.25],
+    inputRange: [-120, 0, IMAGE_HEIGHT],
+    outputRange: [-36, 0, -IMAGE_HEIGHT * 0.6],
     extrapolate: 'clamp',
   });
+  const headerScale = scrollY.interpolate({
+    inputRange: [-120, 0, IMAGE_HEIGHT],
+    outputRange: [1.18, 1, 1],
+    extrapolate: 'clamp',
+  });
+  const handleMainScroll = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+        useNativeDriver: true,
+      }),
+    [scrollY]
+  );
 
   const attractions = useMemo(() => listing.attractions ?? [], [listing]);
 
@@ -560,8 +567,9 @@ function ListingDetailContent({
           top: 0,
           left: 0,
           right: 0,
-          height: headerHeight,
-          transform: [{ translateY: headerTranslate }],
+          height: IMAGE_HEIGHT,
+          overflow: 'hidden',
+          transform: [{ translateY: headerTranslate }, { scale: headerScale }],
           zIndex: 10,
         }}>
         <FlatList
@@ -616,9 +624,7 @@ function ListingDetailContent({
           paddingBottom: 160,
           paddingTop: IMAGE_HEIGHT + 48,
         }}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-        })}
+        onScroll={handleMainScroll}
         scrollEventThrottle={16}>
         <View className="px-6">
           <View className="flex-row items-start justify-between gap-4">
