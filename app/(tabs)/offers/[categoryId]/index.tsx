@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 
 import { BackButton } from '@/components/BackButton';
+import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { OFFER_CATEGORIES } from '@/data/offers';
 import { FIND_OFFERS_FOR_CAMPAIGN_CATEGORY } from '@/queries/findOffersForCampaignCategory';
@@ -72,11 +73,6 @@ const FALLBACK_REWARDS = ['Exclusive rewards', 'Member pricing', 'Bonus perks'];
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80';
 
-const stripHtml = (value?: string | null) => {
-  if (!value) return '';
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-};
-
 export default function OfferCategoryScreen() {
   const router = useRouter();
   const { categoryId: categoryParam } = useLocalSearchParams<{ categoryId?: string | string[] }>();
@@ -124,7 +120,7 @@ export default function OfferCategoryScreen() {
         const rewards = (offer?.offerCampaignRewards ?? [])
           .map((reward) => reward?.name?.trim() || reward?.description?.trim())
           .filter((reward): reward is string => Boolean(reward));
-        const description = stripHtml(offer?.description) || FALLBACK_OFFER_DESCRIPTION;
+        const description = offer?.description?.trim() || FALLBACK_OFFER_DESCRIPTION;
         const coverPhoto = offer?.coverPhoto?.trim();
         const galleryImage = offer?.imagesUrl?.find((image) => image?.trim())?.trim();
         return {
@@ -207,7 +203,11 @@ export default function OfferCategoryScreen() {
               </LoadingImageBackground>
               <View className="p-5">
                 <Text className="text-lg font-semibold text-slate-900">{offer.title}</Text>
-                <Text className="mt-2 text-sm text-slate-500">{offer.description}</Text>
+                <HtmlViewer
+                  html={offer.description}
+                  className="mt-2"
+                  textClassName="text-sm text-slate-500"
+                />
                 <View className="mt-4 flex-row items-center justify-between">
                   <Text className="text-sm font-semibold text-blue-700">See listings</Text>
                   <Feather name="arrow-right" size={18} color="#1d4ed8" />

@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import {
   buildActiveListingOfferClaimsById,
@@ -435,7 +436,11 @@ export default function LocalOfferBookingScreen() {
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Offer terms
             </Text>
-            <Text className="mt-3 text-sm leading-6 text-slate-600">{selectedOffer.terms}</Text>
+            <HtmlViewer
+              html={selectedOffer.terms}
+              className="mt-3"
+              textClassName="text-sm leading-6 text-slate-600"
+            />
             {claimError ? (
               <View className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3">
                 <Text className="text-sm font-semibold text-rose-600">{claimError}</Text>
