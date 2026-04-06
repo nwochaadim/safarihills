@@ -7,6 +7,7 @@ export type BookingOption = 'room' | 'entire';
 export type FilterState = {
   minBudget: string;
   maxBudget: string;
+  location: string;
   type: string;
   guests: string;
   amenities: string[];
@@ -17,6 +18,7 @@ export type FilterState = {
 export type ExploreFilterInput = {
   minBudget?: number;
   maxBudget?: number;
+  location?: string;
   checkIn?: string;
   checkOut?: string;
   numberOfGuests?: number;
@@ -165,6 +167,7 @@ const cleanString = (value: string | null | undefined) => value?.trim() ?? '';
 export const createInitialFilters = (): FilterState => ({
   minBudget: '',
   maxBudget: '',
+  location: '',
   type: '',
   guests: '',
   amenities: [],
@@ -207,6 +210,7 @@ export const buildExploreFilterInput = (
 
   if (minBudget !== null) input.minBudget = minBudget;
   if (maxBudget !== null) input.maxBudget = maxBudget;
+  if (filters.location.trim()) input.location = filters.location.trim();
   if (filters.checkIn) input.checkIn = formatQueryDate(filters.checkIn);
   if (filters.checkOut) input.checkOut = formatQueryDate(filters.checkOut);
   if (numberOfGuests !== null) input.numberOfGuests = numberOfGuests;
@@ -232,6 +236,7 @@ export const deserializeExploreFilterInput = (
 
     if (typeof parsed.minBudget === 'number') next.minBudget = parsed.minBudget;
     if (typeof parsed.maxBudget === 'number') next.maxBudget = parsed.maxBudget;
+    if (typeof parsed.location === 'string') next.location = parsed.location;
     if (typeof parsed.checkIn === 'string') next.checkIn = parsed.checkIn;
     if (typeof parsed.checkOut === 'string') next.checkOut = parsed.checkOut;
     if (typeof parsed.numberOfGuests === 'number') next.numberOfGuests = parsed.numberOfGuests;

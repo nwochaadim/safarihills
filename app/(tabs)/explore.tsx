@@ -15,6 +15,7 @@ import {
   Text,
   TextInput,
   UIManager,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +36,7 @@ import {
   serializeExploreFilterInput,
   sortExploreSections,
 } from '@/lib/explore';
+import { AVAILABLE_LOCATIONS_QUERY } from '@/queries/availableLocations';
 import { PROFILE_QUERY } from '@/queries/profile';
 import { EXPLORE_SECTIONS } from '@/queries/exploreSections';
 
@@ -53,6 +55,8 @@ const AMENITIES = [
 ];
 
 const GUEST_OPTIONS = ['1', '2', '3', '4', '5', '6+'];
+const MAX_VISIBLE_LOCATION_OPTIONS = 5;
+const LOCATION_OPTION_ROW_HEIGHT = 52;
 const BOOKING_ALERT_DURATION_MS = 6000;
 const BOOKING_ALERT_INTERVAL_MS = 2 * 60 * 1000;
 const BOOKING_ALERT_INITIAL_DELAY_MS = 3000;
@@ -89,6 +93,15 @@ type ExploreProfileResponse = {
     name?: string | null;
     initials?: string | null;
   } | null;
+};
+
+type AvailableLocation = {
+  id?: string | null;
+  name?: string | null;
+};
+
+type AvailableLocationsResponse = {
+  locations?: AvailableLocation[] | null;
 };
 
 const startOfDay = (date: Date) => {
@@ -164,6 +177,7 @@ export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const { height: windowHeight } = useWindowDimensions();
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
   const [isDiscoverExpanded, setIsDiscoverExpanded] = useState(false);
@@ -171,6 +185,8 @@ export default function ExploreScreen() {
   const [filterAnchor, setFilterAnchor] = useState({ y: 0, height: 0 });
   const [topHeaderHeight, setTopHeaderHeight] = useState(0);
   const [showCompactSections, setShowCompactSections] = useState(false);
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
@@ -206,6 +222,12 @@ export default function ExploreScreen() {
   const { data: profileData, refetch: refetchProfile } = useQuery<ExploreProfileResponse>(PROFILE_QUERY, {
     fetchPolicy: 'cache-and-network',
   });
+  const {
+    data: availableLocationsData,
+    loading: availableLocationsLoading,
+    error: availableLocationsError,
+    refetch: refetchAvailableLocations,
+  } = useQuery<AvailableLocationsResponse>(AVAILABLE_LOCATIONS_QUERY);
 
   const calendarDays = useMemo(
     () => buildCalendarDays(calendarMonth, filters.checkIn, filters.checkOut),
@@ -219,6 +241,35 @@ export default function ExploreScreen() {
   const previewListings = useMemo(() => flattenPreviewListings(sections), [sections]);
   const sectionCount = sections.length;
   const isNetworkError = Boolean(error?.networkError);
+  const availableLocationNames = useMemo(() => {
+    const names = new Set<string>();
+
+    (availableLocationsData?.locations ?? []).forEach((location) => {
+      const normalized = location.name?.trim();
+      if (normalized) names.add(normalized);
+    });
+
+    return Array.from(names);
+  }, [availableLocationsData?.locations]);
+  const filteredLocations = useMemo(() => {
+    const normalizedSearch = locationSearchTerm.trim().toLowerCase();
+    if (!normalizedSearch) return availableLocationNames;
+
+    return availableLocationNames.filter((location) =>
+      location.toLowerCase().includes(normalizedSearch)
+    );
+  }, [availableLocationNames, locationSearchTerm]);
+  const defaultFilterPanelMaxHeight = Math.floor(windowHeight * 0.62);
+  const filterPanelMaxHeight = useMemo(() => {
+    const panelTop = filterAnchor.y + filterAnchor.height + 16;
+    const bottomReserved = tabBarHeight + (Platform.OS === 'android' ? insets.bottom : 0) + 20;
+    const availableHeight = Math.floor(windowHeight - panelTop - bottomReserved);
+
+    if (availableHeight <= 0) return defaultFilterPanelMaxHeight;
+    return Math.min(defaultFilterPanelMaxHeight, availableHeight);
+  }, [defaultFilterPanelMaxHeight, filterAnchor.height, filterAnchor.y, insets.bottom, tabBarHeight, windowHeight]);
+  const filterPanelBottomPadding =
+    Platform.OS === 'android' ? tabBarHeight + insets.bottom + 20 : 24;
 
   const profileName = profileData?.user?.name?.trim() ?? '';
   const derivedInitials = profileName
@@ -238,6 +289,7 @@ export default function ExploreScreen() {
     let count = 0;
 
     if (appliedFilters.minBudget || appliedFilters.maxBudget) count += 1;
+    if (appliedFilters.location) count += 1;
     if (appliedFilters.type) count += 1;
     if (appliedFilters.guests) count += 1;
     if (appliedFilters.amenities.length) count += 1;
@@ -381,11 +433,15 @@ export default function ExploreScreen() {
     const nextFilters = createInitialFilters();
     setFilters(nextFilters);
     setAppliedFilters(nextFilters);
+    setLocationDropdownOpen(false);
+    setLocationSearchTerm('');
     setFilterSheetOpen(false);
   };
 
   const applyFilters = () => {
     setFilterSheetOpen(false);
+    setLocationDropdownOpen(false);
+    setLocationSearchTerm('');
     setAppliedFilters({ ...filters });
   };
 
@@ -551,7 +607,16 @@ export default function ExploreScreen() {
                     ? 'border-blue-200 bg-blue-50'
                     : 'border-slate-200 bg-white'
                 }`}
-                onPress={() => setFilterSheetOpen((prev) => !prev)}>
+                onPress={() =>
+                  setFilterSheetOpen((prev) => {
+                    const nextState = !prev;
+                    if (!nextState) {
+                      setLocationDropdownOpen(false);
+                      setLocationSearchTerm('');
+                    }
+                    return nextState;
+                  })
+                }>
                 <Feather name="sliders" size={16} color={filterSheetOpen ? '#1d4ed8' : '#475569'} />
                 <Text
                   className={`text-sm font-semibold ${
@@ -648,11 +713,13 @@ export default function ExploreScreen() {
 
       {filterSheetOpen && (
         <View
-          className="absolute left-6 right-6 z-20 max-h-[70%] rounded-3xl border border-slate-200 bg-white"
-          style={{ top: filterAnchor.y + filterAnchor.height + 16 }}>
+          className="absolute left-6 right-6 z-20 rounded-3xl border border-slate-200 bg-white"
+          style={{ top: filterAnchor.y + filterAnchor.height + 16, maxHeight: filterPanelMaxHeight }}>
           <ScrollView
             className="px-5 py-5"
-            contentContainerStyle={{ paddingBottom: 16 }}
+            contentContainerStyle={{ paddingBottom: filterPanelBottomPadding }}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             style={{ flexGrow: 0 }}>
             <View className="flex-row items-center justify-between">
@@ -663,6 +730,140 @@ export default function ExploreScreen() {
             </View>
 
             <View className="mt-4">
+              <Text className="text-xs font-semibold uppercase text-slate-400">Location</Text>
+              <Pressable
+                className={`mt-3 rounded-2xl border px-4 py-3 ${
+                  locationDropdownOpen
+                    ? 'border-blue-200 bg-blue-50/50'
+                    : 'border-slate-200 bg-slate-50/60'
+                }`}
+                onPress={() =>
+                  setLocationDropdownOpen((prev) => {
+                    const nextState = !prev;
+                    if (nextState) setLocationSearchTerm('');
+                    return nextState;
+                  })
+                }>
+                <View className="flex-row items-center gap-3">
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-white">
+                    <Feather name="map-pin" size={16} color="#1d4ed8" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-xs font-semibold uppercase text-slate-500">Area</Text>
+                    <Text className="mt-0.5 text-base font-semibold text-slate-900">
+                      {filters.location || 'Choose a location'}
+                    </Text>
+                  </View>
+                  <Feather
+                    name={locationDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color="#475569"
+                  />
+                </View>
+              </Pressable>
+              <View className="mt-2 flex-row items-center justify-between">
+                <Text className="text-xs font-medium text-slate-500">
+                  Search and pick from preferred neighborhoods
+                </Text>
+                {filters.location ? (
+                  <Pressable onPress={() => setFilters((prev) => ({ ...prev, location: '' }))}>
+                    <Text className="text-sm font-semibold text-blue-600">Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {locationDropdownOpen ? (
+                <View className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <View className="flex-row items-center rounded-xl border border-slate-200 bg-slate-50 px-3">
+                    <Feather name="search" size={16} color="#64748b" />
+                    <TextInput
+                      className="ml-2 flex-1 py-2.5 text-sm font-medium text-slate-800"
+                      placeholder="Search locations"
+                      placeholderTextColor="#94a3b8"
+                      value={locationSearchTerm}
+                      onChangeText={setLocationSearchTerm}
+                      editable={!availableLocationsLoading}
+                    />
+                  </View>
+
+                  <View className="mt-3 overflow-hidden rounded-xl border border-slate-100">
+                    {availableLocationsLoading ? (
+                      <View className="flex-row items-center gap-2 px-3 py-4">
+                        <ActivityIndicator color="#1d4ed8" size="small" />
+                        <Text className="text-sm font-medium text-slate-500">
+                          Loading locations...
+                        </Text>
+                      </View>
+                    ) : availableLocationsError ? (
+                      <View className="px-3 py-4">
+                        <Text className="text-sm font-medium text-red-600">
+                          Unable to load locations.
+                        </Text>
+                        <Pressable
+                          className="mt-2 self-start rounded-full border border-red-200 bg-white px-3 py-2"
+                          onPress={() => {
+                            void refetchAvailableLocations();
+                          }}>
+                          <Text className="text-xs font-semibold text-red-700">Retry</Text>
+                        </Pressable>
+                      </View>
+                    ) : filteredLocations.length ? (
+                      <ScrollView
+                        nestedScrollEnabled
+                        showsVerticalScrollIndicator={
+                          filteredLocations.length > MAX_VISIBLE_LOCATION_OPTIONS
+                        }
+                        style={{
+                          maxHeight: LOCATION_OPTION_ROW_HEIGHT * MAX_VISIBLE_LOCATION_OPTIONS,
+                        }}>
+                        {filteredLocations.map((location, index) => {
+                          const isActive = filters.location === location;
+
+                          return (
+                            <Pressable
+                              key={location}
+                              className={`flex-row items-center justify-between px-3 py-3 ${
+                                isActive ? 'bg-blue-50' : 'bg-white'
+                              } ${index < filteredLocations.length - 1 ? 'border-b border-slate-100' : ''}`}
+                              style={{ minHeight: LOCATION_OPTION_ROW_HEIGHT }}
+                              onPress={() => {
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  location,
+                                }));
+                                setLocationDropdownOpen(false);
+                                setLocationSearchTerm('');
+                              }}>
+                              <Text
+                                className={`text-sm font-semibold ${
+                                  isActive ? 'text-blue-700' : 'text-slate-700'
+                                }`}>
+                                {location}
+                              </Text>
+                              {isActive ? (
+                                <Feather name="check-circle" size={16} color="#1d4ed8" />
+                              ) : (
+                                <Feather name="circle" size={16} color="#cbd5e1" />
+                              )}
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    ) : (
+                      <View className="px-3 py-4">
+                        <Text className="text-sm font-medium text-slate-500">
+                          {availableLocationNames.length
+                            ? 'No matching location found.'
+                            : 'No locations available right now.'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            <View className="mt-5">
               <Text className="text-xs font-semibold uppercase text-slate-400">Dates</Text>
               <View className="mt-3 flex-row gap-3">
                 <Pressable
@@ -947,7 +1148,9 @@ export default function ExploreScreen() {
             ) : (
               <View className="items-center justify-center px-6">
                 <Text className="text-center text-base font-semibold text-slate-900">
-                  No apartments found with the selected filters.
+                  {appliedFilters.location
+                    ? `No explore results found in ${appliedFilters.location}.`
+                    : 'No apartments found with the selected filters.'}
                 </Text>
                 <Text className="mt-2 text-center text-sm text-slate-500">
                   Adjust your filters and try again.
