@@ -80,7 +80,6 @@ export function ActivityFeedManager() {
     const interval = setInterval(() => {
       if (appStateRef.current !== 'active') return;
       void advanceActivityFeedDisplay();
-      console.log('Should be displaying activity feed!');
     }, ACTIVITY_FEED_DISPLAY_INTERVAL_MS);
 
     return () => clearInterval(interval);

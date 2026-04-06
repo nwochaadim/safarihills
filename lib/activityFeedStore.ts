@@ -7,7 +7,7 @@ import { ACTIVITY_FEED_ENTRIES } from '@/queries/activityFeedEntries';
 
 const ACTIVITY_FEED_STORE_KEY = 'activityFeedStore';
 const ACTIVITY_FEED_FETCH_INTERVAL_MS = 60 * 60 * 1000;
-export const ACTIVITY_FEED_DISPLAY_INTERVAL_MS = 1 * 60 * 1000;
+export const ACTIVITY_FEED_DISPLAY_INTERVAL_MS = 2 * 60 * 1000;
 const MAX_SHOWN_HISTORY = 200;
 
 type ActivityFeedListing = {
