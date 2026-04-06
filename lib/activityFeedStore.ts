@@ -401,6 +401,18 @@ export const advanceActivityFeedDisplay = async (now = Date.now()) => {
   }));
 };
 
+export const dismissCurrentActivityFeed = async (now = Date.now()) => {
+  await initializeActivityFeedStore();
+
+  if (!state.currentEntryId) return state;
+
+  return setState((current) => ({
+    ...current,
+    currentEntryId: null,
+    lastDisplayedAt: new Date(now).toISOString(),
+  }));
+};
+
 export const hydrateAndRefreshActivityFeed = async ({
   now = Date.now(),
   forceRefresh = false,

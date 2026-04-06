@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 
 import { LoadingImage } from '@/components/LoadingImage';
-import { useActivityFeedStore } from '@/lib/activityFeedStore';
+import { dismissCurrentActivityFeed, useActivityFeedStore } from '@/lib/activityFeedStore';
 
 const DISPLAY_DURATION_MS = 10000;
 
@@ -33,18 +34,15 @@ const formatRelativeTime = (value: string) => {
 
 export function ActivityFeedOverlay({ hidden = false }: { hidden?: boolean }) {
   const insets = useSafeAreaInsets();
-  const { currentEntryId, entries, shownEntryIds } = useActivityFeedStore();
+  const { currentEntryId, entries } = useActivityFeedStore();
   const progress = useRef(new Animated.Value(1)).current;
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [progressTrackWidth, setProgressTrackWidth] = useState(0);
 
   const currentEntry = useMemo(() => {
-    const activeEntry = entries.find((entry) => entry.id === currentEntryId);
-    if (activeEntry) return activeEntry;
-
-    return entries.find((entry) => !shownEntryIds.includes(entry.id)) ?? null;
-  }, [currentEntryId, entries, shownEntryIds]);
+    return entries.find((entry) => entry.id === currentEntryId) ?? null;
+  }, [currentEntryId, entries]);
 
   useEffect(() => {
     if (hideTimeoutRef.current) {
@@ -109,9 +107,21 @@ export function ActivityFeedOverlay({ hidden = false }: { hidden?: boolean }) {
     .charAt(0)
     .toUpperCase();
 
+  const handleClose = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+
+    progress.stopAnimation();
+    progress.setValue(1);
+    setIsVisible(false);
+    void dismissCurrentActivityFeed();
+  };
+
   return (
     <View
-      pointerEvents="none"
+      pointerEvents="box-none"
       style={{
         position: 'absolute',
         bottom: bottomOffset,
@@ -134,9 +144,17 @@ export function ActivityFeedOverlay({ hidden = false }: { hidden?: boolean }) {
           )}
 
           <View className="flex-1">
-            <Text className="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-600">
-              Activity Feed
-            </Text>
+            <View className="flex-row items-start justify-between gap-3">
+              <Text className="flex-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-600">
+                Activity Feed
+              </Text>
+              <Pressable
+                className="mt-[-2px] rounded-full border border-slate-200 bg-slate-50 p-1.5"
+                onPress={handleClose}
+                hitSlop={8}>
+                <Feather name="x" size={14} color="#475569" />
+              </Pressable>
+            </View>
             <Text className="mt-1 text-sm font-semibold text-slate-900" numberOfLines={2}>
               {currentEntry.message || 'New activity'}
             </Text>
