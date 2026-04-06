@@ -21,12 +21,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LoadingImage } from '@/components/LoadingImage';
 import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 import {
   ExploreFilterInput,
-  ExploreListing,
   ExploreSection,
   FilterState,
   RemoteExploreSection,
@@ -63,10 +61,6 @@ const BUDGET_MIN_VALUE = 20000;
 const BUDGET_MAX_VALUE = 1000000;
 const BUDGET_STEP = 5000;
 const BUDGET_THUMB_SIZE = 24;
-const BOOKING_ALERT_DURATION_MS = 6000;
-const BOOKING_ALERT_INTERVAL_MS = 2 * 60 * 1000;
-const BOOKING_ALERT_INITIAL_DELAY_MS = 3000;
-const BOOKING_ALERT_NAMES = ['Chinyere', 'Tobi', 'Mariam', 'Ifeanyi', 'Amaka', 'Dami'];
 
 type CalendarDay = {
   date: Date;
@@ -75,15 +69,6 @@ type CalendarDay = {
   isStart: boolean;
   isEnd: boolean;
   isBetween: boolean;
-};
-
-type BookingAlert = {
-  id: string;
-  guestName: string;
-  listingName: string;
-  area: string;
-  avatar: string;
-  bookedAgoLabel: string;
 };
 
 type ExploreSectionsResponse = {
@@ -396,13 +381,7 @@ export default function ExploreScreen() {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
-  const [activeBookingAlert, setActiveBookingAlert] = useState<BookingAlert | null>(null);
   const scrollY = useState(() => new Animated.Value(0))[0];
-  const alertOpacity = useRef(new Animated.Value(0)).current;
-  const alertTranslateY = useRef(new Animated.Value(-18)).current;
-  const alertProgress = useRef(new Animated.Value(1)).current;
-  const alertIndexRef = useRef(0);
-  const visibleListingsRef = useRef<ExploreListing[]>([]);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -490,7 +469,6 @@ export default function ExploreScreen() {
   const profileInitials = profileData?.user?.initials?.trim() || derivedInitials || 'SH';
   const firstName = profileName ? profileName.split(/\s+/)[0] : '';
   const welcomeMessage = firstName ? `Welcome back, ${firstName}` : 'Welcome back';
-  const bookingAlertBottomOffset = Math.max(tabBarHeight + 6, insets.bottom + 64);
   const activeFilterCount = useMemo(() => {
     let count = 0;
 
@@ -528,10 +506,6 @@ export default function ExploreScreen() {
   }, [filters]);
 
   useEffect(() => {
-    visibleListingsRef.current = previewListings;
-  }, [previewListings]);
-
-  useEffect(() => {
     const listener = scrollY.addListener(({ value }) => {
       setShowCompactSections((current) => {
         if (value > 96 && !current) {
@@ -550,91 +524,6 @@ export default function ExploreScreen() {
       scrollY.removeListener(listener);
     };
   }, [scrollY]);
-
-  useEffect(() => {
-    if (!previewListings.length) return;
-
-    const showNextBookingAlert = () => {
-      const sourceListings = visibleListingsRef.current;
-      if (!sourceListings.length) return;
-
-      const sequenceIndex = alertIndexRef.current;
-      const listing = sourceListings[sequenceIndex % sourceListings.length];
-      const guestName = BOOKING_ALERT_NAMES[sequenceIndex % BOOKING_ALERT_NAMES.length];
-      alertIndexRef.current += 1;
-
-      setActiveBookingAlert({
-        id: `${listing.id}-${sequenceIndex}`,
-        guestName,
-        listingName: listing.name,
-        area: listing.area,
-        avatar: listing.coverPhoto,
-        bookedAgoLabel: '2 minutes ago',
-      });
-    };
-
-    const initialTimeout = setTimeout(() => {
-      showNextBookingAlert();
-    }, BOOKING_ALERT_INITIAL_DELAY_MS);
-    const interval = setInterval(() => {
-      showNextBookingAlert();
-    }, BOOKING_ALERT_INTERVAL_MS);
-
-    return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(interval);
-    };
-  }, [previewListings.length]);
-
-  useEffect(() => {
-    if (!activeBookingAlert) return;
-
-    alertOpacity.setValue(0);
-    alertTranslateY.setValue(-18);
-    alertProgress.setValue(1);
-
-    const enterAnimation = Animated.parallel([
-      Animated.timing(alertOpacity, {
-        toValue: 1,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-      Animated.timing(alertTranslateY, {
-        toValue: 0,
-        duration: 260,
-        useNativeDriver: true,
-      }),
-    ]);
-    const progressAnimation = Animated.timing(alertProgress, {
-      toValue: 0,
-      duration: BOOKING_ALERT_DURATION_MS,
-      useNativeDriver: true,
-    });
-
-    enterAnimation.start();
-    progressAnimation.start();
-
-    const dismissTimeout = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(alertOpacity, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(alertTranslateY, {
-          toValue: -14,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-      ]).start(() => setActiveBookingAlert(null));
-    }, BOOKING_ALERT_DURATION_MS);
-
-    return () => {
-      clearTimeout(dismissTimeout);
-      enterAnimation.stop();
-      progressAnimation.stop();
-    };
-  }, [activeBookingAlert, alertOpacity, alertProgress, alertTranslateY]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -1296,54 +1185,6 @@ export default function ExploreScreen() {
         </View>
       )}
 
-      <View
-        pointerEvents="box-none"
-        className="absolute left-0 right-0 z-50 px-5"
-        style={{ bottom: bookingAlertBottomOffset }}>
-        {activeBookingAlert ? (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              opacity: alertOpacity,
-              transform: [{ translateY: alertTranslateY }],
-              shadowColor: '#020617',
-              shadowOpacity: 0.28,
-              shadowRadius: 22,
-              shadowOffset: { width: 0, height: 14 },
-              elevation: 22,
-            }}
-            className="overflow-hidden rounded-[28px] border border-slate-200 bg-white">
-            <View className="flex-row items-center gap-4 px-4 py-4">
-              <LoadingImage
-                source={{ uri: activeBookingAlert.avatar }}
-                className="h-14 w-14 rounded-[20px]"
-                contentFit="cover"
-              />
-              <View className="flex-1">
-                <View className="flex-row items-center gap-2">
-                  <View className="rounded-full bg-emerald-500/20 px-2.5 py-1">
-                    <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                      Live booking
-                    </Text>
-                  </View>
-                </View>
-                <Text className="mt-2 text-sm font-semibold leading-5 text-slate-900">
-                  {activeBookingAlert.guestName} just booked {activeBookingAlert.listingName} in{' '}
-                  {activeBookingAlert.area}.
-                </Text>
-                <Text className="mt-1 text-xs text-slate-500">{activeBookingAlert.bookedAgoLabel}</Text>
-              </View>
-            </View>
-            <View className="h-1.5 bg-slate-100">
-              <Animated.View
-                className="h-full bg-emerald-400"
-                style={{ transform: [{ scaleX: alertProgress }] }}
-              />
-            </View>
-          </Animated.View>
-        ) : null}
-      </View>
-
       {error && previewListings.length > 0 ? (
         <View className="mx-6 mt-4 rounded-3xl border border-rose-200 bg-rose-50/70 px-4 py-3">
           <Text className="text-sm font-semibold text-rose-700">
@@ -1376,7 +1217,7 @@ export default function ExploreScreen() {
         contentContainerStyle={{
           padding: 24,
           paddingTop: 16,
-          paddingBottom: bookingAlertBottomOffset + 88,
+          paddingBottom: tabBarHeight + insets.bottom + 32,
         }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}

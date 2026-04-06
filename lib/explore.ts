@@ -285,7 +285,6 @@ export const mapExploreListing = (
   index: number,
   fallbackArea = ''
 ): ExploreListing => {
-  console.log('listing', listing);
   const bookingOptions = mapBookableOptions(listing.bookableOptions);
   const area = cleanString(listing.area) || cleanString(fallbackArea) || 'Lagos';
   const apartmentType =
