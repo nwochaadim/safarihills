@@ -1,5 +1,5 @@
-import { useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
@@ -10,8 +10,8 @@ import {
   formatListingOfferPublicWindow,
   getListingOfferPublicStatus,
   ListingOffer,
-  ListingOffersResponse,
   ListingOfferClaimSnapshot,
+  ListingOffersResponse,
   mapRemoteListingOffers,
 } from '@/data/listingOffers';
 import {
@@ -25,6 +25,7 @@ import {
 import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { LISTING_OFFERS } from '@/queries/listingOffers';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -33,8 +34,8 @@ import {
   Animated,
   Dimensions,
   FlatList,
-  Modal,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -740,9 +741,11 @@ function ListingDetailContent({
                                   <Text className="mt-4 text-xl font-bold text-slate-900">
                                     {offer.title}
                                   </Text>
-                                  <Text className={`mt-2 text-sm leading-6 ${theme.copyClass}`}>
-                                    {offer.subtitle}
-                                  </Text>
+                                  <HtmlViewer
+                                    html={offer.subtitle}
+                                    className="mt-2"
+                                    textClassName={`text-sm leading-6 ${theme.copyClass}`}
+                                  />
                                 </View>
 
                                 <View
