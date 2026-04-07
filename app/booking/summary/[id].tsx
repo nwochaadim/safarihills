@@ -669,7 +669,7 @@ export default function BookingSummaryScreen() {
 
   if (!bookingId) {
     return (
-      <SafeAreaView className="flex-1 bg-slate-50">
+      <TabSafeAreaView className="flex-1 bg-slate-50" edges={['top', 'left', 'right', 'bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
         <View className="flex-1 items-center justify-center px-6">
           <View className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-100">
@@ -684,25 +684,25 @@ export default function BookingSummaryScreen() {
             </Pressable>
           </View>
         </View>
-      </SafeAreaView>
+      </TabSafeAreaView>
     );
   }
 
   if (loading && !booking) {
     return (
-      <SafeAreaView className="flex-1 bg-slate-50">
+      <TabSafeAreaView className="flex-1 bg-slate-50" edges={['top', 'left', 'right', 'bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#2563eb" />
           <Text className="mt-3 text-sm text-slate-500">Loading booking summary...</Text>
         </View>
-      </SafeAreaView>
+      </TabSafeAreaView>
     );
   }
 
   if (!booking) {
     return (
-      <SafeAreaView className="flex-1 bg-slate-50">
+      <TabSafeAreaView className="flex-1 bg-slate-50" edges={['top', 'left', 'right', 'bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
         <View className="flex-1 items-center justify-center px-6">
           <View className="w-full rounded-3xl border border-rose-200 bg-rose-50/70 p-6">
@@ -719,7 +719,7 @@ export default function BookingSummaryScreen() {
             </Pressable>
           </View>
         </View>
-      </SafeAreaView>
+      </TabSafeAreaView>
     );
   }
 

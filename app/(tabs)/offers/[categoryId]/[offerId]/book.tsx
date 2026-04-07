@@ -75,6 +75,7 @@ type OfferCampaignReward = {
   id: string | null;
   rewardType: string | null;
   name: string | null;
+  discount: number | null;
 };
 
 type OfferNewBookingDetailsResponse = {
@@ -288,6 +289,11 @@ const generateBookingReference = () => {
 const normalizeNumber = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
+const normalizePercentage = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 100);
+};
+
 const normalizeDaysMap = (value: Record<string, boolean> | null | undefined) => {
   if (!value) return {};
   return Object.entries(value).reduce<Record<string, boolean>>((acc, [key, entry]) => {
@@ -328,7 +334,14 @@ const mapListableDetails = (details: RemoteListableDetails | null, fallbackId: s
   checkInTimeSlots: details?.checkInTimeSlots ?? [],
 });
 
-const getDatePrice = (
+const applyPercentageDiscount = (amount: number, discountPercentage: number) => {
+  if (amount <= 0) return 0;
+  const normalizedDiscount = normalizePercentage(discountPercentage);
+  if (normalizedDiscount <= 0) return amount;
+  return Math.max(Math.round(amount * (1 - normalizedDiscount / 100)), 0);
+};
+
+const getDateBasePrice = (
   date: Date,
   basePrice: number,
   offerPriceAdjustments: Record<string, number>
@@ -338,6 +351,13 @@ const getDatePrice = (
   if (typeof adjusted === 'number') return adjusted;
   return basePrice > 0 ? basePrice : 0;
 };
+
+const getDatePrice = (
+  date: Date,
+  basePrice: number,
+  offerPriceAdjustments: Record<string, number>,
+  discountPercentage = 0
+) => applyPercentageDiscount(getDateBasePrice(date, basePrice, offerPriceAdjustments), discountPercentage);
 
 const buildCalendarDays = (
   calendarMonth: Date,
@@ -383,7 +403,7 @@ const buildCalendarDays = (
       isStart,
       isEnd,
       isBetween: Boolean(isBetween),
-      nightlyPrice: getDatePrice(date, basePrice, offerPriceAdjustments),
+      nightlyPrice: getDateBasePrice(date, basePrice, offerPriceAdjustments),
     });
   }
 
@@ -414,7 +434,8 @@ const calculateSubtotal = (
   start: Date | null,
   end: Date | null,
   basePrice: number,
-  offerPriceAdjustments: Record<string, number>
+  offerPriceAdjustments: Record<string, number>,
+  discountPercentage = 0
 ) => {
   if (!start || !end) return 0;
   const cursor = startOfDay(start);
@@ -422,7 +443,7 @@ const calculateSubtotal = (
   let total = 0;
 
   while (cursor < endDate) {
-    total += getDatePrice(cursor, basePrice, offerPriceAdjustments);
+    total += getDatePrice(cursor, basePrice, offerPriceAdjustments, discountPercentage);
     cursor.setDate(cursor.getDate() + 1);
   }
 
@@ -446,6 +467,12 @@ const getRewardTag = (reward: OfferCampaignReward) => {
   if (reward.name?.trim()) return reward.name.trim();
   return 'Reward';
 };
+
+const findFirstDiscountReward = (rewards: OfferCampaignReward[] | null | undefined) =>
+  (rewards ?? []).find((reward) => {
+    const rewardType = reward?.rewardType?.trim() ?? '';
+    return rewardType.includes('Discount') && normalizePercentage(reward?.discount) > 0;
+  }) ?? null;
 
 const formatTodayLabel = () =>
   new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -533,6 +560,14 @@ export default function OfferBookingScreen() {
 
   const offerRules = bookingDetails?.offer?.offerCampaignRules ?? [];
   const offerRule = offerRules[0] ?? null;
+  const discountReward = useMemo(
+    () => findFirstDiscountReward(bookingDetails?.offer?.offerCampaignRewards),
+    [bookingDetails?.offer?.offerCampaignRewards]
+  );
+  const discountPercentage = useMemo(
+    () => normalizePercentage(discountReward?.discount),
+    [discountReward]
+  );
   const maxHours = offerRule?.maxHours ?? null;
   const validCheckOutTime = normalizeTimeValue(offerRule?.validCheckOutTime);
 
@@ -688,15 +723,20 @@ export default function OfferBookingScreen() {
     ]
   );
 
+  const originalSubtotal = useMemo(() => baseNightlyRate * nights, [baseNightlyRate, nights]);
   const subtotal = useMemo(
     () => calculateSubtotal(checkIn, checkOut, baseNightlyRate, offerPriceAdjustments),
     [checkIn, checkOut, baseNightlyRate, offerPriceAdjustments]
   );
 
-  const discount = 0;
-  const staySubtotal = isTimeBased ? (checkInTime ? baseNightlyRate : 0) : subtotal;
+  const originalStaySubtotal = isTimeBased ? (checkInTime ? baseNightlyRate : 0) : originalSubtotal;
+  const staySubtotal = isTimeBased
+    ? (checkInTime ? applyPercentageDiscount(baseNightlyRate, discountPercentage) : 0)
+    : subtotal;
+  const discount = Math.max(originalStaySubtotal - staySubtotal, 0);
   const stayUnits = isTimeBased ? (checkInTime ? 1 : 0) : nights;
-  const total = staySubtotal - discount + (stayUnits > 0 ? cautionFee : 0);
+  const total = staySubtotal + (stayUnits > 0 ? cautionFee : 0);
+  const originalTotal = originalStaySubtotal + (stayUnits > 0 ? cautionFee : 0);
   const hasStaySelection = isTimeBased ? Boolean(checkInTime) : nights > 0;
   const hasPrice = baseNightlyRate > 0;
   const hasPurpose = Boolean(purpose.trim());
@@ -960,6 +1000,7 @@ export default function OfferBookingScreen() {
                     id: null,
                     rewardType: null,
                     name: null,
+                    discount: null,
                   };
                   return (
                     <View
@@ -1030,10 +1071,19 @@ export default function OfferBookingScreen() {
                 <Text className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
                   Entire apartment rate
                 </Text>
-                <Text className="mt-1 text-lg font-semibold text-slate-900">
-                  {formatCurrency(entireApartment?.nightlyRate ?? 0)}
+                <View className="mt-1 flex-row items-end gap-2">
+                  <Text className="text-lg font-semibold text-slate-900">
+                    {formatCurrency(
+                      applyPercentageDiscount(entireApartment?.nightlyRate ?? 0, discountPercentage)
+                    )}
+                  </Text>
+                  {discountPercentage > 0 ? (
+                    <Text className="text-sm font-medium text-slate-400 line-through">
+                      {formatCurrency(entireApartment?.nightlyRate ?? 0)}
+                    </Text>
+                  ) : null}
                   <Text className="text-xs font-medium text-slate-500">{rateUnitLabel}</Text>
-                </Text>
+                </View>
                 <View className="mt-3 rounded-2xl border border-rose-100 bg-rose-50/50 p-3">
                   <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-500">
                     Restrictions
@@ -1088,12 +1138,23 @@ export default function OfferBookingScreen() {
                                 {room.description}
                               </Text>
                             </View>
-                            <Text className="text-base font-semibold text-blue-700">
-                              {formatCurrency(room.nightlyRate)}
+                            <View className="items-end">
+                              <View className="flex-row items-end gap-2">
+                                <Text className="text-base font-semibold text-blue-700">
+                                  {formatCurrency(
+                                    applyPercentageDiscount(room.nightlyRate, discountPercentage)
+                                  )}
+                                </Text>
+                                {discountPercentage > 0 ? (
+                                  <Text className="text-xs font-medium text-slate-400 line-through">
+                                    {formatCurrency(room.nightlyRate)}
+                                  </Text>
+                                ) : null}
+                              </View>
                               <Text className="text-xs font-medium text-slate-500">
                                 {rateUnitLabel}
                               </Text>
-                            </Text>
+                            </View>
                           </View>
                           <ScrollView
                             horizontal
@@ -1259,9 +1320,16 @@ export default function OfferBookingScreen() {
                 {isTimeBased ? (
                   <View className="flex-row items-center justify-between">
                     <Text className="text-sm text-slate-500">Offer price</Text>
-                    <Text className="text-sm font-semibold text-slate-900">
-                      {formatCurrency(staySubtotal)}
-                    </Text>
+                    <View className="items-end">
+                      <Text className="text-sm font-semibold text-slate-900">
+                        {formatCurrency(staySubtotal)}
+                      </Text>
+                      {discount > 0 ? (
+                        <Text className="text-xs font-medium text-slate-400 line-through">
+                          {formatCurrency(originalStaySubtotal)}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 ) : (
                   <>
@@ -1271,20 +1339,19 @@ export default function OfferBookingScreen() {
                     </View>
                     <View className="flex-row items-center justify-between">
                       <Text className="text-sm text-slate-500">Subtotal</Text>
-                      <Text className="text-sm font-semibold text-slate-900">
-                        {formatCurrency(staySubtotal)}
-                      </Text>
+                      <View className="items-end">
+                        <Text className="text-sm font-semibold text-slate-900">
+                          {formatCurrency(staySubtotal)}
+                        </Text>
+                        {discount > 0 ? (
+                          <Text className="text-xs font-medium text-slate-400 line-through">
+                            {formatCurrency(originalStaySubtotal)}
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
                   </>
                 )}
-                {discount > 0 ? (
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-sm text-emerald-600">Coupon discount</Text>
-                    <Text className="text-sm font-semibold text-emerald-600">
-                      -{formatCurrency(discount)}
-                    </Text>
-                  </View>
-                ) : null}
                 <View className="flex-row items-center justify-between">
                   <Text className="text-sm text-slate-500">Caution fee</Text>
                   <Text className="text-sm font-semibold text-slate-900">
@@ -1293,9 +1360,16 @@ export default function OfferBookingScreen() {
                 </View>
                 <View className="mt-2 flex-row items-center justify-between border-t border-slate-200 pt-3">
                   <Text className="text-base font-semibold text-slate-900">Total</Text>
-                  <Text className="text-base font-semibold text-blue-700">
-                    {formatCurrency(total)}
-                  </Text>
+                  <View className="items-end">
+                    <Text className="text-base font-semibold text-blue-700">
+                      {formatCurrency(total)}
+                    </Text>
+                    {discount > 0 ? (
+                      <Text className="text-xs font-medium text-slate-400 line-through">
+                        {formatCurrency(originalTotal)}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
                 <Text className="text-xs text-slate-500">
                   Discounts apply for weekly stays and above.

@@ -24,6 +24,7 @@ export const NEW_BOOKING_DETAILS_FOR_OFFER = gql`
           id
           rewardType
           name
+          discount: percentDiscount
         }
       }
       entireApartment {
