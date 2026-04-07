@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
 
+import { AnalyticsManager } from '@/components/AnalyticsManager';
 import { ActivityFeedManager } from '@/components/ActivityFeedManager';
 import { apolloClient } from '@/lib/apolloClient';
 import { maybePromptForPushNotifications, usePushNotificationHandler } from '@/lib/pushNotifications';
@@ -31,6 +32,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           </Stack>
+          <AnalyticsManager />
           <ActivityFeedManager />
           <StatusBar style="auto" />
         </ThemeProvider>
