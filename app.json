@@ -102,7 +102,14 @@
         }
       ],
       "@react-native-firebase/app",
-      "./plugins/withFirebaseModularHeaders"
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
