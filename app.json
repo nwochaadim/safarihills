@@ -18,6 +18,8 @@
       "bundleIdentifier": "com.safarihills.app",
       "associatedDomains": [
         "applinks:safarihills.app",
+        "applinks:www.safarihills.app",
+        "applinks:safarihills.app",
         "applinks:www.safarihills.app"
       ],
       "buildNumber": "1",
@@ -26,6 +28,9 @@
       "notification": {
         "icon": "./assets/images/SafariLogo.png",
         "color": "#fff"
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -96,7 +101,8 @@
           "color": "#1d4ed8"
         }
       ],
-      "@react-native-firebase/app"
+      "@react-native-firebase/app",
+      "./plugins/withFirebaseModularHeaders"
     ],
     "experiments": {
       "typedRoutes": true,
