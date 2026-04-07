@@ -5,6 +5,9 @@ import { useCallback } from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 
+import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
+
 type ContactOption = {
   label: string;
   value: string;
@@ -51,8 +54,21 @@ const socialOptions: ContactOption[] = [
 
 const ContactRow = ({ label, value, url, icon }: ContactOption) => {
   const handlePress = useCallback(() => {
+    const channel =
+      icon === 'mail'
+        ? 'email'
+        : icon === 'instagram'
+          ? 'instagram'
+          : icon === 'video'
+            ? 'tiktok'
+            : 'phone';
+
+    void trackEvent(ANALYTICS_EVENTS.SupportContactSelect, {
+      channel,
+      source_screen: 'profile_help',
+    });
     Linking.openURL(url).catch(() => null);
-  }, [url]);
+  }, [icon, url]);
 
   return (
     <Pressable

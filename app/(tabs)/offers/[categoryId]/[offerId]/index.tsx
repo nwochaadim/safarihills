@@ -16,6 +16,12 @@ import { BackButton } from '@/components/BackButton';
 import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  toFlag,
+} from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
 import { OFFER_CATEGORIES } from '@/data/offers';
 import { FIND_OFFERS_FOR_CAMPAIGN_CATEGORY } from '@/queries/findOffersForCampaignCategory';
 
@@ -202,6 +208,42 @@ export default function OfferDetailScreen() {
     setActiveImageIndex(0);
   }, [offer?.id]);
 
+  useEffect(() => {
+    if (!offer) {
+      return;
+    }
+
+    void trackEvent(ANALYTICS_EVENTS.ViewPromotion, {
+      promotion_id: offer.id,
+      promotion_name: offer.title,
+      source_screen: 'offer_detail',
+      source_surface: 'offer_detail_header',
+    });
+
+    if (offer.listings.length > 0) {
+      void trackEvent(ANALYTICS_EVENTS.ViewItemList, {
+        item_list_id: offer.id,
+        item_list_name: offer.title,
+        source_screen: 'offer_detail',
+        source_surface: 'eligible_listings',
+        list_size: offer.listings.length,
+        items: offer.listings.slice(0, 10).map((listing) =>
+          buildListingAnalyticsItem({
+            id: listing.id,
+            name: listing.name,
+            apartmentType: categoryTitle,
+            city: listing.location,
+            price: listing.price,
+            itemListId: offer.id,
+            itemListName: offer.title,
+            promotionId: offer.id,
+            promotionName: offer.title,
+          })
+        ),
+      });
+    }
+  }, [categoryTitle, offer]);
+
   const imageTranslate = scrollY.interpolate({
     inputRange: [0, HEADER_HEIGHT],
     outputRange: [0, -IMAGE_PARALLAX_DISTANCE],
@@ -362,16 +404,59 @@ export default function OfferDetailScreen() {
                 </View>
                 <Pressable
                   className="rounded-full bg-blue-600 px-4 py-2 shadow-sm shadow-blue-200"
-                  onPress={() =>
+                  onPress={() => {
+                    void trackEvent(ANALYTICS_EVENTS.SelectItem, {
+                      source_screen: 'offer_detail',
+                      source_surface: 'eligible_listing_card',
+                      item_list_id: offer.id,
+                      item_list_name: offer.title,
+                      listing_id: listing.id,
+                      listing_name: listing.name,
+                      city: listing.location,
+                      apartment_type: categoryTitle,
+                      price: listing.price,
+                      has_offer: toFlag(true),
+                      items: [
+                        buildListingAnalyticsItem({
+                          id: listing.id,
+                          name: listing.name,
+                          apartmentType: categoryTitle,
+                          city: listing.location,
+                          price: listing.price,
+                          itemListId: offer.id,
+                          itemListName: offer.title,
+                          promotionId: offer.id,
+                          promotionName: offer.title,
+                        }),
+                      ],
+                    });
+
+                    void trackEvent(ANALYTICS_EVENTS.BeginBooking, {
+                      booking_mode: 'offer',
+                      source_screen: 'offer_detail',
+                      source_surface: 'eligible_listing_card',
+                      listing_id: listing.id,
+                      listing_name: listing.name,
+                      city: listing.location,
+                      apartment_type: categoryTitle,
+                      offer_id: offer.id,
+                      offer_name: offer.title,
+                      offer_selected: 1,
+                      value: listing.price,
+                      currency: 'NGN',
+                    });
+
                     router.push({
                       pathname: '/offers/[categoryId]/[offerId]/book',
                       params: {
                         categoryId: categoryIdValue,
                         offerId: offer.id,
                         listingId: listing.id,
+                        source_screen: 'offer_detail',
+                        source_surface: 'eligible_listing_card',
                       },
-                    })
-                  }>
+                    });
+                  }}>
                   <Text className="text-xs font-semibold text-white">Book now</Text>
                 </Pressable>
               </View>

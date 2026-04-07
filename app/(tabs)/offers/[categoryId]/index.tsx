@@ -8,6 +8,8 @@ import { SafeAreaView } from '@/components/tab-safe-area-view';
 import { BackButton } from '@/components/BackButton';
 import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
+import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
 import { OFFER_CATEGORIES } from '@/data/offers';
 import { FIND_OFFERS_FOR_CAMPAIGN_CATEGORY } from '@/queries/findOffersForCampaignCategory';
 
@@ -185,7 +187,15 @@ export default function OfferCategoryScreen() {
             <Pressable
               key={offer.id}
               className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm shadow-slate-100"
-              onPress={() => router.push(`/offers/${category.id}/${offer.id}`)}>
+              onPress={() => {
+                void trackEvent(ANALYTICS_EVENTS.SelectPromotion, {
+                  promotion_id: offer.id,
+                  promotion_name: offer.title,
+                  source_screen: 'offer_category',
+                  source_surface: 'offer_card',
+                });
+                router.push(`/offers/${category.id}/${offer.id}`);
+              }}>
               <LoadingImageBackground source={{ uri: offer.image }} className="h-36">
                 <View className="absolute inset-0 bg-black/35" />
                 <View className="flex-1 justify-end p-4">

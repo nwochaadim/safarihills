@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
 
-import { AnalyticsManager } from '@/components/AnalyticsManager';
+import { AnalyticsProvider } from '@/components/AnalyticsProvider';
 import { ActivityFeedManager } from '@/components/ActivityFeedManager';
 import { apolloClient } from '@/lib/apolloClient';
 import { maybePromptForPushNotifications, usePushNotificationHandler } from '@/lib/pushNotifications';
@@ -28,14 +28,15 @@ export default function RootLayout() {
   return (
     <ApolloProvider client={apolloClient}>
       <SafeAreaProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-          <AnalyticsManager />
-          <ActivityFeedManager />
-          <StatusBar style="auto" />
-        </ThemeProvider>
+        <AnalyticsProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
+            <ActivityFeedManager />
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </AnalyticsProvider>
       </SafeAreaProvider>
     </ApolloProvider>
   );

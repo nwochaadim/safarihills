@@ -20,6 +20,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 
+import {
+  ANALYTICS_EVENTS,
+  getReferralCountBucket,
+} from '@/lib/analytics.schema';
+import { setUserProperties, trackEvent } from '@/lib/analytics';
+
 type ReferralInvitee = {
   name: string | null;
   signupDate: string | null;
@@ -142,7 +148,17 @@ export default function ReferralsScreen() {
       ? totalReferralsCount
       : normalizedReferrals.length;
 
+  useEffect(() => {
+    void setUserProperties({
+      referral_count_bucket: getReferralCountBucket(totalReferrals),
+    });
+  }, [totalReferrals]);
+
   const handleOpenReferrals = useCallback(() => {
+    void trackEvent(ANALYTICS_EVENTS.ProfileAction, {
+      action: 'open_referrals',
+      source_screen: 'profile_referrals',
+    });
     setShowReferrals(true);
     setLoadingMore(false);
     setHasMore(true);
@@ -163,12 +179,20 @@ export default function ReferralsScreen() {
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(referralCode);
+    void trackEvent(ANALYTICS_EVENTS.ProfileAction, {
+      action: 'copy_referral_code',
+      source_screen: 'profile_referrals',
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
 
   const handleShare = async () => {
     try {
+      void trackEvent(ANALYTICS_EVENTS.ProfileAction, {
+        action: 'share_referral_code',
+        source_screen: 'profile_referrals',
+      });
       await Share.share({
         message: `Join me on Safarihills with my code ${referralCode} to earn a welcome perk on your first booking.`,
       });

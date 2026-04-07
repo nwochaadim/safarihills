@@ -8,7 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -21,6 +21,14 @@ import {
 import { SafeAreaView as TabSafeAreaView } from '@/components/tab-safe-area-view';
 import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  getBookingValueBucket,
+  getWalletBalanceBucket,
+} from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
 
 const PAYSTACK_PUBLIC_KEY = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? '';
 const PAYSTACK_FALLBACK_EMAIL = 'no-reply@safarihills.app';
@@ -135,8 +143,28 @@ const getRewardTag = (reward: BookingReward) => {
 
 export default function BookingSummaryScreen() {
   const router = useRouter();
-  const { id: idParam } = useLocalSearchParams<{ id?: string }>();
+  const {
+    id: idParam,
+    source_screen: sourceScreenParam,
+    source_surface: sourceSurfaceParam,
+    source_section: sourceSectionParam,
+    listing_id: listingIdParam,
+  } = useLocalSearchParams<{
+    id?: string;
+    source_screen?: string;
+    source_surface?: string;
+    source_section?: string;
+    listing_id?: string;
+  }>();
   const bookingId = Array.isArray(idParam) ? idParam[0] : idParam;
+  const sourceScreen = Array.isArray(sourceScreenParam) ? sourceScreenParam[0] : sourceScreenParam;
+  const sourceSurface = Array.isArray(sourceSurfaceParam)
+    ? sourceSurfaceParam[0]
+    : sourceSurfaceParam;
+  const sourceSection = Array.isArray(sourceSectionParam)
+    ? sourceSectionParam[0]
+    : sourceSectionParam;
+  const listingId = Array.isArray(listingIdParam) ? listingIdParam[0] : listingIdParam;
   const { data, loading, refetch, error } = useQuery<
     BookingSummaryResponse,
     BookingSummaryVariables
@@ -220,6 +248,8 @@ export default function BookingSummaryScreen() {
   const [couponError, setCouponError] = useState<string | null>(null);
   const [appliedAmount, setAppliedAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
+  const hasTrackedSummaryViewRef = useRef(false);
+  const hasCompletedPurchaseRef = useRef(false);
 
   const effectiveCouponAmount = serverCouponAmount > 0 ? serverCouponAmount : appliedAmount;
   const discount = Math.min(effectiveCouponAmount, baseTotal);
@@ -233,6 +263,94 @@ export default function BookingSummaryScreen() {
 
   const paystackReference = bookingReference;
   const paystackAmount = Math.max(Math.round(total * 100), 0);
+  const bookingMode = offerCampaign ? 'offer' : 'standard';
+  const bookingValueBucket = getBookingValueBucket(total);
+
+  useEffect(() => {
+    if (!booking || hasTrackedSummaryViewRef.current) {
+      return;
+    }
+
+    hasTrackedSummaryViewRef.current = true;
+
+    // Summary views are the strongest signal that the user reached commercial intent and can be segmented for retargeting.
+    void trackEvent(ANALYTICS_EVENTS.BookingSummaryView, {
+      booking_mode: bookingMode,
+      source_screen: sourceScreen ?? 'booking_create',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: listingId ?? bookingId ?? 'unknown_listing',
+      listing_name: listingName || undefined,
+      city: listingArea || undefined,
+      apartment_type: roomCategory || undefined,
+      booking_id: booking.id,
+      booking_reference: bookingReference || booking.id,
+      guest_count: numberOfGuests ?? 0,
+      nights,
+      booking_value: total,
+      booking_value_bucket: bookingValueBucket,
+      currency: 'NGN',
+      coupon_code_present: serverCouponAmount > 0 ? 1 : 0,
+      payment_state: bookingState || undefined,
+      offer_name: offerCampaign?.name || undefined,
+    });
+  }, [
+    booking,
+    bookingId,
+    bookingMode,
+    bookingReference,
+    bookingState,
+    bookingValueBucket,
+    listingArea,
+    listingId,
+    listingName,
+    nights,
+    numberOfGuests,
+    offerCampaign?.name,
+    roomCategory,
+    serverCouponAmount,
+    sourceScreen,
+    sourceSection,
+    sourceSurface,
+    total,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (!booking || hasCompletedPurchaseRef.current || !showPaymentSections) {
+        return;
+      }
+
+      void trackEvent(ANALYTICS_EVENTS.BookingAbandon, {
+        booking_mode: bookingMode,
+        source_screen: sourceScreen ?? 'booking_summary',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId ?? booking.id,
+        listing_name: listingName || undefined,
+        city: listingArea || undefined,
+        apartment_type: roomCategory || undefined,
+        abandon_stage: 'payment_pending',
+        booking_reference: bookingReference || booking.id,
+        booking_value_bucket: bookingValueBucket,
+        offer_name: offerCampaign?.name || undefined,
+      });
+    };
+  }, [
+    booking,
+    bookingMode,
+    bookingReference,
+    bookingValueBucket,
+    listingArea,
+    listingId,
+    listingName,
+    offerCampaign?.name,
+    roomCategory,
+    showPaymentSections,
+    sourceScreen,
+    sourceSection,
+    sourceSurface,
+  ]);
   const paystackBridgeScript = `
     (function() {
       function postClipboardText(text) {
@@ -484,7 +602,6 @@ export default function BookingSummaryScreen() {
   }, [
     paystackAmount,
     paystackReference,
-    PAYSTACK_PUBLIC_KEY,
     userEmail,
     userName,
     userPhone,
@@ -521,22 +638,87 @@ export default function BookingSummaryScreen() {
   const handleOpenPaystack = async () => {
     if (!PAYSTACK_PUBLIC_KEY) {
       setPaymentError('Paystack is unavailable right now.');
+      void trackEvent(ANALYTICS_EVENTS.BookingPaymentFailure, {
+        booking_mode: bookingMode,
+        source_screen: sourceScreen ?? 'booking_summary',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId ?? bookingId ?? 'unknown_listing',
+        listing_name: listingName || undefined,
+        city: listingArea || undefined,
+        apartment_type: roomCategory || undefined,
+        booking_id: bookingId ?? 'unknown_booking',
+        booking_reference: bookingReference || bookingId || 'unknown_booking',
+        payment_method: 'paystack',
+        booking_value_bucket: bookingValueBucket,
+        failure_reason: 'paystack_unavailable',
+        offer_name: offerCampaign?.name || undefined,
+      });
       return;
     }
     if (paystackAmount <= 0) {
       setPaymentError('Payment amount is unavailable.');
+      void trackEvent(ANALYTICS_EVENTS.BookingPaymentFailure, {
+        booking_mode: bookingMode,
+        source_screen: sourceScreen ?? 'booking_summary',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId ?? bookingId ?? 'unknown_listing',
+        listing_name: listingName || undefined,
+        city: listingArea || undefined,
+        apartment_type: roomCategory || undefined,
+        booking_id: bookingId ?? 'unknown_booking',
+        booking_reference: bookingReference || bookingId || 'unknown_booking',
+        payment_method: 'paystack',
+        booking_value_bucket: bookingValueBucket,
+        failure_reason: 'missing_payment_amount',
+        offer_name: offerCampaign?.name || undefined,
+      });
       return;
     }
     const isValid = await validateBeforePayment();
     if (!isValid) {
       return;
     }
+    void trackEvent(ANALYTICS_EVENTS.BookingPaymentAttempt, {
+      booking_mode: bookingMode,
+      source_screen: sourceScreen ?? 'booking_summary',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: listingId ?? bookingId ?? 'unknown_listing',
+      listing_name: listingName || undefined,
+      city: listingArea || undefined,
+      apartment_type: roomCategory || undefined,
+      booking_id: bookingId ?? 'unknown_booking',
+      booking_reference: bookingReference || bookingId || 'unknown_booking',
+      payment_method: 'paystack',
+      booking_value: total,
+      booking_value_bucket: bookingValueBucket,
+      currency: 'NGN',
+      offer_name: offerCampaign?.name || undefined,
+    });
     setPaystackVisible(true);
   };
 
   const handleWalletPayment = async () => {
     if (!walletHasFunds) {
       setPaymentError('Wallet balance is lower than the booking total.');
+      void trackEvent(ANALYTICS_EVENTS.BookingPaymentFailure, {
+        booking_mode: bookingMode,
+        source_screen: sourceScreen ?? 'booking_summary',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId ?? bookingId ?? 'unknown_listing',
+        listing_name: listingName || undefined,
+        city: listingArea || undefined,
+        apartment_type: roomCategory || undefined,
+        booking_id: bookingId ?? 'unknown_booking',
+        booking_reference: bookingReference || bookingId || 'unknown_booking',
+        payment_method: 'wallet',
+        booking_value_bucket: bookingValueBucket,
+        failure_reason: 'insufficient_wallet_balance',
+        offer_name: offerCampaign?.name || undefined,
+      });
       return;
     }
     const isValid = await validateBeforePayment();
@@ -544,6 +726,23 @@ export default function BookingSummaryScreen() {
       return;
     }
     setPaymentError(null);
+    void trackEvent(ANALYTICS_EVENTS.BookingPaymentAttempt, {
+      booking_mode: bookingMode,
+      source_screen: sourceScreen ?? 'booking_summary',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: listingId ?? bookingId ?? 'unknown_listing',
+      listing_name: listingName || undefined,
+      city: listingArea || undefined,
+      apartment_type: roomCategory || undefined,
+      booking_id: bookingId ?? 'unknown_booking',
+      booking_reference: bookingReference || bookingId || 'unknown_booking',
+      payment_method: 'wallet',
+      booking_value: total,
+      booking_value_bucket: bookingValueBucket,
+      currency: 'NGN',
+      offer_name: offerCampaign?.name || undefined,
+    });
     try {
       const { data: response } = await createWalletPayment({
         variables: { reference: bookingReference },
@@ -557,6 +756,40 @@ export default function BookingSummaryScreen() {
         setPaymentError(errors);
         return;
       }
+      hasCompletedPurchaseRef.current = true;
+      void trackEvent(ANALYTICS_EVENTS.Purchase, {
+        transaction_id: bookingReference || bookingId || 'unknown_transaction',
+        booking_mode: bookingMode,
+        source_screen: sourceScreen ?? 'booking_summary',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId ?? bookingId ?? 'unknown_listing',
+        listing_name: listingName || undefined,
+        city: listingArea || undefined,
+        apartment_type: roomCategory || undefined,
+        booking_id: bookingId ?? 'unknown_booking',
+        booking_reference: bookingReference || bookingId || 'unknown_booking',
+        payment_method: 'wallet',
+        value: total,
+        booking_value_bucket: bookingValueBucket,
+        currency: 'NGN',
+        coupon_applied: serverCouponAmount > 0 || appliedAmount > 0 ? 1 : 0,
+        guest_count: numberOfGuests ?? undefined,
+        nights,
+        offer_name: offerCampaign?.name || undefined,
+        items: listingName
+          ? [
+              buildListingAnalyticsItem({
+                id: listingId ?? bookingId ?? 'unknown_listing',
+                name: listingName,
+                apartmentType: roomCategory,
+                city: listingArea,
+                price: total,
+                promotionName: offerCampaign?.name || undefined,
+              }),
+            ]
+          : undefined,
+      });
       router.replace({
         pathname: '/(tabs)/bookings',
         params: {
@@ -568,6 +801,22 @@ export default function BookingSummaryScreen() {
       const message =
         err instanceof Error ? err.message : 'Unable to complete wallet payment.';
       setPaymentError(message);
+      void trackEvent(ANALYTICS_EVENTS.BookingPaymentFailure, {
+        booking_mode: bookingMode,
+        source_screen: sourceScreen ?? 'booking_summary',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId ?? bookingId ?? 'unknown_listing',
+        listing_name: listingName || undefined,
+        city: listingArea || undefined,
+        apartment_type: roomCategory || undefined,
+        booking_id: bookingId ?? 'unknown_booking',
+        booking_reference: bookingReference || bookingId || 'unknown_booking',
+        payment_method: 'wallet',
+        booking_value_bucket: bookingValueBucket,
+        failure_reason: message,
+        offer_name: offerCampaign?.name || undefined,
+      });
     }
   };
 
@@ -587,6 +836,40 @@ export default function BookingSummaryScreen() {
       if (payload?.type === 'success') {
         setPaymentError(null);
         setPaystackVisible(false);
+        hasCompletedPurchaseRef.current = true;
+        void trackEvent(ANALYTICS_EVENTS.Purchase, {
+          transaction_id: bookingReference || bookingId || 'unknown_transaction',
+          booking_mode: bookingMode,
+          source_screen: sourceScreen ?? 'booking_summary',
+          source_surface: sourceSurface,
+          source_section: sourceSection,
+          listing_id: listingId ?? bookingId ?? 'unknown_listing',
+          listing_name: listingName || undefined,
+          city: listingArea || undefined,
+          apartment_type: roomCategory || undefined,
+          booking_id: bookingId ?? 'unknown_booking',
+          booking_reference: bookingReference || bookingId || 'unknown_booking',
+          payment_method: 'paystack',
+          value: total,
+          booking_value_bucket: bookingValueBucket,
+          currency: 'NGN',
+          coupon_applied: serverCouponAmount > 0 || appliedAmount > 0 ? 1 : 0,
+          guest_count: numberOfGuests ?? undefined,
+          nights,
+          offer_name: offerCampaign?.name || undefined,
+          items: listingName
+            ? [
+                buildListingAnalyticsItem({
+                  id: listingId ?? bookingId ?? 'unknown_listing',
+                  name: listingName,
+                  apartmentType: roomCategory,
+                  city: listingArea,
+                  price: total,
+                  promotionName: offerCampaign?.name || undefined,
+                }),
+              ]
+            : undefined,
+        });
         router.replace({
           pathname: '/(tabs)/bookings',
           params: {
@@ -623,6 +906,22 @@ export default function BookingSummaryScreen() {
     setCouponError(null);
     setCouponMessage(null);
     setAppliedAmount(0);
+    void trackEvent(ANALYTICS_EVENTS.CouponApply, {
+      booking_mode: bookingMode,
+      source_screen: sourceScreen ?? 'booking_summary',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: listingId ?? bookingId ?? 'unknown_listing',
+      listing_name: listingName || undefined,
+      city: listingArea || undefined,
+      apartment_type: roomCategory || undefined,
+      booking_id: bookingId,
+      booking_reference: bookingReference || bookingId,
+      result: 'attempt',
+      booking_value_bucket: bookingValueBucket,
+      coupon_code_present: 1,
+      offer_name: offerCampaign?.name || undefined,
+    });
     applyCoupon({
       variables: { bookingId, couponCode: normalized },
     })
@@ -630,20 +929,89 @@ export default function BookingSummaryScreen() {
         const result = response?.applyCouponToBooking;
         const errors = result?.errors;
         if (Array.isArray(errors) && errors.length) {
-          setCouponError(errors.join(' '));
+          const message = errors.join(' ');
+          setCouponError(message);
+          void trackEvent(ANALYTICS_EVENTS.CouponApply, {
+            booking_mode: bookingMode,
+            source_screen: sourceScreen ?? 'booking_summary',
+            source_surface: sourceSurface,
+            source_section: sourceSection,
+            listing_id: listingId ?? bookingId ?? 'unknown_listing',
+            listing_name: listingName || undefined,
+            city: listingArea || undefined,
+            apartment_type: roomCategory || undefined,
+            booking_id: bookingId,
+            booking_reference: bookingReference || bookingId,
+            result: 'failure',
+            booking_value_bucket: bookingValueBucket,
+            failure_reason: message,
+            coupon_code_present: 1,
+            offer_name: offerCampaign?.name || undefined,
+          });
           return;
         }
         if (typeof errors === 'string' && errors.trim()) {
           setCouponError(errors);
+          void trackEvent(ANALYTICS_EVENTS.CouponApply, {
+            booking_mode: bookingMode,
+            source_screen: sourceScreen ?? 'booking_summary',
+            source_surface: sourceSurface,
+            source_section: sourceSection,
+            listing_id: listingId ?? bookingId ?? 'unknown_listing',
+            listing_name: listingName || undefined,
+            city: listingArea || undefined,
+            apartment_type: roomCategory || undefined,
+            booking_id: bookingId,
+            booking_reference: bookingReference || bookingId,
+            result: 'failure',
+            booking_value_bucket: bookingValueBucket,
+            failure_reason: errors,
+            coupon_code_present: 1,
+            offer_name: offerCampaign?.name || undefined,
+          });
           return;
         }
         const amount = result?.appliedAmount ?? 0;
         setAppliedAmount(amount);
         setCouponMessage(result?.successMessage ?? 'Coupon applied successfully.');
+        void trackEvent(ANALYTICS_EVENTS.CouponApply, {
+          booking_mode: bookingMode,
+          source_screen: sourceScreen ?? 'booking_summary',
+          source_surface: sourceSurface,
+          source_section: sourceSection,
+          listing_id: listingId ?? bookingId ?? 'unknown_listing',
+          listing_name: listingName || undefined,
+          city: listingArea || undefined,
+          apartment_type: roomCategory || undefined,
+          booking_id: bookingId,
+          booking_reference: bookingReference || bookingId,
+          result: 'success',
+          booking_value_bucket: bookingValueBucket,
+          discount_value: amount,
+          coupon_code_present: 1,
+          offer_name: offerCampaign?.name || undefined,
+        });
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Unable to apply coupon right now.';
         setCouponError(message);
+        void trackEvent(ANALYTICS_EVENTS.CouponApply, {
+          booking_mode: bookingMode,
+          source_screen: sourceScreen ?? 'booking_summary',
+          source_surface: sourceSurface,
+          source_section: sourceSection,
+          listing_id: listingId ?? bookingId ?? 'unknown_listing',
+          listing_name: listingName || undefined,
+          city: listingArea || undefined,
+          apartment_type: roomCategory || undefined,
+          booking_id: bookingId,
+          booking_reference: bookingReference || bookingId,
+          result: 'failure',
+          booking_value_bucket: bookingValueBucket,
+          failure_reason: message,
+          coupon_code_present: 1,
+          offer_name: offerCampaign?.name || undefined,
+        });
       });
   };
 
@@ -988,6 +1356,22 @@ export default function BookingSummaryScreen() {
                       : 'border-slate-200 bg-white'
                   }`}
                   onPress={() => {
+                    void trackEvent(ANALYTICS_EVENTS.BookingPaymentMethodSelect, {
+                      booking_mode: bookingMode,
+                      source_screen: sourceScreen ?? 'booking_summary',
+                      source_surface: sourceSurface,
+                      source_section: sourceSection,
+                      listing_id: listingId ?? bookingId ?? 'unknown_listing',
+                      listing_name: listingName || undefined,
+                      city: listingArea || undefined,
+                      apartment_type: roomCategory || undefined,
+                      booking_id: bookingId ?? 'unknown_booking',
+                      booking_reference: bookingReference || bookingId || 'unknown_booking',
+                      payment_method: 'paystack',
+                      booking_value_bucket: bookingValueBucket,
+                      wallet_balance_bucket: undefined,
+                      offer_name: offerCampaign?.name || undefined,
+                    });
                     setPaymentMethod('paystack');
                     void handleOpenPaystack();
                   }}>
@@ -1021,7 +1405,25 @@ export default function BookingSummaryScreen() {
                       ? 'border-blue-600 bg-blue-50'
                       : 'border-slate-200 bg-white'
                   }`}
-                  onPress={() => setPaymentMethod('wallet')}>
+                  onPress={() => {
+                    void trackEvent(ANALYTICS_EVENTS.BookingPaymentMethodSelect, {
+                      booking_mode: bookingMode,
+                      source_screen: sourceScreen ?? 'booking_summary',
+                      source_surface: sourceSurface,
+                      source_section: sourceSection,
+                      listing_id: listingId ?? bookingId ?? 'unknown_listing',
+                      listing_name: listingName || undefined,
+                      city: listingArea || undefined,
+                      apartment_type: roomCategory || undefined,
+                      booking_id: bookingId ?? 'unknown_booking',
+                      booking_reference: bookingReference || bookingId || 'unknown_booking',
+                      payment_method: 'wallet',
+                      booking_value_bucket: bookingValueBucket,
+                      wallet_balance_bucket: getWalletBalanceBucket(walletBalance),
+                      offer_name: offerCampaign?.name || undefined,
+                    });
+                    setPaymentMethod('wallet');
+                  }}>
                   <View className="flex-row items-center justify-between">
                     <View>
                       <Text

@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 
+import { completeAuthentication } from '@/lib/analytics';
 import { RESEND_GUEST_OTP } from '@/mutations/resendGuestOtp';
 import { VERIFY_GUEST_OTP } from '@/mutations/verifyGuestOtp';
 import { maybePromptForPushNotifications } from '@/lib/pushNotifications';
@@ -69,18 +70,20 @@ const normalizeErrors = (errors: unknown): string[] => {
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { email: emailParam, error: errorParam } = useLocalSearchParams<{
+  const { email: emailParam, error: errorParam, entry: entryParam } = useLocalSearchParams<{
     email?: string | string[];
     error?: string | string[];
+    entry?: string | string[];
   }>();
   const email = Array.isArray(emailParam) ? emailParam[0] : emailParam;
+  const entry = Array.isArray(entryParam) ? entryParam[0] : entryParam;
   const [otpValues, setOtpValues] = useState(Array(OTP_LENGTH).fill(''));
   const [resendTimer, setResendTimer] = useState(RESEND_INTERVAL_SECONDS);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
-  const inputsRef = useRef<Array<TextInput | null>>([]);
+  const inputsRef = useRef<(TextInput | null)[]>([]);
 
   const [verifyGuestOtp] = useMutation<VerifyGuestOtpResponse, VerifyGuestOtpVariables>(
     VERIFY_GUEST_OTP
@@ -158,6 +161,12 @@ export default function OtpScreen() {
       if (response?.valid) {
         if (response.token) {
           await SecureStore.setItemAsync('authToken', response.token);
+          await completeAuthentication({
+            eventName: entry === 'sign_up' ? 'sign_up' : 'login',
+            method: 'email_otp',
+            sourceScreen: 'auth_otp',
+            sourceSurface: entry === 'sign_up' ? 'sign_up_otp' : 'login_otp',
+          });
           void maybePromptForPushNotifications();
         }
         Alert.alert('Verification complete', 'Your account is now verified.');

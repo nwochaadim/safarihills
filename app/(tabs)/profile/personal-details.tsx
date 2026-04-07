@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 
+import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
+import { clearAuthenticatedUser, trackEvent } from '@/lib/analytics';
 import { UPDATE_PERSONAL_INFO } from '@/mutations/updatePersonalInfo';
 import { GET_USER_INFO_V2 } from '@/queries/getUserInfoV2';
 
@@ -60,6 +62,10 @@ export default function PersonalDetailsScreen() {
   };
 
   const handleSignOut = async () => {
+    await clearAuthenticatedUser({
+      sourceScreen: 'profile_personal_details',
+      reason: 'user_initiated',
+    });
     await SecureStore.deleteItemAsync('authToken');
     router.replace('/auth/login');
   };
@@ -77,10 +83,23 @@ export default function PersonalDetailsScreen() {
       });
       const updated = response?.updatePersonalInfoV2;
       if (updated) {
+        const changedFieldsCount = [
+          updated.firstName ?? firstName,
+          updated.lastName ?? lastName,
+        ].reduce((count, value, index) => {
+          const previousValue = index === 0 ? data?.user?.firstName ?? '' : data?.user?.lastName ?? '';
+          return value?.trim() !== previousValue?.trim() ? count + 1 : count;
+        }, 0);
         setFirstName(updated.firstName ?? firstName);
         setLastName(updated.lastName ?? lastName);
         setPhone(updated.phone ?? phone);
         setEmail(updated.email ?? email);
+        // Profile edits are a strong retention signal and show active account ownership.
+        void trackEvent(ANALYTICS_EVENTS.ProfileAction, {
+          action: 'update_personal_details',
+          source_screen: 'profile_personal_details',
+          changed_fields_count: changedFieldsCount,
+        });
         Alert.alert('Profile updated', 'Your personal details were saved.');
       }
     } catch {

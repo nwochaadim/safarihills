@@ -6,6 +6,8 @@ import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
 
+import { clearAuthenticatedUser } from '@/lib/analytics';
+
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:3000/graphql';
 
 if (__DEV__) {
@@ -25,6 +27,7 @@ const handleUnauthorized = async () => {
   lastUnauthorizedAt = now;
   Alert.alert('Unauthorised', 'Your session has expired. Please log in again.');
   await SecureStore.deleteItemAsync('authToken');
+  await clearAuthenticatedUser({ sourceScreen: 'system', reason: 'session_expired' });
   router.replace('/auth/login');
 };
 
@@ -53,12 +56,12 @@ const authLink = setContext(async (_, { headers }) => {
   };
 });
 
-const stripCanonizeResults = <T extends Record<string, unknown> | undefined>(options: T): T => {
+const stripCanonizeResults = <T>(options: T): T => {
   if (!options || typeof options !== 'object') return options;
-  if (!('canonizeResults' in options)) return options;
-  const cleaned = { ...(options as Record<string, unknown>) };
+  if (!('canonizeResults' in (options as object))) return options;
+  const cleaned = { ...(options as unknown as Record<string, unknown>) };
   delete cleaned.canonizeResults;
-  return cleaned as T;
+  return cleaned as unknown as T;
 };
 
 export const apolloClient = new ApolloClient({
@@ -70,11 +73,11 @@ if (__DEV__) {
   const cache = apolloClient.cache as InMemoryCache;
   const originalDiff = cache.diff.bind(cache);
   cache.diff = (options) => {
-    return originalDiff(stripCanonizeResults(options as Record<string, unknown>));
+    return originalDiff(stripCanonizeResults(options));
   };
 
   const originalWatchQuery = apolloClient.watchQuery.bind(apolloClient);
   apolloClient.watchQuery = ((options) => {
-    return originalWatchQuery(stripCanonizeResults(options as Record<string, unknown>));
+    return originalWatchQuery(stripCanonizeResults(options));
   }) as typeof apolloClient.watchQuery;
 }

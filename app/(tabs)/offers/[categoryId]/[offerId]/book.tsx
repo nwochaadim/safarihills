@@ -4,11 +4,13 @@ import { LoadingImage } from '@/components/LoadingImage';
 import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_OFFER_BOOKING } from '@/mutations/createOfferBooking';
 import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
+import { ANALYTICS_EVENTS, getBookingValueBucket } from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
 import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -512,14 +514,27 @@ export default function OfferBookingScreen() {
     offerId: offerParam,
     listingId: listingParam,
     referenceNumber: referenceParam,
+    source_screen: sourceScreenParam,
+    source_surface: sourceSurfaceParam,
+    source_section: sourceSectionParam,
   } = useLocalSearchParams<{
     offerId?: string | string[];
     listingId?: string | string[];
     referenceNumber?: string | string[];
+    source_screen?: string | string[];
+    source_surface?: string | string[];
+    source_section?: string | string[];
   }>();
   const offerId = Array.isArray(offerParam) ? offerParam[0] : offerParam;
   const listingId = Array.isArray(listingParam) ? listingParam[0] : listingParam;
   const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
+  const sourceScreen = Array.isArray(sourceScreenParam) ? sourceScreenParam[0] : sourceScreenParam;
+  const sourceSurface = Array.isArray(sourceSurfaceParam)
+    ? sourceSurfaceParam[0]
+    : sourceSurfaceParam;
+  const sourceSection = Array.isArray(sourceSectionParam)
+    ? sourceSectionParam[0]
+    : sourceSectionParam;
 
   const { data, loading } = useQuery<OfferNewBookingDetailsResponse>(
     NEW_BOOKING_DETAILS_FOR_OFFER,
@@ -590,6 +605,13 @@ export default function OfferBookingScreen() {
     () => referenceNumber ?? generateBookingReference()
   );
   const todayLabel = useMemo(() => formatTodayLabel(), []);
+  const hasAdvancedToSummaryRef = useRef(false);
+  const progressSnapshotRef = useRef({
+    hasStaySelection: false,
+    hasPurpose: false,
+    bookingReference: referenceNumber ?? generateBookingReference(),
+    bookingValueBucket: getBookingValueBucket(0),
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -764,6 +786,63 @@ export default function OfferBookingScreen() {
   }, [acceptedTerms, hasPrice, hasPurpose, hasStaySelection, hasTimeSlots, isTimeBased]);
   const rateUnitLabel = isTimeBased ? ' / stay' : ' / night';
 
+  useEffect(() => {
+    progressSnapshotRef.current = {
+      hasStaySelection,
+      hasPurpose,
+      bookingReference,
+      bookingValueBucket: getBookingValueBucket(total),
+    };
+  }, [bookingReference, hasPurpose, hasStaySelection, total]);
+
+  useEffect(() => {
+    return () => {
+      if (!listingId || hasAdvancedToSummaryRef.current) {
+        return;
+      }
+
+      const progress = progressSnapshotRef.current;
+      if (!progress.hasStaySelection && !progress.hasPurpose) {
+        return;
+      }
+
+      const abandonStage = progress.hasPurpose
+        ? 'purpose_selected'
+        : isTimeBased
+          ? 'time_selected'
+          : 'dates_selected';
+
+      void trackEvent(ANALYTICS_EVENTS.BookingAbandon, {
+        booking_mode: 'offer',
+        source_screen: sourceScreen ?? 'offer_detail',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: listingId,
+        listing_name: listingName,
+        city: listingArea || undefined,
+        apartment_type:
+          bookingType === 'room' ? selectedRoom?.name ?? 'Single room' : 'Entire apartment',
+        offer_id: offerId,
+        offer_name: offerName,
+        abandon_stage: abandonStage,
+        booking_reference: progress.bookingReference,
+        booking_value_bucket: progress.bookingValueBucket,
+      });
+    };
+  }, [
+    bookingType,
+    isTimeBased,
+    listingArea,
+    listingId,
+    listingName,
+    offerId,
+    offerName,
+    selectedRoom?.name,
+    sourceScreen,
+    sourceSection,
+    sourceSurface,
+  ]);
+
   const handleCreateBooking = async () => {
     if (isTimeBased) {
       if (!checkInTime) return;
@@ -781,6 +860,52 @@ export default function OfferBookingScreen() {
     }
 
     setBookingError(null);
+
+    const selectedApartmentType =
+      bookingType === 'room' ? selectedRoom?.name ?? 'Single room' : 'Entire apartment';
+    const stayUnitType = isTimeBased ? 'time_slot' : 'nights';
+
+    void trackEvent(ANALYTICS_EVENTS.BookingDetailsCompleted, {
+      booking_mode: 'offer',
+      source_screen: sourceScreen ?? 'offer_detail',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: listingId ?? 'unknown_listing',
+      listing_name: listingName,
+      city: listingArea || undefined,
+      apartment_type: selectedApartmentType,
+      guest_count: guestCount,
+      nights: isTimeBased ? undefined : nights,
+      stay_units: stayUnits,
+      stay_unit_type: stayUnitType,
+      booking_value: total,
+      booking_value_bucket: getBookingValueBucket(total),
+      currency: 'NGN',
+      offer_id: offerId,
+      offer_name: offerName,
+    });
+
+    void trackEvent(ANALYTICS_EVENTS.ReviewAndPayClick, {
+      booking_mode: 'offer',
+      source_screen: sourceScreen ?? 'offer_detail',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: listingId ?? 'unknown_listing',
+      listing_name: listingName,
+      city: listingArea || undefined,
+      apartment_type: selectedApartmentType,
+      guest_count: guestCount,
+      nights: isTimeBased ? undefined : nights,
+      stay_units: stayUnits,
+      stay_unit_type: stayUnitType,
+      booking_value: total,
+      booking_value_bucket: getBookingValueBucket(total),
+      currency: 'NGN',
+      booking_reference: bookingReference,
+      coupon_code_present: 0,
+      offer_id: offerId,
+      offer_name: offerName,
+    });
 
     const bookingDate = new Date();
     const checkInDate = isTimeBased
@@ -822,12 +947,16 @@ export default function OfferBookingScreen() {
       }
       const bookingId = result?.booking?.id;
       if (bookingId) {
+        hasAdvancedToSummaryRef.current = true;
         router.push({
           pathname: '/offer-booking/summary/[id]',
           params: {
             id: bookingId,
             offerId,
             listingId,
+            source_screen: sourceScreen ?? 'offer_detail',
+            source_surface: sourceSurface,
+            source_section: sourceSection,
           },
         });
         return;
@@ -1046,7 +1175,24 @@ export default function OfferBookingScreen() {
                 return (
                   <Pressable
                     key={option}
-                    onPress={() => setBookingType(option)}
+                    onPress={() => {
+                      if (bookingType !== option) {
+                        void trackEvent(ANALYTICS_EVENTS.ApartmentTypeSelect, {
+                          booking_mode: 'offer',
+                          source_screen: sourceScreen ?? 'offer_detail',
+                          source_surface: sourceSurface,
+                          source_section: sourceSection,
+                          listing_id: listingId ?? 'unknown_listing',
+                          listing_name: listingName,
+                          city: listingArea || undefined,
+                          selected_apartment_type: getBookingTypeLabel(option),
+                          previous_apartment_type: getBookingTypeLabel(bookingType),
+                          offer_id: offerId,
+                          offer_name: offerName,
+                        });
+                      }
+                      setBookingType(option);
+                    }}
                     className={`flex-row items-center gap-2 rounded-full border px-4 py-2 ${
                       isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
                     }`}>

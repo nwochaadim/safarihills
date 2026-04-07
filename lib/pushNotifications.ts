@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect } from 'react';
 import { Alert, Linking, Platform } from 'react-native';
@@ -70,9 +70,9 @@ const handleNotificationResponse = (
   if (!payload) return;
 
   if (payload.path && payload.params) {
-    router.push({ pathname: payload.path, params: payload.params });
+    router.push({ pathname: payload.path, params: payload.params } as Href);
   } else if (payload.path) {
-    router.push(payload.path);
+    router.push(payload.path as Href);
   }
 
   if (payload.message) {

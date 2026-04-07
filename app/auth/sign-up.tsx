@@ -293,7 +293,7 @@ export default function SignUpScreen() {
     };
   }, []);
 
-  const focusInput = (inputRef: RefObject<TextInput>) => {
+  const focusInput = (inputRef: RefObject<TextInput | null>) => {
     if (Platform.OS !== 'android') return;
     const target = inputRef.current ? findNodeHandle(inputRef.current) : null;
     const scrollResponder = scrollViewRef.current?.getScrollResponder();
@@ -343,7 +343,10 @@ export default function SignUpScreen() {
       const nextStep = response?.nextStep ?? null;
 
       if (nextStep === 'otp') {
-        router.replace({ pathname: '/auth/otp', params: { email: trimmedEmail } });
+        router.replace({
+          pathname: '/auth/otp',
+          params: { email: trimmedEmail, entry: 'sign_up' },
+        });
         return;
       }
 

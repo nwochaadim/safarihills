@@ -5,6 +5,8 @@ import {
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
 } from '@/data/listingOffers';
+import { ANALYTICS_EVENTS, getBookingValueBucket } from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
 import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_BOOKING_WITHOUT_OFFER } from '@/mutations/createBookingWithoutOffer';
 import { NEW_BOOKING_DETAILS } from '@/queries/newBookingDetails';
@@ -12,7 +14,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -355,6 +357,9 @@ export default function BookingScreen() {
     claimedOfferSavingsLabel: claimedOfferSavingsLabelParam,
     claimedOfferExpiryLabel: claimedOfferExpiryLabelParam,
     claimedOfferHoldExpiresAt: claimedOfferHoldExpiresAtParam,
+    source_screen: sourceScreenParam,
+    source_surface: sourceSurfaceParam,
+    source_section: sourceSectionParam,
   } = useLocalSearchParams<{
     id?: string | string[];
     referenceNumber?: string | string[];
@@ -362,6 +367,9 @@ export default function BookingScreen() {
     claimedOfferSavingsLabel?: string | string[];
     claimedOfferExpiryLabel?: string | string[];
     claimedOfferHoldExpiresAt?: string | string[];
+    source_screen?: string | string[];
+    source_surface?: string | string[];
+    source_section?: string | string[];
   }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
   const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
@@ -377,6 +385,13 @@ export default function BookingScreen() {
   const claimedOfferHoldExpiresAt = Array.isArray(claimedOfferHoldExpiresAtParam)
     ? claimedOfferHoldExpiresAtParam[0]
     : claimedOfferHoldExpiresAtParam;
+  const sourceScreen = Array.isArray(sourceScreenParam) ? sourceScreenParam[0] : sourceScreenParam;
+  const sourceSurface = Array.isArray(sourceSurfaceParam)
+    ? sourceSurfaceParam[0]
+    : sourceSurfaceParam;
+  const sourceSection = Array.isArray(sourceSectionParam)
+    ? sourceSectionParam[0]
+    : sourceSectionParam;
   const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
     variables: { listingId: id ?? '' },
     skip: !id || authStatus !== 'signed-in',
@@ -420,6 +435,13 @@ export default function BookingScreen() {
     () => referenceNumber ?? generateBookingReference()
   );
   const [offerBannerNow, setOfferBannerNow] = useState(() => Date.now());
+  const hasAdvancedToSummaryRef = useRef(false);
+  const progressSnapshotRef = useRef({
+    hasDates: false,
+    hasPurpose: false,
+    bookingReference: referenceNumber ?? generateBookingReference(),
+    bookingValueBucket: getBookingValueBucket(0),
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -557,6 +579,58 @@ export default function BookingScreen() {
     return missing;
   }, [acceptedTerms, hasDates, hasPrice, hasPurpose]);
 
+  useEffect(() => {
+    progressSnapshotRef.current = {
+      hasDates,
+      hasPurpose,
+      bookingReference,
+      bookingValueBucket: getBookingValueBucket(total),
+    };
+  }, [bookingReference, hasDates, hasPurpose, total]);
+
+  useEffect(() => {
+    return () => {
+      const progress = progressSnapshotRef.current;
+      if (!id || hasAdvancedToSummaryRef.current) {
+        return;
+      }
+
+      const hasMeaningfulProgress = progress.hasDates || progress.hasPurpose;
+      if (!hasMeaningfulProgress) {
+        return;
+      }
+
+      const abandonStage = progress.hasPurpose
+        ? 'purpose_selected'
+        : progress.hasDates
+          ? 'dates_selected'
+          : 'details_started';
+
+      void trackEvent(ANALYTICS_EVENTS.BookingAbandon, {
+        booking_mode: 'standard',
+        source_screen: sourceScreen ?? 'listing_detail',
+        source_surface: sourceSurface,
+        source_section: sourceSection,
+        listing_id: id,
+        listing_name: listingName,
+        city: listingArea || undefined,
+        apartment_type: bookingType === 'room' ? selectedRoom?.name ?? 'Single room' : 'Entire apartment',
+        abandon_stage: abandonStage,
+        booking_reference: progress.bookingReference,
+        booking_value_bucket: progress.bookingValueBucket,
+      });
+    };
+  }, [
+    bookingType,
+    id,
+    listingArea,
+    listingName,
+    selectedRoom?.name,
+    sourceScreen,
+    sourceSection,
+    sourceSurface,
+  ]);
+
   const handleCreateBooking = async () => {
     if (!checkIn || !checkOut) return;
     const listingId = id ? Number.parseInt(id, 10) : NaN;
@@ -566,6 +640,50 @@ export default function BookingScreen() {
     }
 
     setBookingError(null);
+
+    const selectedApartmentType =
+      bookingType === 'room' ? selectedRoom?.name ?? 'Single room' : 'Entire apartment';
+
+    // This event marks the point where a user has supplied enough intent to enter the payment review step.
+    void trackEvent(ANALYTICS_EVENTS.BookingDetailsCompleted, {
+      booking_mode: 'standard',
+      source_screen: sourceScreen ?? 'listing_detail',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: id ?? 'unknown_listing',
+      listing_name: listingName,
+      city: listingArea || undefined,
+      apartment_type: selectedApartmentType,
+      guest_count: guestCount,
+      nights,
+      stay_units: nights,
+      stay_unit_type: 'nights',
+      booking_value: total,
+      booking_value_bucket: getBookingValueBucket(total),
+      currency: 'NGN',
+      offer_name: claimedOfferTitle || undefined,
+    });
+
+    void trackEvent(ANALYTICS_EVENTS.ReviewAndPayClick, {
+      booking_mode: 'standard',
+      source_screen: sourceScreen ?? 'listing_detail',
+      source_surface: sourceSurface,
+      source_section: sourceSection,
+      listing_id: id ?? 'unknown_listing',
+      listing_name: listingName,
+      city: listingArea || undefined,
+      apartment_type: selectedApartmentType,
+      guest_count: guestCount,
+      nights,
+      stay_units: nights,
+      stay_unit_type: 'nights',
+      booking_value: total,
+      booking_value_bucket: getBookingValueBucket(total),
+      currency: 'NGN',
+      booking_reference: bookingReference,
+      coupon_code_present: 0,
+      offer_name: claimedOfferTitle || undefined,
+    });
 
     try {
       const { data: response } = await createBooking({
@@ -595,9 +713,16 @@ export default function BookingScreen() {
         return;
       }
       if (result?.id) {
+        hasAdvancedToSummaryRef.current = true;
         router.push({
           pathname: '/booking/summary/[id]',
-          params: { id: result.id },
+          params: {
+            id: result.id,
+            source_screen: sourceScreen ?? 'listing_detail',
+            source_surface: sourceSurface,
+            source_section: sourceSection,
+            listing_id: id,
+          },
         });
         return;
       }
@@ -779,7 +904,22 @@ export default function BookingScreen() {
                 return (
                   <Pressable
                     key={option}
-                    onPress={() => setBookingType(option)}
+                    onPress={() => {
+                      if (bookingType !== option) {
+                        void trackEvent(ANALYTICS_EVENTS.ApartmentTypeSelect, {
+                          booking_mode: 'standard',
+                          source_screen: sourceScreen ?? 'listing_detail',
+                          source_surface: sourceSurface,
+                          source_section: sourceSection,
+                          listing_id: id ?? 'unknown_listing',
+                          listing_name: listingName,
+                          city: listingArea || undefined,
+                          selected_apartment_type: getBookingTypeLabel(option),
+                          previous_apartment_type: getBookingTypeLabel(bookingType),
+                        });
+                      }
+                      setBookingType(option);
+                    }}
                     className={`flex-row items-center gap-2 rounded-full border px-4 py-2 ${
                       isActive ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'
                     }`}>

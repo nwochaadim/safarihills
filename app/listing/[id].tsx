@@ -3,6 +3,12 @@ import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
+import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  toFlag,
+} from '@/lib/analytics.schema';
 import {
   BookingOption,
   findListingById,
@@ -226,8 +232,35 @@ const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
 
 export default function ListingDetailScreen() {
   const router = useRouter();
-  const { id: idParam } = useLocalSearchParams<{ id?: string }>();
+  const {
+    id: idParam,
+    source_screen: sourceScreenParam,
+    source_surface: sourceSurfaceParam,
+    source_section: sourceSectionParam,
+    item_list_id: itemListIdParam,
+    item_list_name: itemListNameParam,
+  } = useLocalSearchParams<{
+    id?: string;
+    source_screen?: string;
+    source_surface?: string;
+    source_section?: string;
+    item_list_id?: string;
+    item_list_name?: string;
+  }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  const sourceScreen = Array.isArray(sourceScreenParam)
+    ? sourceScreenParam[0]
+    : sourceScreenParam;
+  const sourceSurface = Array.isArray(sourceSurfaceParam)
+    ? sourceSurfaceParam[0]
+    : sourceSurfaceParam;
+  const sourceSection = Array.isArray(sourceSectionParam)
+    ? sourceSectionParam[0]
+    : sourceSectionParam;
+  const itemListId = Array.isArray(itemListIdParam) ? itemListIdParam[0] : itemListIdParam;
+  const itemListName = Array.isArray(itemListNameParam)
+    ? itemListNameParam[0]
+    : itemListNameParam;
 
   const fallbackListing = useMemo(() => (id ? findListingById(id) : undefined), [id]);
   const { data, error, loading } = useQuery<V2UserFindListingResponse>(V2_USER_FIND_LISTING, {
@@ -362,7 +395,26 @@ export default function ListingDetailScreen() {
       activeOfferClaims={activeOfferClaims}
       onRefreshOffers={() => refetchListingOffers({ listingId: listing.id })}
       onBack={() => router.back()}
-      onBook={() => router.push({ pathname: '/booking/[id]', params: { id: listing.id } })}
+      sourceContext={{
+        sourceScreen: sourceScreen ?? 'listing_detail',
+        sourceSurface: sourceSurface ?? 'listing_primary_cta',
+        sourceSection,
+        itemListId,
+        itemListName,
+      }}
+      onBook={() =>
+        router.push({
+          pathname: '/booking/[id]',
+          params: {
+            id: listing.id,
+            source_screen: sourceScreen ?? 'listing_detail',
+            source_surface: sourceSurface ?? 'listing_primary_cta',
+            source_section: sourceSection,
+            item_list_id: itemListId,
+            item_list_name: itemListName,
+          },
+        })
+      }
     />
   );
 }
@@ -375,6 +427,13 @@ type ListingDetailContentProps = {
   onRefreshOffers: () => Promise<unknown>;
   onBack: () => void;
   onBook: () => void;
+  sourceContext: {
+    sourceScreen: string;
+    sourceSurface?: string;
+    sourceSection?: string;
+    itemListId?: string;
+    itemListName?: string;
+  };
 };
 
 function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
@@ -464,14 +523,65 @@ function ListingDetailContent({
   onRefreshOffers,
   onBack,
   onBook,
+  sourceContext,
 }: ListingDetailContentProps) {
   const router = useRouter();
+  const { track, trackOnce } = useAnalyticsTracker();
   const [activeImage, setActiveImage] = useState(0);
   const [activeOfferIndex, setActiveOfferIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [offerNow, setOfferNow] = useState(() => Date.now());
   const scrollY = useRef(new Animated.Value(0)).current;
+  const attractionsSectionYRef = useRef(0);
+  const reviewsSectionYRef = useRef(0);
+
+  useEffect(() => {
+    // Detail views are the clearest signal that a user moved from casual browsing into active evaluation.
+    track(ANALYTICS_EVENTS.ViewItem, {
+      currency: 'NGN',
+      value: listing.minimumPrice,
+      source_screen: sourceContext.sourceScreen,
+      source_surface: sourceContext.sourceSurface,
+      source_section: sourceContext.sourceSection,
+      listing_id: listing.id,
+      listing_name: listing.name,
+      city: listing.area,
+      apartment_type: listing.apartmentType,
+      price: listing.minimumPrice,
+      has_reviews: toFlag(listing.reviews.length > 0),
+      has_attractions: toFlag((listing.attractions ?? []).length > 0),
+      image_count: listing.gallery.length,
+      offer_count: offers.length,
+      items: [
+        buildListingAnalyticsItem({
+          id: listing.id,
+          name: listing.name,
+          apartmentType: listing.apartmentType,
+          city: listing.area,
+          price: listing.minimumPrice,
+          itemListId: sourceContext.itemListId,
+          itemListName: sourceContext.itemListName,
+        }),
+      ],
+    });
+  }, [
+    listing.apartmentType,
+    listing.area,
+    listing.attractions,
+    listing.gallery.length,
+    listing.id,
+    listing.minimumPrice,
+    listing.name,
+    listing.reviews.length,
+    offers.length,
+    sourceContext.itemListId,
+    sourceContext.itemListName,
+    sourceContext.sourceScreen,
+    sourceContext.sourceSection,
+    sourceContext.sourceSurface,
+    track,
+  ]);
 
   const handleOpenAttraction = (mapUrl: string) => {
     if (!mapUrl) return;
@@ -479,6 +589,13 @@ function ListingDetailContent({
   };
 
   const handleOpenGallery = () => {
+    track(ANALYTICS_EVENTS.ListingGalleryBrowse, {
+      listing_id: listing.id,
+      source_surface: 'photo_modal',
+      image_index: activeImage + 1,
+      image_count: listing.gallery.length,
+      browse_depth: 'started',
+    });
     setPreviewIndex(activeImage);
     setGalleryVisible(true);
   };
@@ -536,6 +653,32 @@ function ListingDetailContent({
     setActiveOfferIndex(0);
   }, [offers.length, listing.id]);
 
+  useEffect(() => {
+    const listener = scrollY.addListener(({ value }) => {
+      const viewportCheckpoint = value + 220;
+
+      if (attractionsSectionYRef.current > 0 && viewportCheckpoint >= attractionsSectionYRef.current) {
+        trackOnce(`${listing.id}:attractions_visible`, ANALYTICS_EVENTS.ListingContentMilestone, {
+          listing_id: listing.id,
+          milestone: 'attractions_visible',
+          city: listing.area,
+        });
+      }
+
+      if (reviewsSectionYRef.current > 0 && viewportCheckpoint >= reviewsSectionYRef.current) {
+        trackOnce(`${listing.id}:reviews_visible`, ANALYTICS_EVENTS.ListingContentMilestone, {
+          listing_id: listing.id,
+          milestone: 'reviews_visible',
+          city: listing.area,
+        });
+      }
+    });
+
+    return () => {
+      scrollY.removeListener(listener);
+    };
+  }, [listing.area, listing.id, scrollY, trackOnce]);
+
   useFocusEffect(
     useCallback(() => {
       void onRefreshOffers();
@@ -543,6 +686,18 @@ function ListingDetailContent({
   );
 
   const handleClaimOffer = (offer: ListingOffer) => {
+    track(ANALYTICS_EVENTS.SelectPromotion, {
+      promotion_id: offer.id,
+      promotion_name: offer.title,
+      source_screen: sourceContext.sourceScreen,
+      source_surface: 'listing_offer_card',
+      listing_id: listing.id,
+      listing_name: listing.name,
+      city: listing.area,
+      offer_type: offer.badge,
+      savings_label: offer.savingsLabel,
+    });
+
     router.push({
       pathname: '/offer-booking/[listingId]',
       params: {
@@ -553,6 +708,11 @@ function ListingDetailContent({
         listingImage: listing.coverPhoto || listing.gallery[0] || '',
         minimumPrice: `${listing.minimumPrice}`,
         offer: JSON.stringify(offer),
+        source_screen: sourceContext.sourceScreen,
+        source_surface: sourceContext.sourceSurface ?? 'listing_offer_card',
+        source_section: sourceContext.sourceSection,
+        item_list_id: sourceContext.itemListId,
+        item_list_name: sourceContext.itemListName,
       },
     });
   };
@@ -582,6 +742,26 @@ function ListingDetailContent({
           onMomentumScrollEnd={(event) => {
             const index = Math.round(event.nativeEvent.contentOffset.x / width);
             setActiveImage(index);
+            if (index > 0) {
+              const browseDepth =
+                index >= listing.gallery.length - 1
+                  ? 'complete'
+                  : index >= 2
+                    ? 'deep'
+                    : 'started';
+
+              trackOnce(
+                `${listing.id}:hero_gallery:${browseDepth}`,
+                ANALYTICS_EVENTS.ListingGalleryBrowse,
+                {
+                  listing_id: listing.id,
+                  source_surface: 'hero_carousel',
+                  image_index: index + 1,
+                  image_count: listing.gallery.length,
+                  browse_depth: browseDepth,
+                }
+              );
+            }
           }}
           renderItem={({ item }) => (
             <View style={{ width, height: '100%' }}>
@@ -862,7 +1042,11 @@ function ListingDetailContent({
             </View>
           </View>
 
-          <View className="mt-8">
+          <View
+            className="mt-8"
+            onLayout={(event) => {
+              attractionsSectionYRef.current = event.nativeEvent.layout.y;
+            }}>
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Attractions nearby
             </Text>
@@ -886,7 +1070,16 @@ function ListingDetailContent({
                   return (
                   <Pressable
                     key={attraction.id}
-                    onPress={() => handleOpenAttraction(attraction.mapUrl)}
+                    onPress={() => {
+                      track(ANALYTICS_EVENTS.AttractionSelect, {
+                        source_screen: 'listing_detail',
+                        listing_id: listing.id,
+                        attraction_id: attraction.id,
+                        attraction_name: attraction.name,
+                        city: listing.area,
+                      });
+                      handleOpenAttraction(attraction.mapUrl);
+                    }}
                     disabled={!canOpenMap}
                     className="mr-4 w-64 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-100">
                     <LoadingImage
@@ -918,7 +1111,11 @@ function ListingDetailContent({
             )}
           </View>
 
-          <View className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+          <View
+            className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100"
+            onLayout={(event) => {
+              reviewsSectionYRef.current = event.nativeEvent.layout.y;
+            }}>
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
               Past reviews
             </Text>
@@ -952,7 +1149,25 @@ function ListingDetailContent({
         style={{ bottom: 0 }}>
         <Pressable
           className="items-center justify-center rounded-full bg-blue-600 py-4"
-          onPress={onBook}>
+          onPress={() => {
+            // Booking entry marks the hand-off from research to high-intent funnel behavior.
+            track(ANALYTICS_EVENTS.BeginBooking, {
+              booking_mode: 'standard',
+              source_screen: sourceContext.sourceScreen,
+              source_surface: sourceContext.sourceSurface,
+              source_section: sourceContext.sourceSection,
+              listing_id: listing.id,
+              listing_name: listing.name,
+              city: listing.area,
+              apartment_type: listing.apartmentType,
+              offer_selected: toFlag(false),
+              has_reviews: toFlag(listing.reviews.length > 0),
+              has_attractions: toFlag((listing.attractions ?? []).length > 0),
+              value: listing.minimumPrice,
+              currency: 'NGN',
+            });
+            onBook();
+          }}>
           <View className="flex-row items-center gap-2">
             <Text className="text-base font-semibold text-white">Book Now</Text>
             <Text className="text-xs font-semibold text-blue-100">

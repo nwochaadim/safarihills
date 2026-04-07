@@ -24,6 +24,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
+
 const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
   if (theme === 'emerald') {
     return {
@@ -99,6 +102,11 @@ export default function LocalOfferBookingScreen() {
     listingImage: listingImageParam,
     minimumPrice: minimumPriceParam,
     offer: offerParam,
+    source_screen: sourceScreenParam,
+    source_surface: sourceSurfaceParam,
+    source_section: sourceSectionParam,
+    item_list_id: itemListIdParam,
+    item_list_name: itemListNameParam,
   } = useLocalSearchParams<{
     listingId?: string | string[];
     offerId?: string | string[];
@@ -107,6 +115,11 @@ export default function LocalOfferBookingScreen() {
     listingImage?: string | string[];
     minimumPrice?: string | string[];
     offer?: string | string[];
+    source_screen?: string | string[];
+    source_surface?: string | string[];
+    source_section?: string | string[];
+    item_list_id?: string | string[];
+    item_list_name?: string | string[];
   }>();
 
   const listingId = Array.isArray(listingIdParam) ? listingIdParam[0] : listingIdParam;
@@ -116,6 +129,17 @@ export default function LocalOfferBookingScreen() {
   const listingImage = Array.isArray(listingImageParam) ? listingImageParam[0] : listingImageParam;
   const minimumPrice = parseNumberParam(minimumPriceParam);
   const parsedOffer = parseListingOfferParam(offerParam);
+  const sourceScreen = Array.isArray(sourceScreenParam) ? sourceScreenParam[0] : sourceScreenParam;
+  const sourceSurface = Array.isArray(sourceSurfaceParam)
+    ? sourceSurfaceParam[0]
+    : sourceSurfaceParam;
+  const sourceSection = Array.isArray(sourceSectionParam)
+    ? sourceSectionParam[0]
+    : sourceSectionParam;
+  const itemListId = Array.isArray(itemListIdParam) ? itemListIdParam[0] : itemListIdParam;
+  const itemListName = Array.isArray(itemListNameParam)
+    ? itemListNameParam[0]
+    : itemListNameParam;
   const fallbackListing = useMemo(
     () => (listingId ? findListingById(listingId) : undefined),
     [listingId]
@@ -201,6 +225,24 @@ export default function LocalOfferBookingScreen() {
     void refetch({ listingId: resolvedListing.id });
   }, [claim, now, refetch, resolvedListing.id]);
 
+  useEffect(() => {
+    if (!selectedOffer) {
+      return;
+    }
+
+    void trackEvent(ANALYTICS_EVENTS.ViewPromotion, {
+      promotion_id: selectedOffer.id,
+      promotion_name: selectedOffer.title,
+      source_screen: 'listing_offer_review',
+      source_surface: 'offer_review',
+      listing_id: resolvedListing.id,
+      listing_name: resolvedListing.name,
+      city: resolvedListing.area,
+      offer_type: selectedOffer.badge,
+      savings_label: selectedOffer.savingsLabel,
+    });
+  }, [resolvedListing.area, resolvedListing.id, resolvedListing.name, selectedOffer]);
+
   if (!selectedOffer) {
     if (loading) {
       return (
@@ -239,6 +281,18 @@ export default function LocalOfferBookingScreen() {
       router.push('/auth/login');
       return;
     }
+
+    void trackEvent(ANALYTICS_EVENTS.SelectPromotion, {
+      promotion_id: selectedOffer.id,
+      promotion_name: selectedOffer.title,
+      source_screen: sourceScreen ?? 'listing_detail',
+      source_surface: 'lock_offer_cta',
+      listing_id: resolvedListing.id,
+      listing_name: resolvedListing.name,
+      city: resolvedListing.area,
+      offer_type: selectedOffer.badge,
+      savings_label: selectedOffer.savingsLabel,
+    });
 
     setIsLocking(true);
     setClaimError(null);
@@ -282,12 +336,32 @@ export default function LocalOfferBookingScreen() {
   const handleContinueWithOffer = () => {
     if (!claim) return;
 
+    void trackEvent(ANALYTICS_EVENTS.BeginBooking, {
+      booking_mode: 'offer',
+      source_screen: sourceScreen ?? 'listing_offer_review',
+      source_surface: sourceSurface ?? 'locked_offer_cta',
+      source_section: sourceSection,
+      listing_id: resolvedListing.id,
+      listing_name: resolvedListing.name,
+      city: resolvedListing.area,
+      offer_id: selectedOffer.id,
+      offer_name: selectedOffer.title,
+      offer_selected: 1,
+      value: resolvedListing.minimumPrice,
+      currency: 'NGN',
+    });
+
     router.push({
       pathname: '/(tabs)/offers/[categoryId]/[offerId]/book',
       params: {
         categoryId: 'listing-offers',
         offerId: selectedOffer.id,
         listingId: resolvedListing.id,
+        source_screen: sourceScreen ?? 'listing_offer_review',
+        source_surface: sourceSurface ?? 'locked_offer_cta',
+        source_section: sourceSection,
+        item_list_id: itemListId,
+        item_list_name: itemListName,
       },
     });
   };
@@ -483,9 +557,32 @@ export default function LocalOfferBookingScreen() {
 
           <Pressable
             className="mt-3 items-center justify-center rounded-full border border-slate-200 bg-white py-4"
-            onPress={() =>
-              router.push({ pathname: '/booking/[id]', params: { id: resolvedListing.id } })
-            }>
+            onPress={() => {
+              void trackEvent(ANALYTICS_EVENTS.BeginBooking, {
+                booking_mode: 'standard',
+                source_screen: sourceScreen ?? 'listing_offer_review',
+                source_surface: 'book_without_offer_cta',
+                source_section: sourceSection,
+                listing_id: resolvedListing.id,
+                listing_name: resolvedListing.name,
+                city: resolvedListing.area,
+                offer_selected: 0,
+                value: resolvedListing.minimumPrice,
+                currency: 'NGN',
+              });
+
+              router.push({
+                pathname: '/booking/[id]',
+                params: {
+                  id: resolvedListing.id,
+                  source_screen: sourceScreen ?? 'listing_offer_review',
+                  source_surface: 'book_without_offer_cta',
+                  source_section: sourceSection,
+                  item_list_id: itemListId,
+                  item_list_name: itemListName,
+                },
+              });
+            }}>
             <Text className="text-base font-semibold text-slate-700">Book without this offer</Text>
           </Pressable>
         </View>

@@ -21,6 +21,8 @@ import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
 import { SkeletonBar } from '@/components/SkeletonBar';
 import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
+import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
+import { trackEvent } from '@/lib/analytics';
 import { AuthStatus } from '@/lib/authStatus';
 import { DELETE_BOOKING } from '@/mutations/deleteBooking';
 import { FIND_BOOKINGS } from '@/queries/findBookings';
@@ -330,7 +332,7 @@ export default function BookingsScreen() {
       if (fetched.length < PAGE_SIZE) {
         setRemoteHasMore(false);
       }
-    } catch (err) {
+    } catch {
       setLoadMoreError('Unable to load more bookings.');
     } finally {
       setLoadingMore(false);
@@ -338,6 +340,11 @@ export default function BookingsScreen() {
   };
 
   const handleChangeFilter = (status: BookingStatus) => {
+    void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+      action: 'filter_change',
+      source_screen: 'bookings_home',
+      filter_value: status,
+    });
     if (status === activeFilter) {
       handleRefresh();
       return;
@@ -372,6 +379,14 @@ export default function BookingsScreen() {
     }
     setDeleteError(null);
     setDeletingBookingId(booking.id);
+    void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+      action: 'delete_attempt',
+      source_screen: 'bookings_home',
+      booking_id: booking.id,
+      booking_reference: referenceNumber,
+      booking_state: booking.state,
+      city: booking.location,
+    });
     try {
       const { data: response } = await deleteBooking({
         variables: { referenceNumber },
@@ -379,18 +394,50 @@ export default function BookingsScreen() {
       const errors = response?.deleteBooking?.errors;
       if (Array.isArray(errors) && errors.length) {
         setDeleteError({ id: booking.id, message: errors.join(' ') });
+        void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+          action: 'delete_failure',
+          source_screen: 'bookings_home',
+          booking_id: booking.id,
+          booking_reference: referenceNumber,
+          booking_state: booking.state,
+          city: booking.location,
+        });
         return;
       }
       if (typeof errors === 'string' && errors.trim()) {
         setDeleteError({ id: booking.id, message: errors });
+        void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+          action: 'delete_failure',
+          source_screen: 'bookings_home',
+          booking_id: booking.id,
+          booking_reference: referenceNumber,
+          booking_state: booking.state,
+          city: booking.location,
+        });
         return;
       }
       await refetch(queryVariables);
       setRemoteHasMore(true);
+      void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+        action: 'delete_success',
+        source_screen: 'bookings_home',
+        booking_id: booking.id,
+        booking_reference: referenceNumber,
+        booking_state: booking.state,
+        city: booking.location,
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unable to delete booking right now.';
       setDeleteError({ id: booking.id, message });
+      void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+        action: 'delete_failure',
+        source_screen: 'bookings_home',
+        booking_id: booking.id,
+        booking_reference: referenceNumber,
+        booking_state: booking.state,
+        city: booking.location,
+      });
     } finally {
       setDeletingBookingId(null);
     }
@@ -414,6 +461,14 @@ export default function BookingsScreen() {
 
   const handleViewReservation = (booking: BookingListItem) => {
     if (!booking.id) return;
+    void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+      action: 'reservation_open',
+      source_screen: 'bookings_home',
+      booking_id: booking.id,
+      booking_reference: booking.referenceNumber,
+      booking_state: booking.state,
+      city: booking.location,
+    });
     setReservationError(null);
     setReferenceCopied(false);
     setReservationVisible(true);
@@ -443,6 +498,10 @@ export default function BookingsScreen() {
   const handleCallContact = (contact?: string | null) => {
     const trimmed = contact?.trim();
     if (!trimmed) return;
+    void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+      action: 'contact_call',
+      source_screen: 'bookings_home',
+    });
     const digits = trimmed.replace(/[^\d+]/g, '');
     const url = Platform.OS === 'ios' ? `telprompt:${digits}` : `tel:${digits}`;
     Linking.openURL(url).catch(() => null);
@@ -452,6 +511,11 @@ export default function BookingsScreen() {
     const value = reference?.trim();
     if (!value) return;
     await Clipboard.setStringAsync(value);
+    void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+      action: 'reference_copy',
+      source_screen: 'bookings_home',
+      booking_reference: value,
+    });
     setReferenceCopied(true);
     setTimeout(() => setReferenceCopied(false), 1500);
   };
@@ -482,7 +546,18 @@ export default function BookingsScreen() {
 
     return (
       <View className="mb-5 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100">
-        <Pressable onPress={() => router.push(`/booking/summary/${item.id}`)}>
+        <Pressable
+          onPress={() => {
+            void trackEvent(ANALYTICS_EVENTS.BookingsAction, {
+              action: 'booking_card_open',
+              source_screen: 'bookings_home',
+              booking_id: item.id,
+              booking_reference: item.referenceNumber,
+              booking_state: item.state,
+              city: item.location,
+            });
+            router.push(`/booking/summary/${item.id}`);
+          }}>
           <View className="flex-row items-center gap-4">
             <LoadingImage
               source={{ uri: item.coverImage ?? AVATARS[0] }}

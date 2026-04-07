@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 
+import { completeAuthentication } from '@/lib/analytics';
 import { LOGIN_GUEST } from '@/mutations/loginGuest';
 import { maybePromptForPushNotifications } from '@/lib/pushNotifications';
 
@@ -74,6 +75,7 @@ export default function LoginScreen() {
           pathname: '/auth/otp',
           params: {
             email: trimmedEmail,
+            entry: 'login',
             error: errorMessage ?? undefined,
           },
         });
@@ -87,6 +89,12 @@ export default function LoginScreen() {
 
       if (response?.token) {
         await SecureStore.setItemAsync('authToken', response.token);
+        await completeAuthentication({
+          eventName: 'login',
+          method: 'password',
+          sourceScreen: 'auth_login',
+          sourceSurface: 'primary_cta',
+        });
         void maybePromptForPushNotifications();
         router.replace('/(tabs)/explore');
         return;

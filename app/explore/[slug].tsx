@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -13,6 +13,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BackButton } from '@/components/BackButton';
 import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
+import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  toFlag,
+} from '@/lib/analytics.schema';
 import {
   ExploreFilterInput,
   RemoteExploreSection,
@@ -40,6 +46,7 @@ const rgbaFromHex = (color: string, alpha: string) => {
 
 export default function ExploreSectionScreen() {
   const router = useRouter();
+  const { track } = useAnalyticsTracker();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ slug?: string | string[]; filters?: string | string[] }>();
   const [refreshing, setRefreshing] = useState(false);
@@ -79,6 +86,7 @@ export default function ExploreSectionScreen() {
   const matchingCount = section?.matchingCount ?? 0;
   const hasMore = !error && remoteHasMore && listings.length < matchingCount;
   const isNetworkError = Boolean(error?.networkError);
+  const listViewSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     setRemoteHasMore(true);
@@ -104,6 +112,42 @@ export default function ExploreSectionScreen() {
       scrollY.removeListener(listener);
     };
   }, [scrollY]);
+
+  useEffect(() => {
+    if (!section || loading || error || listings.length === 0) {
+      return;
+    }
+
+    const signature = `${section.slug}:${listings.length}:${matchingCount}:${JSON.stringify(
+      baseFilters
+    )}`;
+    if (listViewSignatureRef.current === signature) {
+      return;
+    }
+
+    listViewSignatureRef.current = signature;
+
+    track(ANALYTICS_EVENTS.ViewItemList, {
+      item_list_id: section.slug,
+      item_list_name: section.title,
+      source_screen: 'explore_section',
+      source_surface: 'section_results',
+      source_section: section.slug,
+      city: section.location?.area || section.location?.name || undefined,
+      list_size: listings.length,
+      items: listings.slice(0, 10).map((listing) =>
+        buildListingAnalyticsItem({
+          id: listing.id,
+          name: listing.name,
+          apartmentType: listing.apartmentType,
+          city: listing.area,
+          price: listing.minimumPrice,
+          itemListId: section.slug,
+          itemListName: section.title,
+        })
+      ),
+    });
+  }, [baseFilters, error, listings, loading, matchingCount, section, track]);
 
   const handleRetry = () => {
     refetch({ slug, filters: initialFilters }).catch(() => undefined);
@@ -265,9 +309,44 @@ export default function ExploreSectionScreen() {
         renderItem={({ item }) => (
           <ExploreListingCard
             item={item}
-            onPress={(listing) =>
-              router.push({ pathname: '/listing/[id]', params: { id: listing.id } })
-            }
+            onPress={(listing) => {
+              track(ANALYTICS_EVENTS.SelectItem, {
+                source_screen: 'explore_section',
+                source_surface: 'section_results_card',
+                source_section: slug,
+                item_list_id: section?.slug || slug,
+                item_list_name: section?.title || slug,
+                listing_id: listing.id,
+                listing_name: listing.name,
+                city: listing.area,
+                apartment_type: listing.apartmentType,
+                price: listing.minimumPrice,
+                has_offer: toFlag(listing.promoTags.length > 0),
+                items: [
+                  buildListingAnalyticsItem({
+                    id: listing.id,
+                    name: listing.name,
+                    apartmentType: listing.apartmentType,
+                    city: listing.area,
+                    price: listing.minimumPrice,
+                    itemListId: section?.slug || slug,
+                    itemListName: section?.title || slug,
+                  }),
+                ],
+              });
+
+              router.push({
+                pathname: '/listing/[id]',
+                params: {
+                  id: listing.id,
+                  source_screen: 'explore_section',
+                  source_surface: 'section_results_card',
+                  source_section: slug,
+                  item_list_id: section?.slug || slug,
+                  item_list_name: section?.title || slug,
+                },
+              });
+            }}
           />
         )}
         keyExtractor={(item, index) => `${item.id}-${index}`}

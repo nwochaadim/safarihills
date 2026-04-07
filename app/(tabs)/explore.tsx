@@ -23,6 +23,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
+import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  toFlag,
+} from '@/lib/analytics.schema';
 import {
   ExploreFilterInput,
   ExploreSection,
@@ -33,6 +39,7 @@ import {
   flattenPreviewListings,
   formatCurrencyInput,
   mapExploreSection,
+  parseCurrencyInput,
   serializeExploreFilterInput,
   sortExploreSections,
 } from '@/lib/explore';
@@ -365,6 +372,7 @@ function BudgetRangeSlider({ minValue, maxValue, onChange }: BudgetRangeSliderPr
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const { track } = useAnalyticsTracker();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const { height: windowHeight } = useWindowDimensions();
@@ -504,6 +512,7 @@ export default function ExploreScreen() {
     if (!parts.length) return 'Dates, budget, apartment type, guests, and amenities';
     return parts.slice(0, 3).join(' • ');
   }, [filters]);
+  const listViewSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     const listener = scrollY.addListener(({ value }) => {
@@ -558,6 +567,20 @@ export default function ExploreScreen() {
   };
 
   const applyFilters = () => {
+    // Filter application is an early intent signal that powers warm-lead audiences and search analysis.
+    track(ANALYTICS_EVENTS.SearchFiltersApplied, {
+      source_screen: 'explore_home',
+      source_surface: 'filter_sheet',
+      filter_count: advancedFilterCount,
+      location: filters.location || undefined,
+      apartment_type: filters.type || undefined,
+      guest_count: filters.guests ? (filters.guests === '6+' ? 6 : Number(filters.guests)) : undefined,
+      min_budget: parseCurrencyInput(filters.minBudget) ?? undefined,
+      max_budget: parseCurrencyInput(filters.maxBudget) ?? undefined,
+      has_dates: toFlag(Boolean(filters.checkIn || filters.checkOut)),
+      has_budget: toFlag(Boolean(filters.minBudget || filters.maxBudget)),
+      amenities_count: filters.amenities.length,
+    });
     setFilterSheetOpen(false);
     setLocationDropdownOpen(false);
     setLocationSearchTerm('');
@@ -612,7 +635,60 @@ export default function ExploreScreen() {
     refetch({ filters: appliedExploreFilters }).catch(() => undefined);
   };
 
-  const openSection = (section: ExploreSection) => {
+  useEffect(() => {
+    if (loading || error || previewListings.length === 0) {
+      return;
+    }
+
+    const signature = JSON.stringify({
+      filters: appliedExploreFilters,
+      sectionCount,
+      listSize: previewListings.length,
+    });
+
+    if (listViewSignatureRef.current === signature) {
+      return;
+    }
+
+    listViewSignatureRef.current = signature;
+
+    track(ANALYTICS_EVENTS.ListingListView, {
+      list_id: 'explore_home_preview',
+      list_name: 'Explore home preview',
+      source_screen: 'explore_home',
+      source_surface: 'preview_feed',
+      list_size: previewListings.length,
+      matching_count: sectionCount,
+      city: filters.location || undefined,
+      filter_count: activeFilterCount,
+    });
+  }, [
+    activeFilterCount,
+    appliedExploreFilters,
+    error,
+    filters.location,
+    loading,
+    previewListings.length,
+    sectionCount,
+    track,
+  ]);
+
+  const openSection = (
+    section: ExploreSection,
+    sourceSurface: 'compact_section_card' | 'discover_section_card'
+  ) => {
+    track(ANALYTICS_EVENTS.ExploreSectionSelect, {
+      source_screen: 'explore_home',
+      source_surface: sourceSurface,
+      section_id: section.id,
+      section_slug: section.slug,
+      section_title: section.title,
+      section_type: section.sectionType,
+      matching_count: section.matchingCount,
+      city: section.location?.area || section.location?.name || undefined,
+      filter_count: activeFilterCount,
+    });
+
     router.push({
       pathname: '/explore/[slug]',
       params: {
@@ -681,7 +757,7 @@ export default function ExploreScreen() {
                   backgroundColor: section.backgroundColor,
                   borderColor: section.borderColor,
                 }}
-                onPress={() => openSection(section)}>
+                onPress={() => openSection(section, 'compact_section_card')}>
                 <View className="flex-row items-start justify-between gap-2">
                   <View className="flex-1">
                     <Text
@@ -804,7 +880,7 @@ export default function ExploreScreen() {
                     backgroundColor: section.backgroundColor,
                     borderColor: section.borderColor,
                   }}
-                  onPress={() => openSection(section)}>
+                  onPress={() => openSection(section, 'discover_section_card')}>
                   <View className="flex-row items-start justify-between gap-3">
                     <View className="flex-1">
                       <Text
@@ -1208,9 +1284,42 @@ export default function ExploreScreen() {
         renderItem={({ item }) => (
           <ExploreListingCard
             item={item}
-            onPress={(listing) =>
-              router.push({ pathname: '/listing/[id]', params: { id: listing.id } })
-            }
+            onPress={(listing) => {
+              track(ANALYTICS_EVENTS.SelectItem, {
+                source_screen: 'explore_home',
+                source_surface: 'explore_preview_card',
+                item_list_id: 'explore_home_preview',
+                item_list_name: 'Explore home preview',
+                listing_id: listing.id,
+                listing_name: listing.name,
+                city: listing.area,
+                apartment_type: listing.apartmentType,
+                price: listing.minimumPrice,
+                has_offer: toFlag(listing.promoTags.length > 0),
+                items: [
+                  buildListingAnalyticsItem({
+                    id: listing.id,
+                    name: listing.name,
+                    apartmentType: listing.apartmentType,
+                    city: listing.area,
+                    price: listing.minimumPrice,
+                    itemListId: 'explore_home_preview',
+                    itemListName: 'Explore home preview',
+                  }),
+                ],
+              });
+
+              router.push({
+                pathname: '/listing/[id]',
+                params: {
+                  id: listing.id,
+                  source_screen: 'explore_home',
+                  source_surface: 'explore_preview_card',
+                  item_list_id: 'explore_home_preview',
+                  item_list_name: 'Explore home preview',
+                },
+              });
+            }}
           />
         )}
         keyExtractor={(item, index) => `${item.id || 'listing'}-${index}`}

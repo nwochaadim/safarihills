@@ -23,6 +23,8 @@ import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context
 import { WebView } from 'react-native-webview';
 
 import { BlankSlate } from '@/components/BlankSlate';
+import { ANALYTICS_EVENTS, getWalletBalanceBucket } from '@/lib/analytics.schema';
+import { setUserProperties, trackEvent } from '@/lib/analytics';
 import { AuthStatus } from '@/lib/authStatus';
 
 type NormalizedTransaction = {
@@ -59,9 +61,6 @@ const formatAmountInput = (value: string) => {
   if (!digitsOnly) return '';
   return Number(digitsOnly).toLocaleString();
 };
-
-const formatCurrency = (value: number) =>
-  `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
 const parseFormattedAmount = (value: string | null | undefined) => {
   if (!value) return 0;
@@ -147,6 +146,18 @@ export default function WalletScreen() {
 
   const walletData = data?.wallet ?? null;
   const balance = walletData?.balance ?? 0;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (authStatus !== 'signed-in') {
+        return;
+      }
+
+      void setUserProperties({
+        wallet_balance_bucket: getWalletBalanceBucket(balance),
+      });
+    }, [authStatus, balance])
+  );
 
   const transactions = useMemo<NormalizedTransaction[]>(() => {
     if (!walletData?.transactions) return [];
@@ -444,6 +455,12 @@ export default function WalletScreen() {
       }
       if (payload?.type === 'success') {
         setPaystackVisible(false);
+        void trackEvent(ANALYTICS_EVENTS.WalletTopupSuccess, {
+          source_screen: 'profile_wallet',
+          amount: paystackAmount / 100,
+          amount_bucket: getWalletBalanceBucket(paystackAmount / 100),
+          payment_provider: 'paystack',
+        });
         refetch({ limit: LATEST_TRANSACTIONS_LIMIT, offset: 0 }).catch(() => null);
       }
     } catch {
@@ -456,10 +473,24 @@ export default function WalletScreen() {
     const parsedAmount = Number.parseFloat(normalized);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setTopupError('Enter a valid amount to top up.');
+      void trackEvent(ANALYTICS_EVENTS.WalletTopupFailure, {
+        source_screen: 'profile_wallet',
+        amount: parsedAmount,
+        amount_bucket: getWalletBalanceBucket(parsedAmount || 0),
+        payment_provider: 'paystack',
+        failure_reason: 'invalid_amount',
+      });
       return;
     }
     if (!PAYSTACK_PUBLIC_KEY) {
       setTopupError('Paystack is unavailable right now.');
+      void trackEvent(ANALYTICS_EVENTS.WalletTopupFailure, {
+        source_screen: 'profile_wallet',
+        amount: parsedAmount,
+        amount_bucket: getWalletBalanceBucket(parsedAmount),
+        payment_provider: 'paystack',
+        failure_reason: 'paystack_unavailable',
+      });
       return;
     }
     setTopupError(null);
@@ -476,8 +507,21 @@ export default function WalletScreen() {
       const amountInKobo = Math.max(Math.round(topupAmount * 100), 0);
       if (!reference || amountInKobo <= 0) {
         setTopupError('Unable to start top up right now.');
+        void trackEvent(ANALYTICS_EVENTS.WalletTopupFailure, {
+          source_screen: 'profile_wallet',
+          amount: topupAmount,
+          amount_bucket: getWalletBalanceBucket(topupAmount),
+          payment_provider: 'paystack',
+          failure_reason: 'missing_payment_reference',
+        });
         return;
       }
+      void trackEvent(ANALYTICS_EVENTS.WalletTopupInitiated, {
+        source_screen: 'profile_wallet',
+        amount: topupAmount,
+        amount_bucket: getWalletBalanceBucket(topupAmount),
+        payment_provider: 'paystack',
+      });
       setPaystackConfig({
         email,
         reference,
@@ -491,6 +535,13 @@ export default function WalletScreen() {
       const message =
         error instanceof Error ? error.message : 'Unable to start top up right now.';
       setTopupError(message);
+      void trackEvent(ANALYTICS_EVENTS.WalletTopupFailure, {
+        source_screen: 'profile_wallet',
+        amount: parsedAmount,
+        amount_bucket: getWalletBalanceBucket(parsedAmount),
+        payment_provider: 'paystack',
+        failure_reason: message,
+      });
     }
   };
 
@@ -554,7 +605,14 @@ export default function WalletScreen() {
             <View className="mt-5 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm shadow-slate-100">
               <View className="flex-row items-center justify-between">
                 <Text className="text-base font-semibold text-slate-900">Latest transactions</Text>
-                <Pressable onPress={() => router.push('/profile/transactions')}>
+                <Pressable
+                  onPress={() => {
+                    void trackEvent(ANALYTICS_EVENTS.ProfileAction, {
+                      action: 'open_transactions',
+                      source_screen: 'profile_wallet',
+                    });
+                    router.push('/profile/transactions');
+                  }}>
                   <Text className="text-sm font-semibold text-blue-700">View all transactions</Text>
                 </Pressable>
               </View>
