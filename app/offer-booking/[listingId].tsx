@@ -1,4 +1,3 @@
-import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
 import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
@@ -18,6 +17,7 @@ import { findListingById } from '@/data/listings';
 import { AuthStatus } from '@/lib/authStatus';
 import { CLAIM_LISTING_OFFER } from '@/mutations/claimListingOffer';
 import { LISTING_OFFERS } from '@/queries/listingOffers';
+import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -326,9 +326,11 @@ export default function LocalOfferBookingScreen() {
                 </View>
 
                 <Text className="mt-4 text-3xl font-bold text-white">{selectedOffer.title}</Text>
-                <Text className="mt-2 text-sm leading-6 text-slate-100">
-                  {selectedOffer.subtitle}
-                </Text>
+                <HtmlViewer
+                  html={selectedOffer.subtitle}
+                  className="mt-2"
+                  textClassName="text-sm leading-6 text-slate-100"
+                />
 
                 <View className="mt-5 flex-row flex-wrap gap-3">
                   <View className="rounded-2xl bg-white/95 px-4 py-3">
