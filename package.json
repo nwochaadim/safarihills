@@ -8,6 +8,8 @@
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "ios:clean": "expo prebuild --clean --platform ios && expo run:ios",
+    "prebuild:ios": "expo prebuild --clean --platform ios",
     "web": "expo start --web",
     "lint": "expo lint"
   },
