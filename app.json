@@ -18,8 +18,6 @@
       "bundleIdentifier": "com.safarihills.app",
       "associatedDomains": [
         "applinks:safarihills.app",
-        "applinks:www.safarihills.app",
-        "applinks:safarihills.app",
         "applinks:www.safarihills.app"
       ],
       "buildNumber": "1",
