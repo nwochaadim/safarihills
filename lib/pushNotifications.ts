@@ -71,6 +71,8 @@ const handleNotificationResponse = (
 
   if (payload.path && payload.params) {
     router.push({ pathname: payload.path, params: payload.params });
+  } else if (payload.path) {
+    router.push(payload.path);
   }
 
   if (payload.message) {
