@@ -106,7 +106,12 @@
         "expo-build-properties",
         {
           "ios": {
-            "useFrameworks": "static"
+            "useFrameworks": "static",
+            "buildReactNativeFromSource": true,
+            "forceStaticLinking": [
+              "RNFBApp",
+              "RNFBAnalytics"
+            ]
           }
         }
       ]
