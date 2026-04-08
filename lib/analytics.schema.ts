@@ -50,6 +50,7 @@ export type AnalyticsLeadStageChangeReason =
   | 'guest_or_signed_out'
   | 'insufficient_session_activity'
   | 'listing_viewed_without_booking'
+  | 'listing_wishlisted'
   | 'booking_started_without_payment'
   | 'multi_location_booking_browsing'
   | 'same_location_repeat_booking_intent'

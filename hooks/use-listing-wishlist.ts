@@ -8,6 +8,7 @@ import {
   ListingWishlistRecord,
   normalizeListingWishlistRecord,
 } from '@/lib/listingWishlist';
+import { recordWishlistLeadIntent } from '@/lib/analytics';
 import { AuthStatus } from '@/lib/authStatus';
 import { SET_LISTING_WISHLIST } from '@/mutations/setListingWishlist';
 
@@ -90,6 +91,12 @@ export function useListingWishlistToggle() {
         if (!payload?.listingId || errors.length > 0) {
           Alert.alert('Wishlist unavailable', errors[0] ?? 'Please try again in a moment.');
           return false;
+        }
+
+        if (nextWishlisted) {
+          void recordWishlistLeadIntent({
+            listing_id: payload.listingId,
+          });
         }
 
         return true;

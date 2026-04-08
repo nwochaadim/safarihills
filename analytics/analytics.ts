@@ -8,6 +8,7 @@ import {
   handleAppBackground as handleLeadAppBackground,
   initializeLeadSession,
   observeLeadEvent,
+  observeWishlistLeadIntent,
   prepareLeadSession,
 } from '@/analytics/leadClassifier';
 import { syncLeadClassification } from '@/analytics/leadClassificationSync';
@@ -683,6 +684,36 @@ export const trackEvent = async <TEventName extends AnalyticsEventName>(
   await logFirebaseEventDirect(eventName, params, context);
 
   const leadResult = await observeLeadEvent(eventName, params, context);
+  if (leadResult.stageChanged) {
+    emitContext();
+  }
+};
+
+export const recordWishlistLeadIntent = async (params: { listing_id: string }) => {
+  const listingId = params.listing_id.trim();
+  if (!listingId) {
+    return;
+  }
+
+  let context = await ensureAnalyticsIdentity();
+  const preparation = await prepareLeadSession(context, {
+    cause: 'event',
+    buildSessionId,
+  });
+
+  if (preparation.sessionId !== context.session_id) {
+    currentContext = await buildNextSessionContext(context, preparation.sessionId);
+    context = currentContext;
+    emitContext();
+  }
+
+  const leadResult = await observeWishlistLeadIntent(
+    {
+      listing_id: listingId,
+    },
+    context
+  );
+
   if (leadResult.stageChanged) {
     emitContext();
   }

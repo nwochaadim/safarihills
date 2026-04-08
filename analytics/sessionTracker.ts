@@ -6,6 +6,7 @@ type SessionTrackerState = {
   lastActivityAt: number;
   lastBackgroundedAt: number | null;
   viewedListingIds: Set<string>;
+  wishlistedListingIds: Set<string>;
   viewedLocations: Set<string>;
   totalListingViews: number;
   listingViewCountByLocation: Map<string, number>;
@@ -36,6 +37,8 @@ export type LeadSessionSnapshot = {
   lastBackgroundedAt: number | null;
   viewedListingIds: string[];
   viewedListingCount: number;
+  wishlistedListingIds: string[];
+  wishlistedListingCount: number;
   viewedLocations: string[];
   totalListingViews: number;
   listingViewCountByLocation: Record<string, number>;
@@ -92,6 +95,7 @@ const createInitialSessionState = (
   lastActivityAt: now,
   lastBackgroundedAt: null,
   viewedListingIds: new Set<string>(),
+  wishlistedListingIds: new Set<string>(),
   viewedLocations: new Set<string>(),
   totalListingViews: 0,
   listingViewCountByLocation: new Map<string, number>(),
@@ -255,6 +259,21 @@ export const recordListingView = ({ sessionId, listingId, location, now = Date.n
   return getLeadSessionSnapshot();
 };
 
+export const recordListingWishlist = ({
+  sessionId,
+  listingId,
+  now = Date.now(),
+}: Pick<ListingContext, 'sessionId' | 'listingId' | 'now'>) => {
+  const state = touchSession(sessionId, now);
+  const normalizedListingId = normalizeString(listingId) ?? listingId?.trim();
+
+  if (normalizedListingId) {
+    state.wishlistedListingIds.add(normalizedListingId);
+  }
+
+  return getLeadSessionSnapshot();
+};
+
 const recordDeepListingEngagement = (
   engagementType: string,
   { sessionId, listingId, location, now = Date.now() }: ListingContext
@@ -381,6 +400,8 @@ export const getLeadSessionSnapshot = (): LeadSessionSnapshot => {
       lastBackgroundedAt: null,
       viewedListingIds: [],
       viewedListingCount: 0,
+      wishlistedListingIds: [],
+      wishlistedListingCount: 0,
       viewedLocations: [],
       totalListingViews: 0,
       listingViewCountByLocation: {},
@@ -434,6 +455,8 @@ export const getLeadSessionSnapshot = (): LeadSessionSnapshot => {
     lastBackgroundedAt: sessionState.lastBackgroundedAt,
     viewedListingIds: Array.from(sessionState.viewedListingIds.values()),
     viewedListingCount: sessionState.viewedListingIds.size,
+    wishlistedListingIds: Array.from(sessionState.wishlistedListingIds.values()),
+    wishlistedListingCount: sessionState.wishlistedListingIds.size,
     viewedLocations: Array.from(sessionState.viewedLocations.values()),
     totalListingViews: sessionState.totalListingViews,
     listingViewCountByLocation: mapToRecord(sessionState.listingViewCountByLocation),

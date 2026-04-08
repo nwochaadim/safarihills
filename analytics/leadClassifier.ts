@@ -20,6 +20,7 @@ import {
   markSessionForeground,
   recordApartmentTypeSelect,
   recordBeginBooking,
+  recordListingWishlist,
   recordBookingDetailsFilled,
   recordListingAttractionsView,
   recordListingImageScroll,
@@ -270,6 +271,18 @@ const computeLeadStage = (context: AnalyticsContextParams): LeadComputation => {
         snapshot.uniqueBookingLocationsCount > 1
           ? 'multi_location_booking_browsing'
           : 'booking_started_without_payment',
+      score,
+      scoreBucket,
+      focusLocation,
+      sessionBookingCountBucket,
+      paymentAttemptState,
+    };
+  }
+
+  if (snapshot.viewedListingCount >= 1 && snapshot.wishlistedListingCount >= 1) {
+    return {
+      stage: 'warm',
+      reason: 'listing_wishlisted',
       score,
       scoreBucket,
       focusLocation,
@@ -630,6 +643,21 @@ export const observeLeadEvent = async <TEventName extends AnalyticsEventName>(
     default:
       break;
   }
+
+  return recomputeLeadStage(context);
+};
+
+export const observeWishlistLeadIntent = async (
+  params: {
+    listing_id: string;
+  },
+  context: AnalyticsContextParams
+) => {
+  markSessionActivity(context.session_id);
+  recordListingWishlist({
+    sessionId: context.session_id,
+    listingId: params.listing_id,
+  });
 
   return recomputeLeadStage(context);
 };
