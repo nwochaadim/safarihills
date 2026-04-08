@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
 import { getAnalyticsScreenMetadata } from '@/lib/analytics.common';
 import {
@@ -55,11 +55,6 @@ let eventChain: Promise<void> = Promise.resolve();
 let lastUserProperties: Partial<AnalyticsUserProperties> = {};
 const contextListeners = new Set<AnalyticsContextListener>();
 
-const hasNativeAnalyticsModules = () =>
-  Platform.OS !== 'web' &&
-  NativeModules.RNFBAppModule != null &&
-  NativeModules.RNFBAnalyticsModule != null;
-
 const logUnavailableWarning = () => {
   if (hasLoggedUnavailableWarning) {
     return;
@@ -72,8 +67,7 @@ const logUnavailableWarning = () => {
 };
 
 const loadAnalyticsFactory = async () => {
-  if (!hasNativeAnalyticsModules()) {
-    logUnavailableWarning();
+  if (Platform.OS === 'web') {
     return null;
   }
 
@@ -94,7 +88,20 @@ const loadAnalyticsFactory = async () => {
 
 const getAnalyticsInstance = async (): Promise<AnalyticsInstance | null> => {
   const analyticsFactory = await loadAnalyticsFactory();
-  return analyticsFactory ? analyticsFactory() : null;
+  if (!analyticsFactory) {
+    return null;
+  }
+
+  try {
+    return analyticsFactory();
+  } catch (error) {
+    logUnavailableWarning();
+    console.warn(
+      'Firebase Analytics was imported but the native bridge is unavailable. Rebuild the development client or native app after native dependency changes.',
+      error
+    );
+    return null;
+  }
 };
 
 const enqueueAnalyticsTask = async <T>(task: () => Promise<T>): Promise<T> => {
