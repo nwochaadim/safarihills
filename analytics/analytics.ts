@@ -13,6 +13,7 @@ import {
 } from '@/analytics/leadClassifier';
 import { syncLeadClassification } from '@/analytics/leadClassificationSync';
 import { getAnalyticsScreenMetadata } from '@/lib/analytics.common';
+import { AuthStatus } from '@/lib/authStatus';
 import {
   ANALYTICS_EVENTS,
   AnalyticsContextParams,
@@ -21,6 +22,7 @@ import {
   AnalyticsLeadStage,
   AnalyticsUserProperties,
 } from '@/lib/analytics.schema';
+import { LOG_USER_HEARTBEAT } from '@/mutations/logUserHeartbeat';
 
 type AnalyticsFactory = typeof import('@react-native-firebase/analytics').default;
 type AnalyticsInstance = ReturnType<AnalyticsFactory>;
@@ -63,6 +65,7 @@ let hasLoggedUnavailableWarning = false;
 let eventChain: Promise<void> = Promise.resolve();
 let lastUserProperties: Partial<AnalyticsUserProperties> = {};
 const contextListeners = new Set<AnalyticsContextListener>();
+let heartbeatInFlight: Promise<void> | null = null;
 
 const buildSessionId = () =>
   `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -716,6 +719,55 @@ export const recordWishlistLeadIntent = async (params: { listing_id: string }) =
 
   if (leadResult.stageChanged) {
     emitContext();
+  }
+};
+
+type LogUserHeartbeatResponse = {
+  logUserHeartbeat?: {
+    openedOn?: string | null;
+    firstOpenedAt?: string | null;
+    counts?: number | null;
+    errors?: Array<string | null> | string | null;
+  } | null;
+};
+
+const hasHeartbeatErrors = (errors: Array<string | null> | string | null | undefined) =>
+  Array.isArray(errors)
+    ? errors.some((error) => Boolean(error?.trim()))
+    : typeof errors === 'string'
+      ? Boolean(errors.trim())
+      : false;
+
+export const logUserHeartbeat = async () => {
+  if (heartbeatInFlight) {
+    return heartbeatInFlight;
+  }
+
+  heartbeatInFlight = (async () => {
+    const signedIn = await AuthStatus.isSignedIn();
+    if (!signedIn) {
+      return;
+    }
+
+    try {
+      const { apolloClient } = await import('@/lib/apolloClient');
+      const { data } = await apolloClient.mutate<LogUserHeartbeatResponse>({
+        mutation: LOG_USER_HEARTBEAT,
+        fetchPolicy: 'no-cache',
+      });
+
+      if (hasHeartbeatErrors(data?.logUserHeartbeat?.errors)) {
+        console.warn('User heartbeat returned GraphQL payload errors.', data?.logUserHeartbeat?.errors);
+      }
+    } catch (error) {
+      console.warn('Failed to log user heartbeat.', error);
+    }
+  })();
+
+  try {
+    await heartbeatInFlight;
+  } finally {
+    heartbeatInFlight = null;
   }
 };
 

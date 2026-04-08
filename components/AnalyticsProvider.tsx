@@ -15,6 +15,7 @@ import {
   handleAppBackground,
   handleAppForeground,
   initializeAnalyticsIdentity,
+  logUserHeartbeat,
   subscribeAnalyticsContext,
   trackEvent,
   trackScreen,
@@ -48,6 +49,8 @@ export function AnalyticsProvider({ children }: PropsWithChildren) {
       if (isMounted) {
         setContext(getAnalyticsContext());
       }
+
+      void logUserHeartbeat();
     });
 
     const unsubscribe = subscribeAnalyticsContext((nextContext) => {
@@ -74,6 +77,7 @@ export function AnalyticsProvider({ children }: PropsWithChildren) {
 
       if (previousState !== 'active' && nextState === 'active') {
         void handleAppForeground().then((result) => {
+          void logUserHeartbeat();
           if (result.startedNewSession && pathname && pathname !== '/') {
             void trackScreen(pathname);
           }
