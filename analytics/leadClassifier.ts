@@ -40,6 +40,14 @@ type LeadClassifierBridge = {
     context: AnalyticsContextParams
   ) => Promise<void>;
   setUserProperties: (properties: AnalyticsUserProperties) => Promise<void>;
+  syncLeadClassification: (payload: {
+    analyticsActorId: string;
+    leadStage: AnalyticsLeadStage;
+    leadScoreBucket: AnalyticsLeadScoreBucket;
+    leadFocusLocation: string | null;
+    paymentAttemptState: AnalyticsPaymentAttemptState;
+    sessionBookingCountBucket: AnalyticsSessionBookingCountBucket;
+  }) => Promise<void>;
 };
 
 type LeadClassifierState = {
@@ -78,6 +86,7 @@ export type LeadStageRecomputeResult = LeadComputation & {
 const defaultBridge: LeadClassifierBridge = {
   logEvent: async () => {},
   setUserProperties: async () => {},
+  syncLeadClassification: async () => {},
 };
 
 let bridge = defaultBridge;
@@ -378,6 +387,17 @@ export const recomputeLeadStage = async (
       },
       context
     );
+  }
+
+  if (stageChanged && computation.stage && isSignedInContext(context)) {
+    void bridge.syncLeadClassification({
+      analyticsActorId: context.analytics_actor_id,
+      leadStage: computation.stage,
+      leadScoreBucket: computation.scoreBucket,
+      leadFocusLocation: computation.focusLocation,
+      paymentAttemptState: computation.paymentAttemptState,
+      sessionBookingCountBucket: computation.sessionBookingCountBucket,
+    });
   }
 
   return {

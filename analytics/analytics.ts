@@ -10,6 +10,7 @@ import {
   observeLeadEvent,
   prepareLeadSession,
 } from '@/analytics/leadClassifier';
+import { syncLeadClassification } from '@/analytics/leadClassificationSync';
 import { getAnalyticsScreenMetadata } from '@/lib/analytics.common';
 import {
   ANALYTICS_EVENTS,
@@ -433,6 +434,7 @@ export const setUserProperties = async (properties: AnalyticsUserProperties) => 
 configureLeadClassifier({
   logEvent: logFirebaseEventDirect,
   setUserProperties,
+  syncLeadClassification,
 });
 
 const bindLeadContext = async (
