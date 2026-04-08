@@ -4,6 +4,7 @@ import { AppState, AppStateStatus } from 'react-native';
 
 import { ActivityFeedOverlay } from '@/components/ActivityFeedOverlay';
 import {
+  ACTIVITY_FEED_FETCH_INTERVAL_MS,
   ACTIVITY_FEED_DISPLAY_INTERVAL_MS,
   ACTIVITY_FEED_INITIAL_DISPLAY_DELAY_MS,
   advanceActivityFeedDisplay,
@@ -12,9 +13,6 @@ import {
   refreshActivityFeedIfNeeded,
   useActivityFeedStore
 } from '@/lib/activityFeedStore';
-
-const ACTIVITY_FEED_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-const ACTIVITY_FEED_EMPTY_RETRY_INTERVAL_MS = 10 * 60 * 1000;
 
 const isOverlayHiddenForPath = (pathname: string) => pathname === '/' || pathname.startsWith('/auth');
 
@@ -58,19 +56,19 @@ export function ActivityFeedManager() {
   useEffect(() => {
     if (!hydrated || isSilentRefreshing) return;
 
-    const refreshIntervalMs =
-      entries.length > 0 ? ACTIVITY_FEED_REFRESH_INTERVAL_MS : ACTIVITY_FEED_EMPTY_RETRY_INTERVAL_MS;
     const lastFetchedAtMs = lastFetchedAt ? Date.parse(lastFetchedAt) : 0;
     const elapsedMs =
       lastFetchedAtMs > 0 && Number.isFinite(lastFetchedAtMs)
         ? Math.max(Date.now() - lastFetchedAtMs, 0)
-        : refreshIntervalMs;
-    const delayMs = Math.max(refreshIntervalMs - elapsedMs, 0);
+        : ACTIVITY_FEED_FETCH_INTERVAL_MS;
+    const delayMs = Math.max(ACTIVITY_FEED_FETCH_INTERVAL_MS - elapsedMs, 0);
 
     const timeout = setTimeout(() => {
       if (appStateRef.current !== 'active') return;
 
-      void refreshActivityFeedIfNeeded({ force: entries.length === 0 });
+      void refreshActivityFeedIfNeeded({ force: true }).then(() => {
+        void advanceActivityFeedDisplay();
+      });
     }, delayMs);
 
     return () => clearTimeout(timeout);

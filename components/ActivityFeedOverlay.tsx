@@ -89,12 +89,6 @@ export function ActivityFeedOverlay({ hidden = false }: { hidden?: boolean }) {
     .filter((value) => value.trim().length > 0)
     .join(' • ');
 
-  const bookingLine = [
-    currentEntry.booking?.formattedCheckIn,
-    currentEntry.booking?.formattedCheckOut,
-  ]
-    .filter((value) => value && value.trim().length > 0)
-    .join(' - ');
   const happenedAtLabel = formatRelativeTime(currentEntry.happenedAt);
   const bottomOffset = Math.max(insets.bottom + 84, 96);
   const progressWidth = progress.interpolate({
@@ -161,11 +155,6 @@ export function ActivityFeedOverlay({ hidden = false }: { hidden?: boolean }) {
             {metaLine ? (
               <Text className="mt-1 text-xs text-slate-500" numberOfLines={1}>
                 {metaLine}
-              </Text>
-            ) : null}
-            {bookingLine ? (
-              <Text className="mt-1 text-[11px] font-medium text-slate-400" numberOfLines={1}>
-                {bookingLine}
               </Text>
             ) : null}
             {happenedAtLabel ? (

@@ -7,10 +7,10 @@ import { AuthStatus } from '@/lib/authStatus';
 import { ACTIVITY_FEED_ENTRIES } from '@/queries/activityFeedEntries';
 
 const ACTIVITY_FEED_STORE_KEY = 'activityFeedStore';
-const ACTIVITY_FEED_FETCH_INTERVAL_MS = 60 * 60 * 1000;
+export const ACTIVITY_FEED_FETCH_INTERVAL_MS = 10 * 60 * 1000;
 const ACTIVITY_FEED_STORAGE_DIR = `${FileSystem.documentDirectory ?? ''}activity-feed/`;
 const ACTIVITY_FEED_STORAGE_FILE = `${ACTIVITY_FEED_STORAGE_DIR}store.json`;
-export const ACTIVITY_FEED_DISPLAY_INTERVAL_MS = 2 * 60 * 1000;
+export const ACTIVITY_FEED_DISPLAY_INTERVAL_MS = 60 * 1000;
 export const ACTIVITY_FEED_INITIAL_DISPLAY_DELAY_MS = 60 * 1000;
 const MAX_SHOWN_HISTORY = 200;
 
