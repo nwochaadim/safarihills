@@ -7,23 +7,26 @@ import {
   useRef,
   useState,
 } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 
 import { getAnalyticsScreenMetadata } from '@/lib/analytics.common';
 import {
   getAnalyticsContext,
+  handleAppBackground,
+  handleAppForeground,
   initializeAnalyticsIdentity,
   subscribeAnalyticsContext,
   trackEvent,
   trackScreen,
 } from '@/lib/analytics';
-import { ANALYTICS_EVENTS, AnalyticsLeadTemperature } from '@/lib/analytics.schema';
+import { ANALYTICS_EVENTS, AnalyticsLeadStage } from '@/lib/analytics.schema';
 
 type AnalyticsProviderContextValue = {
   actor_type: 'user' | 'guest';
   analytics_actor_id: string;
   auth_state: 'signed_in' | 'guest';
   session_id: string;
-  lead_temperature: AnalyticsLeadTemperature;
+  lead_stage: AnalyticsLeadStage | null;
 } | null;
 
 const AnalyticsIdentityContext =
@@ -36,6 +39,7 @@ export function AnalyticsProvider({ children }: PropsWithChildren) {
   );
   const lastTrackedPathRef = useRef<string | null>(null);
   const hasTrackedAppOpenRef = useRef(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
     let isMounted = true;
@@ -57,6 +61,30 @@ export function AnalyticsProvider({ children }: PropsWithChildren) {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (previousState === 'active' && nextState.match(/inactive|background/)) {
+        void handleAppBackground();
+        return;
+      }
+
+      if (previousState !== 'active' && nextState === 'active') {
+        void handleAppForeground().then((result) => {
+          if (result.startedNewSession && pathname && pathname !== '/') {
+            void trackScreen(pathname);
+          }
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [pathname]);
 
   useEffect(() => {
     if (!pathname || pathname === '/') {

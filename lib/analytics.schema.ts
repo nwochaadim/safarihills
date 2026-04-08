@@ -5,6 +5,7 @@ export const ANALYTICS_EVENTS = {
   SignUp: 'sign_up',
   GuestIdentified: 'guest_identified',
   Logout: 'logout',
+  LeadStageChanged: 'lead_stage_changed',
   SearchFiltersApplied: 'search_filters_applied',
   ExploreSectionSelect: 'explore_section_select',
   ListingListView: 'listing_list_view',
@@ -40,7 +41,20 @@ export type AnalyticsEventName =
 
 export type AnalyticsActorType = 'user' | 'guest';
 export type AnalyticsAuthState = 'signed_in' | 'guest';
-export type AnalyticsLeadTemperature = 'cold' | 'warm' | 'hot';
+export type AnalyticsLeadStage = 'cold' | 'warm' | 'hot';
+export type AnalyticsLeadTemperature = AnalyticsLeadStage;
+export type AnalyticsLeadScoreBucket = 'low' | 'medium' | 'high';
+export type AnalyticsSessionBookingCountBucket = '0' | '1' | '2_3' | '4_plus';
+export type AnalyticsPaymentAttemptState = 'none' | 'attempted' | 'completed';
+export type AnalyticsLeadStageChangeReason =
+  | 'guest_or_signed_out'
+  | 'insufficient_session_activity'
+  | 'listing_viewed_without_booking'
+  | 'booking_started_without_payment'
+  | 'multi_location_booking_browsing'
+  | 'same_location_repeat_booking_intent'
+  | 'payment_attempt_without_success'
+  | 'payment_completed';
 export type BookingMode = 'standard' | 'offer';
 export type AnalyticsScreenGroup =
   | 'auth'
@@ -74,12 +88,16 @@ export type AnalyticsItem = {
 };
 
 export type AnalyticsUserProperties = {
-  actor_type?: AnalyticsActorType;
-  auth_state?: AnalyticsAuthState;
-  user_tier?: string;
-  lead_temperature?: AnalyticsLeadTemperature;
-  wallet_balance_bucket?: string;
-  referral_count_bucket?: string;
+  actor_type?: AnalyticsActorType | null;
+  auth_state?: AnalyticsAuthState | null;
+  user_tier?: string | null;
+  lead_stage?: AnalyticsLeadStage | null;
+  lead_score_bucket?: AnalyticsLeadScoreBucket | null;
+  lead_focus_location?: string | null;
+  session_booking_count_bucket?: AnalyticsSessionBookingCountBucket | null;
+  payment_attempt_state?: AnalyticsPaymentAttemptState | null;
+  wallet_balance_bucket?: string | null;
+  referral_count_bucket?: string | null;
 };
 
 type AppOpenedParams = {
@@ -382,7 +400,6 @@ type WalletTopupParams = {
 
 type GuestIdentifiedParams = {
   guest_actor_id: string;
-  user_id: string;
   method: string;
   source_screen?: string;
 };
@@ -392,6 +409,23 @@ type LogoutParams = {
   reason?: string;
 };
 
+type LeadStageChangedParams = {
+  previous_stage: AnalyticsLeadStage | 'unclassified';
+  new_stage: AnalyticsLeadStage;
+  reason: AnalyticsLeadStageChangeReason;
+  location_focus?: string;
+  booking_count: number;
+  payment_attempted: number;
+  payment_succeeded: number;
+  same_location_booking_count: number;
+  unique_locations_count: number;
+  viewed_listing_count: number;
+  reviewed_listing_depth: number;
+  lead_score: number;
+  lead_score_bucket: AnalyticsLeadScoreBucket;
+  session_booking_count_bucket: AnalyticsSessionBookingCountBucket;
+};
+
 export type AnalyticsEventParamsMap = {
   app_opened: AppOpenedParams;
   screen_view: ScreenViewParams;
@@ -399,6 +433,7 @@ export type AnalyticsEventParamsMap = {
   sign_up: AuthEventParams;
   guest_identified: GuestIdentifiedParams;
   logout: LogoutParams;
+  lead_stage_changed: LeadStageChangedParams;
   search_filters_applied: SearchFiltersAppliedParams;
   explore_section_select: ExploreSectionSelectParams;
   listing_list_view: ListingListViewParams;
@@ -507,45 +542,3 @@ export const buildListingAnalyticsItem = (input: {
   promotion_id: input.promotionId,
   promotion_name: input.promotionName,
 });
-
-const WARM_INTENT_EVENTS: AnalyticsEventName[] = [
-  ANALYTICS_EVENTS.SearchFiltersApplied,
-  ANALYTICS_EVENTS.ExploreSectionSelect,
-  ANALYTICS_EVENTS.ListingListView,
-  ANALYTICS_EVENTS.ViewItemList,
-  ANALYTICS_EVENTS.SelectItem,
-  ANALYTICS_EVENTS.ViewItem,
-  ANALYTICS_EVENTS.ViewPromotion,
-  ANALYTICS_EVENTS.SelectPromotion,
-  ANALYTICS_EVENTS.ListingGalleryBrowse,
-  ANALYTICS_EVENTS.ListingContentMilestone,
-  ANALYTICS_EVENTS.AttractionSelect,
-  ANALYTICS_EVENTS.ProfileAction,
-  ANALYTICS_EVENTS.BookingsAction,
-];
-
-const HOT_INTENT_EVENTS: AnalyticsEventName[] = [
-  ANALYTICS_EVENTS.BeginBooking,
-  ANALYTICS_EVENTS.ApartmentTypeSelect,
-  ANALYTICS_EVENTS.BookingDetailsCompleted,
-  ANALYTICS_EVENTS.ReviewAndPayClick,
-  ANALYTICS_EVENTS.BookingSummaryView,
-  ANALYTICS_EVENTS.CouponApply,
-  ANALYTICS_EVENTS.BookingPaymentMethodSelect,
-  ANALYTICS_EVENTS.BookingPaymentAttempt,
-  ANALYTICS_EVENTS.Purchase,
-  ANALYTICS_EVENTS.WalletTopupInitiated,
-  ANALYTICS_EVENTS.WalletTopupSuccess,
-];
-
-export const getLeadTemperatureForEvent = (
-  eventName: AnalyticsEventName
-): AnalyticsLeadTemperature | null => {
-  if (HOT_INTENT_EVENTS.includes(eventName)) {
-    return 'hot';
-  }
-  if (WARM_INTENT_EVENTS.includes(eventName)) {
-    return 'warm';
-  }
-  return null;
-};

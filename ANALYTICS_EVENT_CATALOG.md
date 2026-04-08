@@ -6,11 +6,12 @@ This document is the single source of truth for the Firebase Analytics instrumen
 
 1. Initialize analytics once in a central provider and attach a stable identity context before major tracking begins.
 2. Use manual `screen_view` tracking so route names stay consistent across Expo Router and React Native.
-3. Keep the schema typed in `lib/analytics.schema.ts` and route all logging through `lib/analytics.ts`.
+3. Keep the schema typed in `lib/analytics.schema.ts` and route all logging through `analytics/analytics.ts`, with `lib/analytics.ts` kept as a compatibility export.
 4. Prefer GA4-recommended events where semantics already exist: `screen_view`, `login`, `sign_up`, `view_item_list`, `select_item`, `view_item`, `view_promotion`, `select_promotion`, `begin_booking`, `purchase`.
 5. Use a small set of custom events only where the domain needs more detail: filters, gallery engagement, listing content milestones, booking completion steps, abandon points, wallet actions, profile actions.
 6. Propagate `source_screen`, `source_surface`, `source_section`, item list context, listing context, offer context, and booking value buckets through the full discovery-to-booking funnel.
 7. Deduplicate noisy interactions with `trackOnce(...)` for scroll milestones and gallery depth milestones.
+8. Compute lead classification entirely on-device from session activity and sync only a small, explainable set of lead user properties for signed-in users.
 
 ## B. Naming Convention
 
@@ -29,6 +30,7 @@ This document is the single source of truth for the Firebase Analytics instrumen
 - `sign_up`
 - `guest_identified`
 - `logout`
+- `lead_stage_changed`
 
 ### Discovery and evaluation
 
@@ -69,7 +71,7 @@ This document is the single source of truth for the Firebase Analytics instrumen
 
 ## D. Identity and Session Model
 
-Every event is automatically enriched in `lib/analytics.ts` with:
+Every event is automatically enriched in `analytics/analytics.ts` with:
 
 - `actor_type`: `user | guest`
 - `analytics_actor_id`
@@ -82,6 +84,7 @@ Rules implemented:
 - Guests use `analytics_actor_id = guest_{session_id}` and `actor_type = guest`.
 - `guest_identified` is logged when a guest authenticates and is stitched to the resolved user id.
 - `logout` clears the Firebase user id and starts a fresh guest session.
+- Frontend sessions reset after 30 minutes of inactivity and on logout.
 - Unauthorized session expiry also clears authenticated identity centrally via `lib/apolloClient.ts`.
 
 Assumption:
@@ -94,23 +97,49 @@ Assumption:
 | --- | --- | --- |
 | `actor_type` | `user`, `guest` | Segment known users from anonymous demand. |
 | `auth_state` | `signed_in`, `guest` | Build funnels split by authentication state. |
-| `lead_temperature` | `cold`, `warm`, `hot` | Create lifecycle audiences from meaningful intent progression. |
+| `lead_stage` | `cold`, `warm`, `hot` | Deterministic session lead stage for signed-in users only. |
+| `lead_score_bucket` | `low`, `medium`, `high` | Lightweight explainability layer for session intent strength. |
+| `lead_focus_location` | normalized location or `multi_location` | Highlights localized booking intent versus scattered browsing. |
+| `session_booking_count_bucket` | `0`, `1`, `2_3`, `4_plus` | Keeps session booking intensity query-friendly and low cardinality. |
+| `payment_attempt_state` | `none`, `attempted`, `completed` | Separates abandoned payment intent from completed checkout. |
 | `user_tier` | backend tier string | Compare monetization and retention across customer tiers. |
 | `wallet_balance_bucket` | low-cardinality NGN bucket | Useful for payment propensity and top-up campaigns. |
 | `referral_count_bucket` | low-cardinality count bucket | Useful for advocacy and referral segmentation. |
 
-Lead temperature is promoted centrally:
+Lead properties are managed centrally:
 
-- `warm`: discovery and evaluation behaviour such as filters, list views, listing views, promotion views, gallery browsing, profile/bookings engagement.
-- `hot`: explicit commercial intent such as booking start, booking completion, payment selection, payment attempt, purchase, and wallet top-up.
+- Guests never receive a `lead_stage`.
+- Lead properties are cleared on logout and on session reset.
+- Successful payers remain `hot` for the session, with `payment_attempt_state = completed` separating converted users from abandoned hot leads.
 
-## F. Screen / Component Mapping
+## F. Frontend Lead Classification
+
+The lead classifier is frontend-only and session-scoped. It uses in-memory aggregates in `analytics/sessionTracker.ts` and is evaluated by `analytics/leadClassifier.ts`.
+
+Primary rules:
+
+- `cold`: signed-in user viewed at least one listing and did not begin booking in the session.
+- `warm`: signed-in user began booking and did not attempt payment in the session.
+- `hot`: signed-in user attempted payment without success.
+- `hot`: signed-in user began bookings for 2 or more different listings in the same location, in the same session, without a payment attempt.
+- `warm`: signed-in user browsed booking starts across multiple locations in the same session without a payment attempt, even if intent volume is high.
+
+Practical v1 choices:
+
+- The same-location hot threshold is implemented as `>= 2` unique listing booking starts, not only `2-3`, because 4+ same-location attempts still indicate strong localized intent and remain easy to model later in BigQuery.
+- Same-location repeat booking intent only upgrades to `hot` when booking activity stays inside a single booking location for the session.
+- Lightweight score inputs are explainable and capped at 100: listing view, deep listing engagement, focused location browsing, booking start, review/pay progress, payment attempt, and same-location repeat booking intent.
+
+## G. Screen / Component Mapping
 
 | File | Main analytics responsibility |
 | --- | --- |
 | `components/AnalyticsProvider.tsx` | App-open event, manual `screen_view`, analytics context subscription. |
-| `lib/analytics.ts` | Identity lifecycle, event enrichment, Firebase bridge, user properties, screen tracking helpers. |
-| `lib/analytics.schema.ts` | Typed event names, param contracts, buckets, lead-temperature mapping. |
+| `analytics/analytics.ts` | Identity lifecycle, event enrichment, Firebase bridge, session refresh, user properties, screen tracking helpers. |
+| `analytics/sessionTracker.ts` | Session lifecycle, inactivity timeout, listing/location/booking aggregation. |
+| `analytics/leadClassifier.ts` | Deterministic lead rules, lightweight score, lead property sync, `lead_stage_changed`. |
+| `lib/analytics.ts` | Compatibility export for the central analytics module. |
+| `lib/analytics.schema.ts` | Typed event names, param contracts, buckets, and lead-stage schema. |
 | `hooks/use-analytics-tracker.ts` | `track` and `trackOnce` helpers for render-safe instrumentation. |
 | `app/(tabs)/explore.tsx` | Explore filters, section clicks, list impressions, listing taps. |
 | `app/explore/[slug].tsx` | Section result list impressions and listing taps from discovery sections. |
@@ -130,7 +159,7 @@ Lead temperature is promoted centrally:
 | `app/(tabs)/profile/help.tsx` | Support channel selection. |
 | `app/auth/login.tsx`, `app/auth/otp.tsx`, `app/auth/sign-up.tsx` | Login, sign-up, guest-to-user transition. |
 
-## G. Example Event Payloads
+## H. Example Event Payloads
 
 ### Discovery to listing click
 
@@ -209,7 +238,33 @@ Lead temperature is promoted centrally:
 }
 ```
 
-## H. Firebase DebugView / QA Validation
+### Lead stage change
+
+```json
+{
+  "event_name": "lead_stage_changed",
+  "previous_stage": "warm",
+  "new_stage": "hot",
+  "reason": "same_location_repeat_booking_intent",
+  "location_focus": "lekki",
+  "booking_count": 2,
+  "payment_attempted": 0,
+  "payment_succeeded": 0,
+  "same_location_booking_count": 2,
+  "unique_locations_count": 1,
+  "viewed_listing_count": 3,
+  "reviewed_listing_depth": 4,
+  "lead_score": 70,
+  "lead_score_bucket": "high",
+  "session_booking_count_bucket": "2_3",
+  "actor_type": "user",
+  "analytics_actor_id": "user_42",
+  "auth_state": "signed_in",
+  "session_id": "session_m3s9t2"
+}
+```
+
+## I. Firebase DebugView / QA Validation
 
 ### Debug mode
 
@@ -229,8 +284,14 @@ Lead temperature is promoted centrally:
 8. Complete payment and confirm `booking_payment_attempt`, `purchase`, and the correct `payment_method`.
 9. Log in from a guest session and confirm `guest_identified` then `login` or `sign_up`.
 10. Log out and confirm `logout`, then verify the next event has `actor_type = guest` and a fresh `session_id`.
+11. As a signed-in user, open a listing without starting booking and confirm `lead_stage_changed` to `cold`, plus `lead_stage = cold` in DebugView user properties.
+12. Begin booking after a listing view and confirm `lead_stage_changed` to `warm`.
+13. Attempt payment without success and confirm `lead_stage_changed` to `hot` with `payment_attempt_state = attempted`.
+14. In a fresh signed-in session, begin bookings for two different listings in the same location without payment and confirm `lead_stage_changed` to `hot`.
+15. In a fresh signed-in session, begin bookings across multiple locations without payment and confirm the user remains `warm`.
+16. Complete payment after becoming `hot` and confirm `payment_attempt_state = completed` while `lead_stage` remains `hot` for that session.
 
-## I. Event Catalog
+## J. Event Catalog
 
 Identity fields on every row below are auto-attached by `trackEvent(...)`: `actor_type`, `analytics_actor_id`, `auth_state`, `session_id`.
 
@@ -240,8 +301,9 @@ Identity fields on every row below are auto-attached by `trackEvent(...)`: `acto
 | `screen_view` | Every major route change | `screen_name`, `screen_class`, `route_key`, `screen_group` | auto | Baseline navigation spine for funnels, cohorts, and content pathing. |
 | `login` | Successful authentication flow | `method`, `source_screen`, `source_surface` | auto | Measures login completion and the surfaces that recover known users. |
 | `sign_up` | Successful sign-up completion | `method`, `source_screen`, `source_surface` | auto | Measures new-user acquisition and downstream quality of sign-up sources. |
-| `guest_identified` | Guest becomes authenticated | `guest_actor_id`, `user_id`, `method`, `source_screen` | auto | Preserves the bridge between anonymous intent and known-user conversion. |
+| `guest_identified` | Guest becomes authenticated | `guest_actor_id`, `method`, `source_screen` | auto | Preserves the bridge between anonymous intent and known-user conversion without duplicating authenticated identifiers in event params. |
 | `logout` | Explicit logout or forced session expiry | `source_screen`, `reason` | auto | Marks retention loss and separates post-logout browsing from the old user journey. |
+| `lead_stage_changed` | Deterministic lead stage changes for signed-in users | `previous_stage`, `new_stage`, `reason`, `location_focus`, `booking_count`, `payment_attempted`, `payment_succeeded`, `same_location_booking_count`, `unique_locations_count`, `viewed_listing_count`, `reviewed_listing_depth`, `lead_score`, `lead_score_bucket`, `session_booking_count_bucket` | auto | Creates explainable cold/warm/hot transitions now and a clean bridge to future BigQuery models later. |
 | `search_filters_applied` | Explore filters submitted | `source_screen`, `source_surface`, `filter_count`, `location`, `apartment_type`, `guest_count`, `min_budget`, `max_budget`, `has_dates`, `has_budget`, `amenities_count` | auto | Explains demand shape, preferred inventory, and intent strength before listing views. |
 | `explore_section_select` | Explore section card tapped | `source_screen`, `source_surface`, `section_slug`, `section_title`, `section_type`, `matching_count`, `city`, `filter_count` | auto | Shows which discovery surfaces and merchandising sections drive deeper browsing. |
 | `listing_list_view` | Explore home listing rail rendered | `list_id`, `list_name`, `source_screen`, `source_surface`, `source_section`, `city`, `list_size`, `matching_count`, `filter_count` | auto | Measures list impressions so you can compare which surfaces create downstream listing clicks and bookings. |
