@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
@@ -7,7 +8,10 @@ import { ACTIVITY_FEED_ENTRIES } from '@/queries/activityFeedEntries';
 
 const ACTIVITY_FEED_STORE_KEY = 'activityFeedStore';
 const ACTIVITY_FEED_FETCH_INTERVAL_MS = 60 * 60 * 1000;
+const ACTIVITY_FEED_STORAGE_DIR = `${FileSystem.documentDirectory ?? ''}activity-feed/`;
+const ACTIVITY_FEED_STORAGE_FILE = `${ACTIVITY_FEED_STORAGE_DIR}store.json`;
 export const ACTIVITY_FEED_DISPLAY_INTERVAL_MS = 2 * 60 * 1000;
+export const ACTIVITY_FEED_INITIAL_DISPLAY_DELAY_MS = 60 * 1000;
 const MAX_SHOWN_HISTORY = 200;
 
 type ActivityFeedListing = {
@@ -82,6 +86,7 @@ let state: ActivityFeedState = {
 
 let hydratePromise: Promise<ActivityFeedState> | null = null;
 let fetchPromise: Promise<ActivityFeedState> | null = null;
+let persistPromise: Promise<void> = Promise.resolve();
 
 const listeners = new Set<() => void>();
 
@@ -224,9 +229,66 @@ const normalizePersistedState = (value: string | null): ActivityFeedPersistedSta
 
 const serializeState = (value: ActivityFeedPersistedState) => JSON.stringify(value);
 
-const persistState = async (value: ActivityFeedPersistedState) => {
+const canUseDiskStorage = () => Boolean(FileSystem.documentDirectory);
+
+const ensureActivityFeedStorageDirectory = async () => {
+  if (!canUseDiskStorage()) return false;
+
   try {
-    await SecureStore.setItemAsync(ACTIVITY_FEED_STORE_KEY, serializeState(value));
+    await FileSystem.makeDirectoryAsync(ACTIVITY_FEED_STORAGE_DIR, {
+      intermediates: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const readPersistedStateFromDisk = async () => {
+  if (!canUseDiskStorage()) return null;
+
+  try {
+    const info = await FileSystem.getInfoAsync(ACTIVITY_FEED_STORAGE_FILE);
+    if (!info.exists || info.isDirectory) return null;
+
+    return await FileSystem.readAsStringAsync(ACTIVITY_FEED_STORAGE_FILE);
+  } catch {
+    return null;
+  }
+};
+
+const writePersistedStateToDisk = async (value: ActivityFeedPersistedState) => {
+  const ready = await ensureActivityFeedStorageDirectory();
+  if (!ready) return false;
+
+  try {
+    await FileSystem.writeAsStringAsync(ACTIVITY_FEED_STORAGE_FILE, serializeState(value));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const deleteLegacySecureStoreState = async () => {
+  try {
+    await SecureStore.deleteItemAsync(ACTIVITY_FEED_STORE_KEY);
+  } catch {
+    // Ignore legacy cleanup failures.
+  }
+};
+
+const persistState = async (value: ActivityFeedPersistedState) => {
+  persistPromise = persistPromise
+    .catch(() => undefined)
+    .then(async () => {
+      const persistedToDisk = await writePersistedStateToDisk(value);
+      if (persistedToDisk) {
+        await deleteLegacySecureStoreState();
+      }
+    });
+
+  try {
+    await persistPromise;
   } catch {
     // Ignore persistence issues and keep the in-memory copy available.
   }
@@ -288,12 +350,36 @@ export const initializeActivityFeedStore = async () => {
 
   hydratePromise = (async () => {
     try {
-      const stored = await SecureStore.getItemAsync(ACTIVITY_FEED_STORE_KEY);
-      const persisted = normalizePersistedState(stored);
+      const storedFromDisk = await readPersistedStateFromDisk();
+      if (storedFromDisk) {
+        const persisted = normalizePersistedState(storedFromDisk);
+
+        return setState(
+          {
+            ...persisted,
+            currentEntryId: null,
+            hydrated: true,
+            isFetching: false,
+          },
+          { persist: false }
+        );
+      }
+
+      const legacyStored = await SecureStore.getItemAsync(ACTIVITY_FEED_STORE_KEY);
+      const persisted = normalizePersistedState(legacyStored);
+
+      if (legacyStored) {
+        void writePersistedStateToDisk(persisted).then((migrated) => {
+          if (migrated) {
+            void deleteLegacySecureStoreState();
+          }
+        });
+      }
 
       return setState(
         {
           ...persisted,
+          currentEntryId: null,
           hydrated: true,
           isFetching: false,
         },
@@ -430,5 +516,5 @@ export const hydrateAndRefreshActivityFeed = async ({
     now,
     force: forceRefresh || (forceIfEmpty && state.entries.length === 0),
   });
-  return advanceActivityFeedDisplay(now);
+  return state;
 };

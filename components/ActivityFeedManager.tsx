@@ -5,6 +5,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { ActivityFeedOverlay } from '@/components/ActivityFeedOverlay';
 import {
   ACTIVITY_FEED_DISPLAY_INTERVAL_MS,
+  ACTIVITY_FEED_INITIAL_DISPLAY_DELAY_MS,
   advanceActivityFeedDisplay,
   hydrateAndRefreshActivityFeed,
   initializeActivityFeedStore,
@@ -20,15 +21,16 @@ const isOverlayHiddenForPath = (pathname: string) => pathname === '/' || pathnam
 export function ActivityFeedManager() {
   const pathname = usePathname();
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const hasScheduledFirstDisplayRef = useRef(false);
   const [isSilentRefreshing, setIsSilentRefreshing] = useState(true);
-  const { entries, hydrated, lastFetchedAt } = useActivityFeedStore();
+  const { entries, hydrated, lastFetchedAt, lastDisplayedAt } = useActivityFeedStore();
 
   const bootstrap = useCallback(async () => {
     setIsSilentRefreshing(true);
 
     try {
       await initializeActivityFeedStore();
-      await hydrateAndRefreshActivityFeed({ forceRefresh: true });
+      await hydrateAndRefreshActivityFeed({ forceIfEmpty: true });
     } finally {
       setIsSilentRefreshing(false);
     }
@@ -68,22 +70,27 @@ export function ActivityFeedManager() {
     const timeout = setTimeout(() => {
       if (appStateRef.current !== 'active') return;
 
-      void refreshActivityFeedIfNeeded({ force: entries.length === 0 }).then(() =>
-        advanceActivityFeedDisplay()
-      );
+      void refreshActivityFeedIfNeeded({ force: entries.length === 0 });
     }, delayMs);
 
     return () => clearTimeout(timeout);
   }, [entries.length, hydrated, isSilentRefreshing, lastFetchedAt]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (appStateRef.current !== 'active') return;
-      void advanceActivityFeedDisplay();
-    }, ACTIVITY_FEED_DISPLAY_INTERVAL_MS);
+    if (!hydrated || isSilentRefreshing) return;
 
-    return () => clearInterval(interval);
-  }, []);
+    const delayMs = hasScheduledFirstDisplayRef.current
+      ? ACTIVITY_FEED_DISPLAY_INTERVAL_MS
+      : ACTIVITY_FEED_INITIAL_DISPLAY_DELAY_MS;
+
+    const timeout = setTimeout(() => {
+      if (appStateRef.current !== 'active') return;
+      hasScheduledFirstDisplayRef.current = true;
+      void advanceActivityFeedDisplay();
+    }, delayMs);
+
+    return () => clearTimeout(timeout);
+  }, [entries.length, hydrated, isSilentRefreshing, lastDisplayedAt, lastFetchedAt]);
 
   return <ActivityFeedOverlay hidden={isSilentRefreshing || isOverlayHiddenForPath(pathname)} />;
 }
