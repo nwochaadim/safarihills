@@ -20,7 +20,7 @@ import { LISTING_OFFERS } from '@/queries/listingOffers';
 import { useMutation, useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -140,6 +140,31 @@ export default function LocalOfferBookingScreen() {
   const itemListName = Array.isArray(itemListNameParam)
     ? itemListNameParam[0]
     : itemListNameParam;
+  const backToListingHref = useMemo(
+    () =>
+      listingId
+        ? {
+            pathname: '/listing/[id]' as const,
+            params: {
+              id: listingId,
+              source_screen: sourceScreen ?? 'listing_detail',
+              source_surface: sourceSurface,
+              source_section: sourceSection,
+              item_list_id: itemListId,
+              item_list_name: itemListName,
+            },
+          }
+        : null,
+    [itemListId, itemListName, listingId, sourceScreen, sourceSection, sourceSurface]
+  );
+  const handleBack = useCallback(() => {
+    if (backToListingHref) {
+      router.dismissTo(backToListingHref);
+      return;
+    }
+
+    router.back();
+  }, [backToListingHref, router]);
   const fallbackListing = useMemo(
     () => (listingId ? findListingById(listingId) : undefined),
     [listingId]
@@ -260,7 +285,7 @@ export default function LocalOfferBookingScreen() {
         <Text className="text-lg font-semibold text-slate-900">Offer unavailable</Text>
         <Pressable
           className="mt-4 rounded-full bg-blue-600 px-5 py-3"
-          onPress={() => router.back()}>
+          onPress={handleBack}>
           <Text className="text-sm font-semibold text-white">Return to listing</Text>
         </Pressable>
       </SafeAreaView>
@@ -373,7 +398,7 @@ export default function LocalOfferBookingScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}>
         <View className="px-6 pt-4">
-          <BackButton onPress={() => router.back()} />
+          <BackButton onPress={handleBack} />
           <Text className="mt-5 text-xs font-semibold uppercase tracking-[0.35em] text-amber-500">
             Offer booking
           </Text>

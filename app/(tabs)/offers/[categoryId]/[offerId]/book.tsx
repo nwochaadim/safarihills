@@ -511,20 +511,27 @@ export default function OfferBookingScreen() {
     'checking'
   );
   const {
+    categoryId: categoryParam,
     offerId: offerParam,
     listingId: listingParam,
     referenceNumber: referenceParam,
     source_screen: sourceScreenParam,
     source_surface: sourceSurfaceParam,
     source_section: sourceSectionParam,
+    item_list_id: itemListIdParam,
+    item_list_name: itemListNameParam,
   } = useLocalSearchParams<{
+    categoryId?: string | string[];
     offerId?: string | string[];
     listingId?: string | string[];
     referenceNumber?: string | string[];
     source_screen?: string | string[];
     source_surface?: string | string[];
     source_section?: string | string[];
+    item_list_id?: string | string[];
+    item_list_name?: string | string[];
   }>();
+  const categoryId = Array.isArray(categoryParam) ? categoryParam[0] : categoryParam;
   const offerId = Array.isArray(offerParam) ? offerParam[0] : offerParam;
   const listingId = Array.isArray(listingParam) ? listingParam[0] : listingParam;
   const referenceNumber = Array.isArray(referenceParam) ? referenceParam[0] : referenceParam;
@@ -535,6 +542,28 @@ export default function OfferBookingScreen() {
   const sourceSection = Array.isArray(sourceSectionParam)
     ? sourceSectionParam[0]
     : sourceSectionParam;
+  const itemListId = Array.isArray(itemListIdParam) ? itemListIdParam[0] : itemListIdParam;
+  const itemListName = Array.isArray(itemListNameParam)
+    ? itemListNameParam[0]
+    : itemListNameParam;
+  const handleBack = useCallback(() => {
+    if (categoryId === 'listing-offers' && listingId) {
+      router.dismissTo({
+        pathname: '/listing/[id]',
+        params: {
+          id: listingId,
+          source_screen: sourceScreen ?? 'listing_detail',
+          source_surface: sourceSurface,
+          source_section: sourceSection,
+          item_list_id: itemListId,
+          item_list_name: itemListName,
+        },
+      });
+      return;
+    }
+
+    router.back();
+  }, [categoryId, itemListId, itemListName, listingId, router, sourceScreen, sourceSection, sourceSurface]);
 
   const { data, loading } = useQuery<OfferNewBookingDetailsResponse>(
     NEW_BOOKING_DETAILS_FOR_OFFER,
@@ -1071,7 +1100,7 @@ export default function OfferBookingScreen() {
       <SafeAreaView className="flex-1 bg-slate-50">
         <Stack.Screen options={{ headerShown: false }} />
         <View className="flex-1 px-6 pt-4">
-          <BackButton onPress={() => router.back()} />
+          <BackButton onPress={handleBack} />
           <View className="flex-1 items-center justify-center px-2">
             <BlankSlate
               title="Sign in to continue"
@@ -1100,7 +1129,7 @@ export default function OfferBookingScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 48 }}>
         <View className="px-6 pt-4">
-          <BackButton onPress={() => router.back()} />
+          <BackButton onPress={handleBack} />
           <Text className="mt-4 text-xs font-semibold uppercase tracking-[0.4em] text-blue-500">
             Offer booking
           </Text>
