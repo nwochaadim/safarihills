@@ -51,6 +51,10 @@ const SCREEN_REGISTRY: Record<
     screenName: 'explore_home',
     screenGroup: 'discovery',
   },
+  '/wishlist': {
+    screenName: 'wishlist_home',
+    screenGroup: 'discovery',
+  },
   '/explore/[slug]': {
     screenName: 'explore_section',
     screenGroup: 'discovery',

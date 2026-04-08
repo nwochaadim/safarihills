@@ -49,6 +49,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  WishlistListingInput,
+  syncWishlistListing,
+  toggleWishlistListing,
+  useWishlist,
+} from '@/lib/wishlistStore';
+import { WishlistToggleButton } from '@/components/wishlist/WishlistToggleButton';
+
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = width * 0.9;
 const OFFER_CARD_WIDTH = width - 64;
@@ -527,6 +535,7 @@ function ListingDetailContent({
 }: ListingDetailContentProps) {
   const router = useRouter();
   const { track, trackOnce } = useAnalyticsTracker();
+  const { wishlistIds } = useWishlist();
   const [activeImage, setActiveImage] = useState(0);
   const [activeOfferIndex, setActiveOfferIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -535,6 +544,32 @@ function ListingDetailContent({
   const scrollY = useRef(new Animated.Value(0)).current;
   const attractionsSectionYRef = useRef(0);
   const reviewsSectionYRef = useRef(0);
+  const isWishlisted = wishlistIds.has(listing.id);
+  const wishlistListing = useMemo<WishlistListingInput>(
+    () => ({
+      id: listing.id,
+      name: listing.name,
+      apartmentType: listing.apartmentType,
+      coverPhoto: listing.coverPhoto || listing.gallery[0] || '',
+      description: listing.description,
+      minimumPrice: listing.minimumPrice,
+      rating: listing.rating,
+      area: listing.area,
+      maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
+    }),
+    [
+      listing.apartmentType,
+      listing.area,
+      listing.coverPhoto,
+      listing.description,
+      listing.gallery,
+      listing.id,
+      listing.maxNumberOfGuestsAllowed,
+      listing.minimumPrice,
+      listing.name,
+      listing.rating,
+    ]
+  );
 
   useEffect(() => {
     // Detail views are the clearest signal that a user moved from casual browsing into active evaluation.
@@ -582,6 +617,11 @@ function ListingDetailContent({
     sourceContext.sourceSurface,
     track,
   ]);
+
+  useEffect(() => {
+    if (!isWishlisted) return;
+    syncWishlistListing(wishlistListing);
+  }, [isWishlisted, wishlistListing]);
 
   const handleOpenAttraction = (mapUrl: string) => {
     if (!mapUrl) return;
@@ -717,6 +757,10 @@ function ListingDetailContent({
     });
   };
 
+  const handleToggleWishlist = useCallback(() => {
+    toggleWishlistListing(wishlistListing);
+  }, [wishlistListing]);
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       <Stack.Screen options={{ headerShown: false }} />
@@ -814,6 +858,14 @@ function ListingDetailContent({
               </Text>
               <Text className="mt-2 text-3xl font-bold text-slate-900">{listing.name}</Text>
               <Text className="mt-1 text-base text-slate-500">{listing.area}</Text>
+              <View className="mt-4 self-start">
+                <WishlistToggleButton
+                  active={isWishlisted}
+                  label={isWishlisted ? 'Remove from wishlist' : 'Save to wishlist'}
+                  variant="footer"
+                  onPress={handleToggleWishlist}
+                />
+              </View>
             </View>
             <View className="items-end flex-shrink">
               <Text className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">

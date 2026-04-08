@@ -22,10 +22,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="wishlist"
+        options={{
+          title: 'Wishlist',
+          tabBarIcon: ({ color, size }) => <Feather size={size ?? 24} name="heart" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="offers"
         options={{
-          title: 'Offers',
-          tabBarIcon: ({ color, size }) => <Feather size={size ?? 24} name="tag" color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen

@@ -3,6 +3,8 @@ import { ExploreListing } from '@/lib/explore';
 import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 
+import { WishlistToggleButton } from '@/components/wishlist/WishlistToggleButton';
+
 const PROMO_TAG_TONES = [
   {
     containerClass: 'border-emerald-200 bg-emerald-50',
@@ -23,10 +25,17 @@ const PROMO_TAG_TONES = [
 
 type ExploreListingCardProps = {
   item: ExploreListing;
+  isWishlisted: boolean;
   onPress: (item: ExploreListing) => void;
+  onToggleWishlist: (item: ExploreListing) => void;
 };
 
-export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
+export function ExploreListingCard({
+  item,
+  isWishlisted,
+  onPress,
+  onToggleWishlist,
+}: ExploreListingCardProps) {
   const visiblePromoTags = item.promoTags.filter((tag) => tag.trim().length > 0).slice(0, 2);
 
   return (
@@ -37,14 +46,16 @@ export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
         source={{ uri: item.coverPhoto }}
         className="h-56 w-full overflow-hidden"
         imageStyle={{ borderTopLeftRadius: 32, borderTopRightRadius: 32 }}>
+        <View className="absolute right-4 top-4 z-10">
+          <WishlistToggleButton
+            active={isWishlisted}
+            onPress={() => onToggleWishlist(item)}
+          />
+        </View>
         <View className="flex-1 flex-row items-start justify-between p-4">
           <Text className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-800">
             {item.apartmentType || 'Apartment'}
           </Text>
-          <View className="flex-row items-center gap-1 rounded-full bg-slate-900/60 px-3 py-1">
-            <Feather name="star" size={14} color="#fde047" />
-            <Text className="text-xs font-semibold text-white">{item.rating.toFixed(1)}</Text>
-          </View>
         </View>
       </LoadingImageBackground>
 
@@ -62,6 +73,10 @@ export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
             </Text>
             <Text className="text-[10px] font-medium text-slate-500">/ night</Text>
           </View>
+        </View>
+        <View className="mt-1 flex-row items-center gap-1.5">
+          <Feather name="star" size={14} color="#f59e0b" />
+          <Text className="text-sm font-semibold text-slate-700">{item.rating.toFixed(1)} rated</Text>
         </View>
         <View className="mt-1 flex-row items-center gap-2">
           <Feather name="map-pin" size={14} color="#94a3b8" />
@@ -90,6 +105,11 @@ export function ExploreListingCard({ item, onPress }: ExploreListingCardProps) {
               Up to {item.maxNumberOfGuestsAllowed} guests
             </Text>
           </View>
+          {isWishlisted ? (
+            <View className="rounded-full bg-rose-50 px-3 py-1.5">
+              <Text className="text-xs font-semibold text-rose-600">Wishlisted</Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </Pressable>

@@ -10,6 +10,7 @@ import { AnalyticsProvider } from '@/components/AnalyticsProvider';
 import { ActivityFeedManager } from '@/components/ActivityFeedManager';
 import { apolloClient } from '@/lib/apolloClient';
 import { maybePromptForPushNotifications, usePushNotificationHandler } from '@/lib/pushNotifications';
+import { hydrateWishlistStore } from '@/lib/wishlistStore';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -23,6 +24,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     void maybePromptForPushNotifications();
+    void hydrateWishlistStore();
   }, []);
 
   return (

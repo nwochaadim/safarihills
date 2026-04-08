@@ -32,6 +32,7 @@ import {
 import {
   ExploreFilterInput,
   ExploreSection,
+  ExploreListing,
   FilterState,
   RemoteExploreSection,
   buildExploreFilterInput,
@@ -43,6 +44,10 @@ import {
   serializeExploreFilterInput,
   sortExploreSections,
 } from '@/lib/explore';
+import {
+  toggleWishlistListing,
+  useWishlist,
+} from '@/lib/wishlistStore';
 import { AVAILABLE_LOCATIONS_QUERY } from '@/queries/availableLocations';
 import { PROFILE_QUERY } from '@/queries/profile';
 import { EXPLORE_SECTIONS } from '@/queries/exploreSections';
@@ -390,6 +395,7 @@ export default function ExploreScreen() {
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useState(() => new Animated.Value(0))[0];
+  const { wishlistIds } = useWishlist();
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -634,6 +640,29 @@ export default function ExploreScreen() {
   const handleRetry = () => {
     refetch({ filters: appliedExploreFilters }).catch(() => undefined);
   };
+
+  const toWishlistInput = useCallback(
+    (listing: ExploreListing) => ({
+      id: listing.id,
+      name: listing.name,
+      apartmentType: listing.apartmentType,
+      coverPhoto: listing.coverPhoto,
+      description: listing.description,
+      minimumPrice: listing.minimumPrice,
+      rating: listing.rating,
+      area: listing.area,
+      maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
+    }),
+    []
+  );
+
+  const handleToggleWishlist = useCallback(
+    (listing: ExploreListing) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      toggleWishlistListing(toWishlistInput(listing));
+    },
+    [toWishlistInput]
+  );
 
   useEffect(() => {
     if (loading || error || previewListings.length === 0) {
@@ -1284,6 +1313,7 @@ export default function ExploreScreen() {
         renderItem={({ item }) => (
           <ExploreListingCard
             item={item}
+            isWishlisted={wishlistIds.has(item.id)}
             onPress={(listing) => {
               track(ANALYTICS_EVENTS.SelectItem, {
                 source_screen: 'explore_home',
@@ -1320,6 +1350,7 @@ export default function ExploreScreen() {
                 },
               });
             }}
+            onToggleWishlist={handleToggleWishlist}
           />
         )}
         keyExtractor={(item, index) => `${item.id || 'listing'}-${index}`}
