@@ -4,6 +4,7 @@ import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
 import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
 import {
   ANALYTICS_EVENTS,
   buildListingAnalyticsItem,
@@ -50,11 +51,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  WishlistListingInput,
-  syncWishlistListing,
-  toggleWishlistListing,
-  useWishlist,
-} from '@/lib/wishlistStore';
+  ListingWishlistRecord,
+} from '@/lib/listingWishlist';
 import { WishlistToggleButton } from '@/components/wishlist/WishlistToggleButton';
 
 const { width } = Dimensions.get('window');
@@ -125,6 +123,9 @@ type RemoteListing = {
   minimumPrice: number | null;
   rating: number | null;
   area: string | null;
+  isWishlisted: boolean | null;
+  wishlistedAt: string | null;
+  unwishlistedAt: string | null;
   pointsToWin: number | null;
   maxNumberOfGuestsAllowed: number | null;
   amenities: string[] | null;
@@ -310,6 +311,9 @@ export default function ListingDetailScreen() {
         minimumPrice: 0,
         rating: 0,
         area: '',
+        isWishlisted: false,
+        wishlistedAt: null,
+        unwishlistedAt: null,
         pointsToWin: 0,
         maxNumberOfGuestsAllowed: 1,
         bookingOptions: ['entire'],
@@ -352,6 +356,9 @@ export default function ListingDetailScreen() {
       minimumPrice: remoteListing.minimumPrice ?? baseListing.minimumPrice,
       rating: remoteListing.rating ?? baseListing.rating,
       area: remoteListing.area ?? baseListing.area,
+      isWishlisted: remoteListing.isWishlisted ?? baseListing.isWishlisted ?? false,
+      wishlistedAt: remoteListing.wishlistedAt ?? baseListing.wishlistedAt ?? null,
+      unwishlistedAt: remoteListing.unwishlistedAt ?? baseListing.unwishlistedAt ?? null,
       pointsToWin: remoteListing.pointsToWin ?? baseListing.pointsToWin,
       maxNumberOfGuestsAllowed:
         remoteListing.maxNumberOfGuestsAllowed ?? baseListing.maxNumberOfGuestsAllowed,
@@ -535,7 +542,7 @@ function ListingDetailContent({
 }: ListingDetailContentProps) {
   const router = useRouter();
   const { track, trackOnce } = useAnalyticsTracker();
-  const { wishlistIds } = useWishlist();
+  const { toggleListingWishlist } = useListingWishlistToggle();
   const [activeImage, setActiveImage] = useState(0);
   const [activeOfferIndex, setActiveOfferIndex] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -544,8 +551,8 @@ function ListingDetailContent({
   const scrollY = useRef(new Animated.Value(0)).current;
   const attractionsSectionYRef = useRef(0);
   const reviewsSectionYRef = useRef(0);
-  const isWishlisted = wishlistIds.has(listing.id);
-  const wishlistListing = useMemo<WishlistListingInput>(
+  const isWishlisted = listing.isWishlisted === true;
+  const wishlistListing = useMemo<ListingWishlistRecord>(
     () => ({
       id: listing.id,
       name: listing.name,
@@ -556,6 +563,9 @@ function ListingDetailContent({
       rating: listing.rating,
       area: listing.area,
       maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
+      isWishlisted,
+      wishlistedAt: listing.wishlistedAt ?? null,
+      unwishlistedAt: listing.unwishlistedAt ?? null,
     }),
     [
       listing.apartmentType,
@@ -564,10 +574,14 @@ function ListingDetailContent({
       listing.description,
       listing.gallery,
       listing.id,
+      listing.isWishlisted,
       listing.maxNumberOfGuestsAllowed,
       listing.minimumPrice,
       listing.name,
       listing.rating,
+      listing.unwishlistedAt,
+      listing.wishlistedAt,
+      isWishlisted,
     ]
   );
 
@@ -617,11 +631,6 @@ function ListingDetailContent({
     sourceContext.sourceSurface,
     track,
   ]);
-
-  useEffect(() => {
-    if (!isWishlisted) return;
-    syncWishlistListing(wishlistListing);
-  }, [isWishlisted, wishlistListing]);
 
   const handleOpenAttraction = (mapUrl: string) => {
     if (!mapUrl) return;
@@ -758,8 +767,8 @@ function ListingDetailContent({
   };
 
   const handleToggleWishlist = useCallback(() => {
-    toggleWishlistListing(wishlistListing);
-  }, [wishlistListing]);
+    void toggleListingWishlist(wishlistListing);
+  }, [toggleListingWishlist, wishlistListing]);
 
   return (
     <SafeAreaView className="flex-1 bg-white">

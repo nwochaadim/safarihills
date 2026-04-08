@@ -13,6 +13,9 @@ export const V2_USER_FIND_LISTING = gql`
       apartmentType
       rating
       area
+      isWishlisted
+      wishlistedAt
+      unwishlistedAt
       pointsToWin
       maxNumberOfGuestsAllowed
       amenities

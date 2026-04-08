@@ -35,6 +35,9 @@ export type ListingDetail = {
   minimumPrice: number;
   rating: number;
   area: string;
+  isWishlisted?: boolean;
+  wishlistedAt?: string | null;
+  unwishlistedAt?: string | null;
   pointsToWin: number;
   maxNumberOfGuestsAllowed: number;
   bookingOptions: BookingOption[];

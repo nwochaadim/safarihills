@@ -32,6 +32,9 @@ export const EXPLORE_SECTIONS = gql`
         maxNumberOfGuestsAllowed
         bookableOptions
         promoTags
+        isWishlisted
+        wishlistedAt
+        unwishlistedAt
       }
     }
   }
@@ -69,6 +72,9 @@ export const EXPLORE_SECTION = gql`
         maxNumberOfGuestsAllowed
         bookableOptions
         promoTags
+        isWishlisted
+        wishlistedAt
+        unwishlistedAt
       }
     }
   }

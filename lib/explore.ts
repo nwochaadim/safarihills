@@ -43,6 +43,9 @@ export type ExploreListing = {
   minimumPrice: number;
   rating: number;
   area: string;
+  isWishlisted: boolean;
+  wishlistedAt: string | null;
+  unwishlistedAt: string | null;
   maxNumberOfGuestsAllowed: number;
   bookingOptions: BookingOption[];
   promoTags: string[];
@@ -74,6 +77,9 @@ export type RemoteExploreListing = {
   minimumPrice?: number | null;
   rating?: number | null;
   area?: string | null;
+  isWishlisted?: boolean | null;
+  wishlistedAt?: string | null;
+  unwishlistedAt?: string | null;
   maxNumberOfGuestsAllowed?: number | null;
   bookableOptions?: (string | null)[] | null;
   promoTags?: (string | null)[] | null;
@@ -302,6 +308,9 @@ export const mapExploreListing = (
     minimumPrice: typeof listing.minimumPrice === 'number' ? listing.minimumPrice : 0,
     rating: typeof listing.rating === 'number' ? listing.rating : 0,
     area,
+    isWishlisted: listing.isWishlisted === true,
+    wishlistedAt: cleanString(listing.wishlistedAt) || null,
+    unwishlistedAt: cleanString(listing.unwishlistedAt) || null,
     maxNumberOfGuestsAllowed:
       typeof listing.maxNumberOfGuestsAllowed === 'number' && listing.maxNumberOfGuestsAllowed > 0
         ? listing.maxNumberOfGuestsAllowed

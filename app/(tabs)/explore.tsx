@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
 import {
   ANALYTICS_EVENTS,
   buildListingAnalyticsItem,
@@ -44,10 +45,6 @@ import {
   serializeExploreFilterInput,
   sortExploreSections,
 } from '@/lib/explore';
-import {
-  toggleWishlistListing,
-  useWishlist,
-} from '@/lib/wishlistStore';
 import { AVAILABLE_LOCATIONS_QUERY } from '@/queries/availableLocations';
 import { PROFILE_QUERY } from '@/queries/profile';
 import { EXPLORE_SECTIONS } from '@/queries/exploreSections';
@@ -380,6 +377,7 @@ export default function ExploreScreen() {
   const { track } = useAnalyticsTracker();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const { toggleListingWishlist } = useListingWishlistToggle();
   const { height: windowHeight } = useWindowDimensions();
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
@@ -395,8 +393,6 @@ export default function ExploreScreen() {
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useState(() => new Animated.Value(0))[0];
-  const { wishlistIds } = useWishlist();
-
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -641,27 +637,12 @@ export default function ExploreScreen() {
     refetch({ filters: appliedExploreFilters }).catch(() => undefined);
   };
 
-  const toWishlistInput = useCallback(
-    (listing: ExploreListing) => ({
-      id: listing.id,
-      name: listing.name,
-      apartmentType: listing.apartmentType,
-      coverPhoto: listing.coverPhoto,
-      description: listing.description,
-      minimumPrice: listing.minimumPrice,
-      rating: listing.rating,
-      area: listing.area,
-      maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed,
-    }),
-    []
-  );
-
   const handleToggleWishlist = useCallback(
     (listing: ExploreListing) => {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      toggleWishlistListing(toWishlistInput(listing));
+      void toggleListingWishlist(listing);
     },
-    [toWishlistInput]
+    [toggleListingWishlist]
   );
 
   useEffect(() => {
@@ -1313,7 +1294,6 @@ export default function ExploreScreen() {
         renderItem={({ item }) => (
           <ExploreListingCard
             item={item}
-            isWishlisted={wishlistIds.has(item.id)}
             onPress={(listing) => {
               track(ANALYTICS_EVENTS.SelectItem, {
                 source_screen: 'explore_home',

@@ -25,14 +25,12 @@ const PROMO_TAG_TONES = [
 
 type ExploreListingCardProps = {
   item: ExploreListing;
-  isWishlisted: boolean;
   onPress: (item: ExploreListing) => void;
   onToggleWishlist: (item: ExploreListing) => void;
 };
 
 export function ExploreListingCard({
   item,
-  isWishlisted,
   onPress,
   onToggleWishlist,
 }: ExploreListingCardProps) {
@@ -48,7 +46,7 @@ export function ExploreListingCard({
         imageStyle={{ borderTopLeftRadius: 32, borderTopRightRadius: 32 }}>
         <View className="absolute right-4 top-4 z-10">
           <WishlistToggleButton
-            active={isWishlisted}
+            active={item.isWishlisted}
             onPress={() => onToggleWishlist(item)}
           />
         </View>
@@ -105,7 +103,7 @@ export function ExploreListingCard({
               Up to {item.maxNumberOfGuestsAllowed} guests
             </Text>
           </View>
-          {isWishlisted ? (
+          {item.isWishlisted ? (
             <View className="rounded-full bg-rose-50 px-3 py-1.5">
               <Text className="text-xs font-semibold text-rose-600">Wishlisted</Text>
             </View>

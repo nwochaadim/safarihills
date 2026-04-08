@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BackButton } from '@/components/BackButton';
 import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
 import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
 import {
   ANALYTICS_EVENTS,
   buildListingAnalyticsItem,
@@ -47,6 +48,7 @@ const rgbaFromHex = (color: string, alpha: string) => {
 export default function ExploreSectionScreen() {
   const router = useRouter();
   const { track } = useAnalyticsTracker();
+  const { toggleListingWishlist } = useListingWishlistToggle();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ slug?: string | string[]; filters?: string | string[] }>();
   const [refreshing, setRefreshing] = useState(false);
@@ -204,6 +206,10 @@ export default function ExploreSectionScreen() {
     }
   };
 
+  const handleToggleWishlist = (listing: (typeof listings)[number]) => {
+    void toggleListingWishlist(listing);
+  };
+
   if (!slug) {
     return (
       <SafeAreaView className="flex-1 bg-slate-50">
@@ -347,6 +353,7 @@ export default function ExploreSectionScreen() {
                 },
               });
             }}
+            onToggleWishlist={handleToggleWishlist}
           />
         )}
         keyExtractor={(item, index) => `${item.id}-${index}`}

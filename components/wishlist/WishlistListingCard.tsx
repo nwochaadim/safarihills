@@ -1,15 +1,15 @@
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
-import { WishlistListing } from '@/lib/wishlistStore';
+import { ListingWishlistRecord } from '@/lib/listingWishlist';
 import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 
 import { WishlistToggleButton } from './WishlistToggleButton';
 
 type WishlistListingCardProps = {
-  item: WishlistListing;
+  item: ListingWishlistRecord;
   savedLabel: string;
-  onPress: (listing: WishlistListing) => void;
-  onToggleWishlist: (listing: WishlistListing) => void;
+  onPress: (listing: ListingWishlistRecord) => void;
+  onToggleWishlist: (listing: ListingWishlistRecord) => void;
 };
 
 export function WishlistListingCard({
@@ -29,7 +29,7 @@ export function WishlistListingCard({
         <View className="absolute inset-0 bg-slate-950/25" />
         <View className="absolute right-4 top-4 z-10">
           <WishlistToggleButton
-            active
+            active={item.isWishlisted}
             variant="card"
             onPress={() => onToggleWishlist(item)}
           />

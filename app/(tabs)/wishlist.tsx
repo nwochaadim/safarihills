@@ -1,21 +1,55 @@
+import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 
 import { BlankSlate } from '@/components/BlankSlate';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 import { WishlistListingCard } from '@/components/wishlist/WishlistListingCard';
 import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
 import {
   ANALYTICS_EVENTS,
   buildListingAnalyticsItem,
   toFlag,
 } from '@/lib/analytics.schema';
-import { toggleWishlistListing, useWishlist, WishlistListing } from '@/lib/wishlistStore';
+import { AuthStatus } from '@/lib/authStatus';
+import {
+  ListingWishlistRecord,
+  normalizeListingWishlistRecord,
+} from '@/lib/listingWishlist';
+import { WISHLISTED_LISTINGS } from '@/queries/wishlistedListings';
 
-const formatSavedLabel = (savedAt: string) => {
-  const savedTime = Date.parse(savedAt);
+type RemoteWishlistedListing = {
+  id?: string | null;
+  name?: string | null;
+  apartmentType?: string | null;
+  description?: string | null;
+  coverPhoto?: string | null;
+  minimumPrice?: number | null;
+  rating?: number | null;
+  area?: string | null;
+  maxNumberOfGuestsAllowed?: number | null;
+  isWishlisted?: boolean | null;
+  wishlistedAt?: string | null;
+  unwishlistedAt?: string | null;
+};
+
+type WishlistedListingsResponse = {
+  wishlistedListings?: RemoteWishlistedListing[] | null;
+};
+
+const formatSavedLabel = (savedAt: string | null) => {
+  const savedTime = savedAt ? Date.parse(savedAt) : Number.NaN;
   if (Number.isNaN(savedTime)) return 'Saved recently';
 
   const diffMs = Date.now() - savedTime;
@@ -25,7 +59,7 @@ const formatSavedLabel = (savedAt: string) => {
   if (diffDays === 1) return 'Saved yesterday';
   if (diffDays < 7) return `Saved ${diffDays} days ago`;
 
-  return `Saved ${new Date(savedAt).toLocaleDateString(undefined, {
+  return `Saved ${new Date(savedAt ?? '').toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
   })}`;
@@ -34,7 +68,64 @@ const formatSavedLabel = (savedAt: string) => {
 export default function WishlistScreen() {
   const router = useRouter();
   const { track } = useAnalyticsTracker();
-  const { hydrated, items } = useWishlist();
+  const { toggleListingWishlist } = useListingWishlistToggle();
+  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
+    'checking'
+  );
+  const [refreshing, setRefreshing] = useState(false);
+  const { data, loading, error, refetch } = useQuery<WishlistedListingsResponse>(
+    WISHLISTED_LISTINGS,
+    {
+      skip: authStatus !== 'signed-in',
+      notifyOnNetworkStatusChange: true,
+    }
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      setAuthStatus('checking');
+
+      AuthStatus.isSignedIn().then((signedIn) => {
+        if (isActive) {
+          setAuthStatus(signedIn ? 'signed-in' : 'signed-out');
+        }
+      });
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (authStatus === 'signed-in') {
+        refetch();
+      }
+    }, [authStatus, refetch])
+  );
+
+  const items = useMemo<ListingWishlistRecord[]>(
+    () =>
+      (data?.wishlistedListings ?? []).map((listing, index) =>
+        normalizeListingWishlistRecord({
+          id: listing.id?.trim() || `wishlisted-listing-${index + 1}`,
+          name: listing.name ?? undefined,
+          apartmentType: listing.apartmentType ?? undefined,
+          description: listing.description ?? undefined,
+          coverPhoto: listing.coverPhoto ?? undefined,
+          minimumPrice: listing.minimumPrice ?? undefined,
+          rating: listing.rating ?? undefined,
+          area: listing.area ?? undefined,
+          maxNumberOfGuestsAllowed: listing.maxNumberOfGuestsAllowed ?? undefined,
+          isWishlisted: listing.isWishlisted ?? true,
+          wishlistedAt: listing.wishlistedAt ?? undefined,
+          unwishlistedAt: listing.unwishlistedAt ?? undefined,
+        })
+      ),
+    [data?.wishlistedListings]
+  );
 
   const topAreas = useMemo(() => {
     const seen = new Set<string>();
@@ -58,7 +149,7 @@ export default function WishlistScreen() {
     };
   }, [items]);
 
-  const handleOpenListing = (listing: WishlistListing) => {
+  const handleOpenListing = (listing: ListingWishlistRecord) => {
     track(ANALYTICS_EVENTS.SelectItem, {
       source_screen: 'wishlist',
       source_surface: 'wishlist_listing_card',
@@ -95,8 +186,19 @@ export default function WishlistScreen() {
     });
   };
 
+  const handleRefresh = async () => {
+    if (authStatus !== 'signed-in') return;
+
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    if (!hydrated) return;
+    if (authStatus !== 'signed-in' || loading) return;
 
     track(ANALYTICS_EVENTS.ListingListView, {
       list_id: 'wishlist_saved_stays',
@@ -105,13 +207,19 @@ export default function WishlistScreen() {
       source_surface: 'saved_stays_feed',
       list_size: items.length,
     });
-  }, [hydrated, items.length, track]);
+  }, [authStatus, items.length, loading, track]);
+
+  const showInitialLoading =
+    authStatus === 'checking' || (authStatus === 'signed-in' && loading && !data?.wishlistedListings);
 
   return (
     <SafeAreaView className="flex-1 bg-[#fffaf7]">
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 24, paddingBottom: 120 }}>
+        contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#e11d48" />
+        }>
         <View className="overflow-hidden rounded-[34px] border border-rose-100 bg-white">
           <View className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-rose-100/90" />
           <View className="absolute -left-6 bottom-2 h-28 w-28 rounded-full bg-amber-100/80" />
@@ -131,7 +239,7 @@ export default function WishlistScreen() {
             <View className="mt-5 flex-row flex-wrap gap-3">
               <View className="rounded-full border border-white bg-[#fff3ee] px-4 py-2">
                 <Text className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">
-                  {hydrated ? `${items.length} saved` : 'Loading'}
+                  {authStatus === 'signed-in' ? `${items.length} saved` : 'Sign in'}
                 </Text>
               </View>
               {nightlyRange ? (
@@ -160,16 +268,35 @@ export default function WishlistScreen() {
           </View>
         </View>
 
-        {!hydrated ? (
+        {showInitialLoading ? (
           <View className="mt-8 flex-row items-center justify-center gap-3 rounded-[28px] border border-rose-100 bg-white px-5 py-5">
             <ActivityIndicator color="#e11d48" size="small" />
-            <Text className="text-sm font-medium text-slate-600">Restoring your wishlist...</Text>
+            <Text className="text-sm font-medium text-slate-600">Loading your wishlist...</Text>
+          </View>
+        ) : authStatus === 'signed-out' ? (
+          <View className="mt-8">
+            <BlankSlate
+              title="Sign in to see your saved stays."
+              description="Your wishlist now lives on your account, so it follows you everywhere."
+              iconName="heart"
+              primaryAction={{ label: 'Sign in', onPress: () => router.push('/auth/login') }}
+              secondaryAction={{ label: 'Browse Explore', onPress: () => router.push('/explore') }}
+            />
+          </View>
+        ) : error && items.length === 0 ? (
+          <View className="mt-8 rounded-[28px] border border-rose-100 bg-white px-5 py-5">
+            <Text className="text-base font-semibold text-slate-900">
+              We couldn&apos;t load your wishlist right now.
+            </Text>
+            <Text className="mt-2 text-sm leading-6 text-slate-500">
+              Pull to refresh or try again in a moment.
+            </Text>
           </View>
         ) : items.length === 0 ? (
           <View className="mt-8">
             <BlankSlate
               title="Your wishlist is still waiting for its first favorite."
-              description="Tap the love icon on any listing from Explore or a listing detail page, and it will show up here."
+              description="Tap the heart on any listing and it will show up here automatically."
               iconName="heart"
               primaryAction={{
                 label: 'Browse Explore',
@@ -197,9 +324,11 @@ export default function WishlistScreen() {
               <WishlistListingCard
                 key={item.id}
                 item={item}
-                savedLabel={formatSavedLabel(item.savedAt)}
+                savedLabel={formatSavedLabel(item.wishlistedAt)}
                 onPress={handleOpenListing}
-                onToggleWishlist={(listing) => toggleWishlistListing(listing)}
+                onToggleWishlist={(listing) => {
+                  void toggleListingWishlist(listing);
+                }}
               />
             ))}
 
