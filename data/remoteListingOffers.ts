@@ -223,7 +223,7 @@ export const mapRemoteListingOffer = (
     publicStartsAt,
     publicExpiresAt,
     claimHoldMinutes,
-    lockHint: `Claiming this offer locks your rate for ${claimHoldMinutes} minutes.`,
+    lockHint: `Lock in this offer now while it lasts. Limited slots available`,
   };
 };
 

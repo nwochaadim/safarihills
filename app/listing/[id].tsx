@@ -3,13 +3,6 @@ import { HtmlViewer } from '@/components/HtmlViewer';
 import { LoadingImage } from '@/components/LoadingImage';
 import { LoadingImageBackground } from '@/components/LoadingImageBackground';
 import { SkeletonBar } from '@/components/SkeletonBar';
-import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
-import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
-import {
-  ANALYTICS_EVENTS,
-  buildListingAnalyticsItem,
-  toFlag,
-} from '@/lib/analytics.schema';
 import {
   BookingOption,
   findListingById,
@@ -29,7 +22,14 @@ import {
   ListingOffersResponse,
   mapRemoteListingOffers,
 } from '@/data/remoteListingOffers';
+import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
 import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  toFlag,
+} from '@/lib/analytics.schema';
 import { LISTING_OFFERS } from '@/queries/listingOffers';
 import { V2_USER_FIND_LISTING } from '@/queries/v2UserFindListing';
 import { useQuery } from '@apollo/client';
@@ -50,10 +50,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { WishlistToggleButton } from '@/components/wishlist/WishlistToggleButton';
 import {
   ListingWishlistRecord,
 } from '@/lib/listingWishlist';
-import { WishlistToggleButton } from '@/components/wishlist/WishlistToggleButton';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = width * 0.9;
@@ -959,14 +959,14 @@ function ListingDetailContent({
                         const statusEyebrow = activeClaim
                           ? 'Locked for you'
                           : publicStatus === 'live'
-                            ? 'Shared public window'
+                            ? 'Active Window'
                             : 'Upcoming window';
                         const statusLabel = activeClaim ? claimWindowLabel ?? 'Locked' : publicWindowLabel;
                         const helperLabel = activeClaim
                           ? `${claimDeadlineLabel}. Finish your stay details before the hold runs out.`
                           : publicStatus === 'live'
                             ? offer.lockHint
-                            : 'This window is shared across guests for this listing, so the next opening is the same for everyone.';
+                            : 'Offer opens soon. Stay tuned!';
 
                         return (
                           <View
