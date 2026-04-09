@@ -4,10 +4,10 @@ import { AppState, AppStateStatus } from 'react-native';
 
 import { ActivityFeedOverlay } from '@/components/ActivityFeedOverlay';
 import {
-  ACTIVITY_FEED_FETCH_INTERVAL_MS,
   ACTIVITY_FEED_DISPLAY_INTERVAL_MS,
   ACTIVITY_FEED_INITIAL_DISPLAY_DELAY_MS,
   advanceActivityFeedDisplay,
+  getActivityFeedFetchDelayMs,
   hydrateAndRefreshActivityFeed,
   initializeActivityFeedStore,
   refreshActivityFeedIfNeeded,
@@ -21,7 +21,8 @@ export function ActivityFeedManager() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const hasScheduledFirstDisplayRef = useRef(false);
   const [isSilentRefreshing, setIsSilentRefreshing] = useState(true);
-  const { entries, hydrated, lastFetchedAt, lastDisplayedAt } = useActivityFeedStore();
+  const { entries, fetchJitterOffsetMs, hydrated, lastFetchedAt, lastDisplayedAt } =
+    useActivityFeedStore();
 
   const bootstrap = useCallback(async () => {
     setIsSilentRefreshing(true);
@@ -56,12 +57,10 @@ export function ActivityFeedManager() {
   useEffect(() => {
     if (!hydrated || isSilentRefreshing) return;
 
-    const lastFetchedAtMs = lastFetchedAt ? Date.parse(lastFetchedAt) : 0;
-    const elapsedMs =
-      lastFetchedAtMs > 0 && Number.isFinite(lastFetchedAtMs)
-        ? Math.max(Date.now() - lastFetchedAtMs, 0)
-        : ACTIVITY_FEED_FETCH_INTERVAL_MS;
-    const delayMs = Math.max(ACTIVITY_FEED_FETCH_INTERVAL_MS - elapsedMs, 0);
+    const delayMs = getActivityFeedFetchDelayMs({
+      lastFetchedAt,
+      fetchJitterOffsetMs,
+    });
 
     const timeout = setTimeout(() => {
       if (appStateRef.current !== 'active') return;
@@ -72,7 +71,7 @@ export function ActivityFeedManager() {
     }, delayMs);
 
     return () => clearTimeout(timeout);
-  }, [entries.length, hydrated, isSilentRefreshing, lastFetchedAt]);
+  }, [entries.length, fetchJitterOffsetMs, hydrated, isSilentRefreshing, lastFetchedAt]);
 
   useEffect(() => {
     if (!hydrated || isSilentRefreshing) return;

@@ -7,7 +7,23 @@ import { AuthStatus } from '@/lib/authStatus';
 import { ACTIVITY_FEED_ENTRIES } from '@/queries/activityFeedEntries';
 
 const ACTIVITY_FEED_STORE_KEY = 'activityFeedStore';
-export const ACTIVITY_FEED_FETCH_INTERVAL_MS = 10 * 60 * 1000;
+const parseDurationMinutes = (value: string | undefined, fallbackMinutes: number) => {
+  if (!value) return fallbackMinutes * 60 * 1000;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallbackMinutes * 60 * 1000;
+
+  return Math.round(parsed * 60 * 1000);
+};
+
+export const ACTIVITY_FEED_FETCH_INTERVAL_MS = parseDurationMinutes(
+  process.env.EXPO_PUBLIC_ACTIVITY_FEED_FETCH_INTERVAL_MINUTES,
+  45
+);
+export const ACTIVITY_FEED_FETCH_JITTER_WINDOW_MS = parseDurationMinutes(
+  process.env.EXPO_PUBLIC_ACTIVITY_FEED_FETCH_JITTER_WINDOW_MINUTES,
+  5
+);
 const ACTIVITY_FEED_STORAGE_DIR = `${FileSystem.documentDirectory ?? ''}activity-feed/`;
 const ACTIVITY_FEED_STORAGE_FILE = `${ACTIVITY_FEED_STORAGE_DIR}store.json`;
 export const ACTIVITY_FEED_DISPLAY_INTERVAL_MS = 60 * 1000;
@@ -56,6 +72,7 @@ type ActivityFeedPersistedState = {
   lastFetchedAt: string | null;
   currentEntryId: string | null;
   lastDisplayedAt: string | null;
+  fetchJitterOffsetMs: number;
   shownEntryIds: string[];
   shownHistory: ActivityFeedShownRecord[];
 };
@@ -69,11 +86,30 @@ type ActivityFeedEntriesResponse = {
   activityFeedEntries?: unknown[] | null;
 };
 
+function generateFetchJitterOffsetMs() {
+  if (ACTIVITY_FEED_FETCH_JITTER_WINDOW_MS <= 0) return 0;
+  return Math.floor(Math.random() * (ACTIVITY_FEED_FETCH_JITTER_WINDOW_MS + 1));
+}
+
+function normalizeFetchJitterOffsetMs(value: unknown) {
+  if (ACTIVITY_FEED_FETCH_JITTER_WINDOW_MS <= 0) return 0;
+
+  const parsed = cleanNumber(value);
+  if (parsed < 0) return generateFetchJitterOffsetMs();
+
+  return Math.min(Math.round(parsed), ACTIVITY_FEED_FETCH_JITTER_WINDOW_MS);
+}
+
+function getFetchThresholdMs(value: Pick<ActivityFeedPersistedState, 'fetchJitterOffsetMs'>) {
+  return ACTIVITY_FEED_FETCH_INTERVAL_MS + Math.max(value.fetchJitterOffsetMs, 0);
+}
+
 const emptyPersistedState = (): ActivityFeedPersistedState => ({
   entries: [],
   lastFetchedAt: null,
   currentEntryId: null,
   lastDisplayedAt: null,
+  fetchJitterOffsetMs: generateFetchJitterOffsetMs(),
   shownEntryIds: [],
   shownHistory: [],
 });
@@ -219,6 +255,9 @@ const normalizePersistedState = (value: string | null): ActivityFeedPersistedSta
       lastFetchedAt: cleanString(candidate.lastFetchedAt) || null,
       currentEntryId: currentEntryId && entryIds.has(currentEntryId) ? currentEntryId : null,
       lastDisplayedAt: cleanString(candidate.lastDisplayedAt) || null,
+      fetchJitterOffsetMs: Object.prototype.hasOwnProperty.call(candidate, 'fetchJitterOffsetMs')
+        ? normalizeFetchJitterOffsetMs(candidate.fetchJitterOffsetMs)
+        : generateFetchJitterOffsetMs(),
       shownEntryIds,
       shownHistory: normalizeShownHistory(candidate.shownHistory),
     };
@@ -299,6 +338,7 @@ const persistableState = (value: ActivityFeedState): ActivityFeedPersistedState 
   lastFetchedAt: value.lastFetchedAt,
   currentEntryId: value.currentEntryId,
   lastDisplayedAt: value.lastDisplayedAt,
+  fetchJitterOffsetMs: value.fetchJitterOffsetMs,
   shownEntryIds: value.shownEntryIds,
   shownHistory: value.shownHistory,
 });
@@ -341,6 +381,22 @@ export const subscribeToActivityFeedStore = (listener: () => void) => {
 
 export const getActivityFeedState = () => state;
 
+export const getActivityFeedFetchDelayMs = ({
+  lastFetchedAt,
+  fetchJitterOffsetMs,
+  now = Date.now(),
+}: {
+  lastFetchedAt: string | null;
+  fetchJitterOffsetMs: number;
+  now?: number;
+}) => {
+  const lastFetchedAtMs = lastFetchedAt ? Date.parse(lastFetchedAt) : 0;
+  if (!(lastFetchedAtMs > 0) || !Number.isFinite(lastFetchedAtMs)) return 0;
+
+  const elapsedMs = Math.max(now - lastFetchedAtMs, 0);
+  return Math.max(getFetchThresholdMs({ fetchJitterOffsetMs }) - elapsedMs, 0);
+};
+
 export const useActivityFeedStore = () =>
   useSyncExternalStore(subscribeToActivityFeedStore, getActivityFeedState, getActivityFeedState);
 
@@ -353,8 +409,7 @@ export const initializeActivityFeedStore = async () => {
       const storedFromDisk = await readPersistedStateFromDisk();
       if (storedFromDisk) {
         const persisted = normalizePersistedState(storedFromDisk);
-
-        return setState(
+        const hydratedState = setState(
           {
             ...persisted,
             currentEntryId: null,
@@ -363,6 +418,8 @@ export const initializeActivityFeedStore = async () => {
           },
           { persist: false }
         );
+        void persistState(persistableState(hydratedState));
+        return hydratedState;
       }
 
       const legacyStored = await SecureStore.getItemAsync(ACTIVITY_FEED_STORE_KEY);
@@ -376,7 +433,7 @@ export const initializeActivityFeedStore = async () => {
         });
       }
 
-      return setState(
+      const hydratedState = setState(
         {
           ...persisted,
           currentEntryId: null,
@@ -385,8 +442,10 @@ export const initializeActivityFeedStore = async () => {
         },
         { persist: false }
       );
+      void persistState(persistableState(hydratedState));
+      return hydratedState;
     } catch {
-      return setState(
+      const hydratedState = setState(
         {
           ...emptyPersistedState(),
           hydrated: true,
@@ -394,6 +453,8 @@ export const initializeActivityFeedStore = async () => {
         },
         { persist: false }
       );
+      void persistState(persistableState(hydratedState));
+      return hydratedState;
     } finally {
       hydratePromise = null;
     }
@@ -417,7 +478,7 @@ export const refreshActivityFeedIfNeeded = async ({
   if (!signedIn) return state;
 
   const lastFetchedAt = state.lastFetchedAt ? Date.parse(state.lastFetchedAt) : 0;
-  const stale = !lastFetchedAt || now - lastFetchedAt >= ACTIVITY_FEED_FETCH_INTERVAL_MS;
+  const stale = !lastFetchedAt || now - lastFetchedAt >= getFetchThresholdMs(state);
   if (!force && !stale) return state;
 
   setState(
