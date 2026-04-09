@@ -76,6 +76,10 @@ const BUDGET_MIN_VALUE = 20000;
 const BUDGET_MAX_VALUE = 1000000;
 const BUDGET_STEP = 5000;
 const BUDGET_THUMB_SIZE = 24;
+const DISCOVER_TOP_THRESHOLD = 1;
+const DISCOVER_CARDS_Z_INDEX = 30;
+const FILTER_CONTROLS_Z_INDEX = 60;
+const FILTER_SHEET_Z_INDEX = 70;
 const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV2';
 
 type CalendarDay = {
@@ -418,8 +422,9 @@ export default function ExploreScreen() {
   const [isDiscoverExpanded, setIsDiscoverExpanded] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [filterAnchor, setFilterAnchor] = useState({ y: 0, height: 0 });
+  const [discoverSummaryAnchor, setDiscoverSummaryAnchor] = useState({ y: 0, height: 0 });
   const [topHeaderHeight, setTopHeaderHeight] = useState(0);
-  const [showCompactSections, setShowCompactSections] = useState(false);
+  const [isExploreListAtTop, setIsExploreListAtTop] = useState(true);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
@@ -580,23 +585,23 @@ export default function ExploreScreen() {
 
   useEffect(() => {
     const listener = scrollY.addListener(({ value }) => {
-      setShowCompactSections((current) => {
-        if (value > 96 && !current) {
+      const nextIsExploreListAtTop = value <= DISCOVER_TOP_THRESHOLD;
+
+      setIsExploreListAtTop((current) => {
+        if (current === nextIsExploreListAtTop) return current;
+
+        if (isDiscoverExpanded) {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          return true;
         }
-        if (value < 60 && current) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          return false;
-        }
-        return current;
+
+        return nextIsExploreListAtTop;
       });
     });
 
     return () => {
       scrollY.removeListener(listener);
     };
-  }, [scrollY]);
+  }, [isDiscoverExpanded, scrollY]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -770,22 +775,19 @@ export default function ExploreScreen() {
     });
   };
 
-  const compactSectionTop = topHeaderHeight + 10;
-  const compactSectionsOpacity = scrollY.interpolate({
-    inputRange: [48, 140],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-  const compactSectionsTranslateY = scrollY.interpolate({
-    inputRange: [44, 132],
-    outputRange: [-16, 0],
-    extrapolate: 'clamp',
-  });
-  const compactSectionsScale = scrollY.interpolate({
-    inputRange: [44, 132],
-    outputRange: [0.95, 1],
-    extrapolate: 'clamp',
-  });
+  const compactSectionTop =
+    filterAnchor.y > 0 && discoverSummaryAnchor.height > 0
+      ? filterAnchor.y + discoverSummaryAnchor.y + discoverSummaryAnchor.height + 6
+      : filterAnchor.y > 0
+        ? filterAnchor.y + filterAnchor.height + 36
+        : topHeaderHeight + 46;
+  const shouldShowCompactSections = isDiscoverExpanded && !isExploreListAtTop;
+  const shouldShowLargeSections = isDiscoverExpanded && isExploreListAtTop;
+
+  const handleDiscoverToggle = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsDiscoverExpanded((prev) => !prev);
+  }, []);
 
   const captureWizardFrames = useCallback(() => {
     requestAnimationFrame(() => {
@@ -815,7 +817,7 @@ export default function ExploreScreen() {
     }, 80);
 
     return () => clearTimeout(timeoutId);
-  }, [captureWizardFrames, isDiscoverExpanded, sectionCount, showCompactSections, wizardStep]);
+  }, [captureWizardFrames, isDiscoverExpanded, sectionCount, shouldShowCompactSections, wizardStep]);
 
   const dismissWizard = useCallback(() => {
     setWizardStep(null);
@@ -869,145 +871,154 @@ export default function ExploreScreen() {
         </Pressable>
       </View>
 
-      <Animated.View
-        pointerEvents={showCompactSections && isDiscoverExpanded ? 'box-none' : 'none'}
-        style={{
-          position: 'absolute',
-          top: compactSectionTop,
-          left: 0,
-          right: 0,
-          zIndex: 35,
-          opacity: isDiscoverExpanded ? compactSectionsOpacity : 0,
-          transform: [{ translateY: compactSectionsTranslateY }, { scale: compactSectionsScale }],
-        }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 2 }}>
-          <View className="flex-row gap-2.5">
-            {sections.map((section) => (
-              <Pressable
-                key={`compact-${section.slug}`}
-                className="w-[146px] rounded-[22px] border px-3.5 py-3 shadow-lg shadow-slate-200"
-                style={{
-                  backgroundColor: section.backgroundColor,
-                  borderColor: section.borderColor,
-                }}
-                onPress={() => openSection(section, 'compact_section_card')}>
-                <View className="flex-row items-start justify-between gap-2">
-                  <View className="flex-1">
-                    <Text
-                      className="text-[9px] font-semibold uppercase tracking-[0.2em]"
-                      style={{ color: section.textColor, opacity: 0.72 }}
-                      numberOfLines={1}>
-                      {section.eyebrow}
-                    </Text>
-                    <Text
-                      className="mt-1.5 text-[13px] font-bold leading-4"
-                      style={{ color: section.textColor }}
-                      numberOfLines={2}>
-                      {section.title}
-                    </Text>
+      {shouldShowCompactSections ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: compactSectionTop,
+            left: 0,
+            right: 0,
+            zIndex: DISCOVER_CARDS_Z_INDEX,
+            elevation: DISCOVER_CARDS_Z_INDEX,
+          }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 2 }}>
+            <View className="flex-row gap-2.5">
+              {sections.map((section) => (
+                <Pressable
+                  key={`compact-${section.slug}`}
+                  className="w-[146px] rounded-[22px] border px-3.5 py-3 shadow-lg shadow-slate-200"
+                  style={{
+                    backgroundColor: section.backgroundColor,
+                    borderColor: section.borderColor,
+                  }}
+                  onPress={() => openSection(section, 'compact_section_card')}>
+                  <View className="flex-row items-start justify-between gap-2">
+                    <View className="flex-1">
+                      <Text
+                        className="text-[9px] font-semibold uppercase tracking-[0.2em]"
+                        style={{ color: section.textColor, opacity: 0.72 }}
+                        numberOfLines={1}>
+                        {section.eyebrow}
+                      </Text>
+                      <Text
+                        className="mt-1.5 text-[13px] font-bold leading-4"
+                        style={{ color: section.textColor }}
+                        numberOfLines={2}>
+                        {section.title}
+                      </Text>
+                    </View>
+                    <View
+                      className="rounded-2xl border px-2.5 py-2"
+                      style={{
+                        borderColor: section.borderColor,
+                        backgroundColor: rgbaFromHex(section.textColor, '14'),
+                      }}>
+                      <Feather name={section.iconName} size={14} color={section.textColor} />
+                    </View>
                   </View>
-                  <View
-                    className="rounded-2xl border px-2.5 py-2"
-                    style={{
-                      borderColor: section.borderColor,
-                      backgroundColor: rgbaFromHex(section.textColor, '14'),
-                    }}>
-                    <Feather name={section.iconName} size={14} color={section.textColor} />
-                  </View>
-                </View>
 
-                <View className="mt-3 flex-row items-center justify-between">
-                  <Text
-                    className="text-[10px] font-semibold"
-                    style={{ color: section.textColor, opacity: 0.9 }}>
-                    {section.matchingCount} {section.matchingCount === 1 ? 'stay' : 'stays'}
-                  </Text>
-                  <Feather name="arrow-right" size={12} color={section.textColor} />
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-      </Animated.View>
+                  <View className="mt-3 flex-row items-center justify-between">
+                    <Text
+                      className="text-[10px] font-semibold"
+                      style={{ color: section.textColor, opacity: 0.9 }}>
+                      {section.matchingCount} {section.matchingCount === 1 ? 'stay' : 'stays'}
+                    </Text>
+                    <Feather name="arrow-right" size={12} color={section.textColor} />
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      ) : null}
 
       <View
         ref={discoverSectionRef}
         className="mt-5 px-6"
+        style={{ zIndex: FILTER_CONTROLS_Z_INDEX }}
         onLayout={(event) => {
           const { y } = event.nativeEvent.layout;
           setFilterAnchor((prev) => ({ ...prev, y }));
         }}>
-        <View
-          className="flex-row items-start justify-between gap-3"
-          onLayout={(event) => {
-            const { height } = event.nativeEvent.layout;
-            setFilterAnchor((prev) => ({ ...prev, height }));
-          }}>
-          <View>
-            <Text className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-              Discover
-            </Text>
-            <Text className="mt-1 text-lg font-bold text-slate-900">Neighborhood edits</Text>
-          </View>
-          <View className="flex-row items-center gap-2">
+        <View style={{ position: 'relative', zIndex: FILTER_CONTROLS_Z_INDEX, elevation: FILTER_CONTROLS_Z_INDEX }}>
+          <View
+            className="flex-row items-start justify-between gap-3"
+            onLayout={(event) => {
+              const { height } = event.nativeEvent.layout;
+              setFilterAnchor((prev) => ({ ...prev, height }));
+            }}>
             <View>
+              <Text className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Discover
+              </Text>
+              <Text className="mt-1 text-lg font-bold text-slate-900">Neighborhood edits</Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <View>
+                <Pressable
+                  className={`flex-row items-center gap-2 rounded-full border px-4 py-2.5 ${
+                    filterSheetOpen || activeFilterCount > 0
+                      ? 'border-blue-200 bg-blue-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                  onPress={() =>
+                      setFilterSheetOpen((prev) => {
+                        const nextState = !prev;
+                        if (!nextState) {
+                          setLocationDropdownOpen(false);
+                          setLocationSearchTerm('');
+                          setAdvancedFiltersOpen(false);
+                        }
+                        return nextState;
+                      })
+                  }>
+                  <Feather name="sliders" size={16} color={filterSheetOpen ? '#1d4ed8' : '#475569'} />
+                  <Text
+                    className={`text-sm font-semibold ${
+                      filterSheetOpen || activeFilterCount > 0 ? 'text-blue-700' : 'text-slate-700'
+                    }`}>
+                    {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
+                  </Text>
+                </Pressable>
+              </View>
+
               <Pressable
-                className={`flex-row items-center gap-2 rounded-full border px-4 py-2.5 ${
-                  filterSheetOpen || activeFilterCount > 0
-                    ? 'border-blue-200 bg-blue-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-                onPress={() =>
-                    setFilterSheetOpen((prev) => {
-                      const nextState = !prev;
-                      if (!nextState) {
-                        setLocationDropdownOpen(false);
-                        setLocationSearchTerm('');
-                        setAdvancedFiltersOpen(false);
-                      }
-                      return nextState;
-                    })
-                }>
-                <Feather name="sliders" size={16} color={filterSheetOpen ? '#1d4ed8' : '#475569'} />
-                <Text
-                  className={`text-sm font-semibold ${
-                    filterSheetOpen || activeFilterCount > 0 ? 'text-blue-700' : 'text-slate-700'
-                  }`}>
-                  {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
-                </Text>
+                ref={discoverToggleRef}
+                className="h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white"
+                onPress={handleDiscoverToggle}>
+                <Feather
+                  name={isDiscoverExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#0f172a"
+                />
               </Pressable>
             </View>
+          </View>
 
-            <Pressable
-              ref={discoverToggleRef}
-              className="h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white"
-              onPress={() => setIsDiscoverExpanded((prev) => !prev)}>
-              <Feather
-                name={isDiscoverExpanded ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color="#0f172a"
-              />
-            </Pressable>
+          <View
+            className="mt-2 flex-row items-center justify-between"
+            onLayout={(event) => {
+              const { y, height } = event.nativeEvent.layout;
+              setDiscoverSummaryAnchor({ y, height });
+            }}>
+            <Text className="flex-1 text-xs text-slate-500">
+              {sectionCount === 0
+                ? 'No explore sections available right now.'
+                : isDiscoverExpanded
+                  ? `${previewListings.length} preview ${previewListings.length === 1 ? 'stay' : 'stays'} across ${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'}. Tap a card to open the full list.`
+                  : 'Expand discover to browse neighborhood picks, or jump straight into listings.'}
+            </Text>
           </View>
         </View>
 
-        <View className="mt-2 flex-row items-center justify-between">
-          <Text className="flex-1 text-xs text-slate-500">
-            {sectionCount === 0
-              ? 'No explore sections available right now.'
-              : isDiscoverExpanded
-                ? `${previewListings.length} preview ${previewListings.length === 1 ? 'stay' : 'stays'} across ${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'}. Tap a card to open the full list.`
-                : 'Expand discover to browse neighborhood picks, or jump straight into listings.'}
-          </Text>
-        </View>
-
-        {isDiscoverExpanded && !showCompactSections ? (
+        {shouldShowLargeSections ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            style={{ zIndex: DISCOVER_CARDS_Z_INDEX }}
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 2 }}>
             <View ref={discoverCardsRef} className="flex-row gap-3 pr-6">
               {sections.map((section) => (
@@ -1069,7 +1080,12 @@ export default function ExploreScreen() {
       {filterSheetOpen && (
         <View
           className="absolute left-6 right-6 z-20 rounded-3xl border border-slate-200 bg-white"
-          style={{ top: filterAnchor.y + filterAnchor.height + 16, maxHeight: filterPanelMaxHeight }}>
+          style={{
+            top: filterAnchor.y + filterAnchor.height + 16,
+            maxHeight: filterPanelMaxHeight,
+            zIndex: FILTER_SHEET_Z_INDEX,
+            elevation: FILTER_SHEET_Z_INDEX,
+          }}>
           <ScrollView
             className="px-5 py-5"
             contentContainerStyle={{ paddingBottom: filterPanelBottomPadding }}
