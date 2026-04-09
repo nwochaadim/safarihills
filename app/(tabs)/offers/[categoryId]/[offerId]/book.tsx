@@ -1,10 +1,12 @@
 import { BackButton } from '@/components/BackButton';
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { SkeletonBar } from '@/components/SkeletonBar';
 import {
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
 } from '@/data/listingOffers';
+import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_OFFER_BOOKING } from '@/mutations/createOfferBooking';
 import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
@@ -16,7 +18,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   FlatList,
   Linking,
@@ -461,19 +462,6 @@ const getBookingTypeLabel = (option: BookingOption) =>
 
 const getBookingTypeIcon = (option: BookingOption) => (option === 'room' ? 'key' : 'home');
 
-const getRewardIcon = (rewardType: string | null) => {
-  if (rewardType === 'DiscountOfferReward') return 'percent';
-  if (rewardType === 'PerkOfferReward') return 'gift';
-  return 'award';
-};
-
-const getRewardTag = (reward: OfferCampaignReward) => {
-  if (reward.rewardType?.includes('Discount')) return 'Discount';
-  if (reward.rewardType?.includes('Perk')) return 'Perk';
-  if (reward.name?.trim()) return reward.name.trim();
-  return 'Reward';
-};
-
 const findFirstDiscountReward = (rewards: OfferCampaignReward[] | null | undefined) =>
   (rewards ?? []).find((reward) => {
     const rewardType = reward?.rewardType?.trim() ?? '';
@@ -508,6 +496,142 @@ const buildDerivedCheckOutTime = (
   const minutes = endMinutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
+
+function OfferBookingScreenSkeleton({
+  onBack,
+  showLockBanner,
+}: {
+  onBack: () => void;
+  showLockBanner: boolean;
+}) {
+  const pulse = useSkeletonPulse();
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}>
+        <View className="px-6 pt-4">
+          <BackButton onPress={onBack} />
+          <SkeletonBar pulse={pulse} className="mt-4 h-3 w-28 rounded-full" />
+          <SkeletonBar pulse={pulse} className="mt-3 h-8 w-48 rounded-2xl" />
+          <SkeletonBar pulse={pulse} className="mt-3 h-4 w-2/3 rounded-full" />
+
+          <View className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4">
+            <SkeletonBar pulse={pulse} className="h-3 w-16 rounded-full" />
+            <SkeletonBar pulse={pulse} className="mt-3 h-6 w-3/4 rounded-2xl" />
+          </View>
+
+          {showLockBanner ? (
+            <View className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-4">
+              <SkeletonBar pulse={pulse} className="h-3 w-28 rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-3 h-6 w-40 rounded-2xl" />
+              <SkeletonBar pulse={pulse} className="mt-3 h-3 w-full rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-2 h-3 w-5/6 rounded-full" />
+            </View>
+          ) : null}
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-28 rounded-full" />
+            <View className="mt-4 flex-row flex-wrap gap-3">
+              <SkeletonBar pulse={pulse} className="h-10 w-36 rounded-full" />
+              <SkeletonBar pulse={pulse} className="h-10 w-40 rounded-full" />
+            </View>
+
+            <View className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-4">
+              <SkeletonBar pulse={pulse} className="h-3 w-32 rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-3 h-6 w-32 rounded-2xl" />
+              <View className="mt-4 rounded-2xl border border-rose-100 bg-rose-50/50 p-3">
+                <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+                <View className="mt-3 flex-row flex-wrap gap-2">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <SkeletonBar
+                      key={`offer-booking-type-chip-${index}`}
+                      pulse={pulse}
+                      className="h-7 w-24 rounded-full"
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-24 rounded-2xl" />
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-24 rounded-2xl" />
+              </View>
+            </View>
+            <View className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <View className="flex-row flex-wrap gap-2">
+                {Array.from({ length: 14 }).map((_, index) => (
+                  <SkeletonBar
+                    key={`offer-calendar-day-${index}`}
+                    pulse={pulse}
+                    className="h-11 w-11 rounded-2xl"
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-32 rounded-full" />
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-16 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-12 rounded-2xl" />
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-28 rounded-2xl" />
+              </View>
+            </View>
+            <View className="mt-4 flex-row flex-wrap gap-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <SkeletonBar
+                  key={`offer-purpose-pill-${index}`}
+                  pulse={pulse}
+                  className="h-8 w-28 rounded-full"
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-28 rounded-full" />
+            <View className="mt-4 gap-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <View
+                  key={`offer-summary-row-${index}`}
+                  className="flex-row items-center justify-between">
+                  <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+                  <SkeletonBar pulse={pulse} className="h-4 w-20 rounded-full" />
+                </View>
+              ))}
+            </View>
+            <SkeletonBar pulse={pulse} className="mt-5 h-12 w-full rounded-2xl" />
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
 export default function OfferBookingScreen() {
   const router = useRouter();
@@ -555,6 +679,7 @@ export default function OfferBookingScreen() {
   const claimHoldExpiresAt = Array.isArray(claimHoldExpiresAtParam)
     ? claimHoldExpiresAtParam[0]
     : claimHoldExpiresAtParam;
+  const shouldShowLockBanner = Boolean(claimHoldExpiresAt);
   const handleBack = useCallback(() => {
     if (categoryId === 'listing-offers' && listingId) {
       router.dismissTo({
@@ -1120,12 +1245,7 @@ export default function OfferBookingScreen() {
 
   if (authStatus === 'checking') {
     return (
-      <SafeAreaView className="flex-1 bg-slate-50">
-        <Stack.Screen options={{ headerShown: false }} />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#2563eb" />
-        </View>
-      </SafeAreaView>
+      <OfferBookingScreenSkeleton onBack={handleBack} showLockBanner={shouldShowLockBanner} />
     );
   }
 
@@ -1152,7 +1272,13 @@ export default function OfferBookingScreen() {
     );
   }
 
-  if (loading || (!entireApartment && roomCategories.length === 0)) {
+  if (loading) {
+    return (
+      <OfferBookingScreenSkeleton onBack={handleBack} showLockBanner={shouldShowLockBanner} />
+    );
+  }
+
+  if (!entireApartment && roomCategories.length === 0) {
     return null;
   }
 
@@ -1201,53 +1327,6 @@ export default function OfferBookingScreen() {
               </Text>
             </View>
           ) : null}
-        </View>
-
-        <View className="mt-6 px-6">
-          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Rewards
-            </Text>
-            {(bookingDetails?.offer?.offerCampaignRewards ?? []).length > 0 ? (
-              <View className="mt-4 space-y-3">
-                {(bookingDetails?.offer?.offerCampaignRewards ?? []).map((reward, index) => {
-                  const safeReward: OfferCampaignReward = reward ?? {
-                    id: null,
-                    rewardType: null,
-                    name: null,
-                    discount: null,
-                  };
-                  return (
-                    <View
-                      key={safeReward.id ?? `reward-${index}`}
-                      className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
-                      <View className="flex-row items-start justify-between">
-                        <View className="flex-1 pr-3">
-                          <Text className="text-sm font-semibold text-slate-900">
-                            {safeReward.name?.trim() || 'Offer reward'}
-                          </Text>
-                        </View>
-                        <View className="flex-row items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1">
-                          <Feather
-                            name={getRewardIcon(safeReward.rewardType)}
-                            size={12}
-                            color="#047857"
-                          />
-                          <Text className="text-xs font-semibold text-emerald-700">
-                            {getRewardTag(safeReward)}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text className="mt-3 text-sm text-slate-500">
-                No rewards listed for this offer.
-              </Text>
-            )}
-          </View>
         </View>
 
         <View className="mt-6 px-6">

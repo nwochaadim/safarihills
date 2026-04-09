@@ -1,10 +1,12 @@
 import { BackButton } from '@/components/BackButton';
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import { SkeletonBar } from '@/components/SkeletonBar';
 import {
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
 } from '@/data/listingOffers';
+import { useSkeletonPulse } from '@/hooks/use-skeleton-pulse';
 import { ANALYTICS_EVENTS, getBookingValueBucket } from '@/lib/analytics.schema';
 import { trackEvent } from '@/lib/analytics';
 import { AuthStatus } from '@/lib/authStatus';
@@ -16,7 +18,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   FlatList,
   Linking,
@@ -345,6 +346,138 @@ const getBookingTypeLabel = (option: BookingOption) =>
 
 const getBookingTypeIcon = (option: BookingOption) => (option === 'room' ? 'key' : 'home');
 
+function BookingScreenSkeleton({
+  onBack,
+  showOfferBanner,
+}: {
+  onBack: () => void;
+  showOfferBanner: boolean;
+}) {
+  const pulse = useSkeletonPulse();
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}>
+        <View className="px-6 pt-4">
+          <BackButton onPress={onBack} />
+          <SkeletonBar pulse={pulse} className="mt-4 h-8 w-48 rounded-2xl" />
+          <SkeletonBar pulse={pulse} className="mt-3 h-4 w-2/3 rounded-full" />
+
+          {showOfferBanner ? (
+            <View className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4">
+              <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-3 h-5 w-3/4 rounded-2xl" />
+              <View className="mt-3 flex-row gap-2">
+                <SkeletonBar pulse={pulse} className="h-7 w-24 rounded-full" />
+                <SkeletonBar pulse={pulse} className="h-7 w-28 rounded-full" />
+              </View>
+              <SkeletonBar pulse={pulse} className="mt-3 h-3 w-full rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-2 h-3 w-5/6 rounded-full" />
+            </View>
+          ) : null}
+        </View>
+
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-28 rounded-full" />
+            <View className="mt-4 flex-row flex-wrap gap-3">
+              <SkeletonBar pulse={pulse} className="h-10 w-36 rounded-full" />
+              <SkeletonBar pulse={pulse} className="h-10 w-40 rounded-full" />
+            </View>
+
+            <View className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-4">
+              <SkeletonBar pulse={pulse} className="h-3 w-32 rounded-full" />
+              <SkeletonBar pulse={pulse} className="mt-3 h-6 w-32 rounded-2xl" />
+              <View className="mt-4 rounded-2xl border border-rose-100 bg-rose-50/50 p-3">
+                <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+                <View className="mt-3 flex-row flex-wrap gap-2">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <SkeletonBar
+                      key={`booking-type-chip-${index}`}
+                      pulse={pulse}
+                      className="h-7 w-24 rounded-full"
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-24 rounded-2xl" />
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-20 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-24 rounded-2xl" />
+              </View>
+            </View>
+            <View className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <View className="flex-row flex-wrap gap-2">
+                {Array.from({ length: 14 }).map((_, index) => (
+                  <SkeletonBar
+                    key={`calendar-day-${index}`}
+                    pulse={pulse}
+                    className="h-11 w-11 rounded-2xl"
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-32 rounded-full" />
+            <View className="mt-4 flex-row gap-3">
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-16 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-12 rounded-2xl" />
+              </View>
+              <View className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+                <SkeletonBar pulse={pulse} className="mt-3 h-5 w-28 rounded-2xl" />
+              </View>
+            </View>
+            <View className="mt-4 flex-row flex-wrap gap-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <SkeletonBar
+                  key={`purpose-pill-${index}`}
+                  pulse={pulse}
+                  className="h-8 w-28 rounded-full"
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-5 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
+            <SkeletonBar pulse={pulse} className="h-3 w-28 rounded-full" />
+            <View className="mt-4 gap-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <View key={`summary-row-${index}`} className="flex-row items-center justify-between">
+                  <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
+                  <SkeletonBar pulse={pulse} className="h-4 w-20 rounded-full" />
+                </View>
+              ))}
+            </View>
+            <SkeletonBar pulse={pulse} className="mt-5 h-12 w-full rounded-2xl" />
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 export default function BookingScreen() {
   const router = useRouter();
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
@@ -392,6 +525,12 @@ export default function BookingScreen() {
   const sourceSection = Array.isArray(sourceSectionParam)
     ? sourceSectionParam[0]
     : sourceSectionParam;
+  const shouldShowOfferBanner = Boolean(
+    claimedOfferTitle ||
+      claimedOfferSavingsLabel ||
+      claimedOfferExpiryLabel ||
+      claimedOfferHoldExpiresAt
+  );
   const { data, loading } = useQuery<NewBookingDetailsResponse>(NEW_BOOKING_DETAILS, {
     variables: { listingId: id ?? '' },
     skip: !id || authStatus !== 'signed-in',
@@ -811,12 +950,10 @@ export default function BookingScreen() {
 
   if (authStatus === 'checking') {
     return (
-      <SafeAreaView className="flex-1 bg-slate-50">
-        <Stack.Screen options={{ headerShown: false }} />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#2563eb" />
-        </View>
-      </SafeAreaView>
+      <BookingScreenSkeleton
+        onBack={() => router.back()}
+        showOfferBanner={shouldShowOfferBanner}
+      />
     );
   }
 
@@ -843,7 +980,16 @@ export default function BookingScreen() {
     );
   }
 
-  if (loading || (!entireApartment && roomCategories.length === 0)) {
+  if (loading) {
+    return (
+      <BookingScreenSkeleton
+        onBack={() => router.back()}
+        showOfferBanner={shouldShowOfferBanner}
+      />
+    );
+  }
+
+  if (!entireApartment && roomCategories.length === 0) {
     return null;
   }
 
