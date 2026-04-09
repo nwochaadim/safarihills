@@ -109,6 +109,22 @@ const getRewardDescription = (reward: ListingOfferReward) => {
 const getDiscountedPrice = (basePrice: number, percentDiscount: number) =>
   Math.round(basePrice * (1 - percentDiscount / 100));
 
+const truncateOfferDescription = (value: string, maxChars = 100) => {
+  const normalized = value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+};
+
 type ClaimListingOfferResponse = {
   claimListingOffer: {
     success?: boolean | null;
@@ -476,7 +492,7 @@ export default function LocalOfferBookingScreen() {
 
                 <Text className="mt-4 text-3xl font-bold text-white">{selectedOffer.title}</Text>
                 <HtmlViewer
-                  html={selectedOffer.subtitle}
+                  html={truncateOfferDescription(selectedOffer.subtitle)}
                   className="mt-2"
                   textClassName="text-sm leading-6 text-slate-100"
                 />
@@ -560,7 +576,7 @@ export default function LocalOfferBookingScreen() {
               Offer description
             </Text>
             <HtmlViewer
-              html={selectedOffer.terms}
+              html={selectedOffer.subtitle}
               className="mt-3"
               textClassName="text-sm leading-6 text-slate-600"
             />

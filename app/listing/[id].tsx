@@ -239,6 +239,22 @@ const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
   };
 };
 
+const truncateOfferDescription = (value: string, maxChars = 100) => {
+  const normalized = value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+};
+
 export default function ListingDetailScreen() {
   const router = useRouter();
   const {
@@ -989,7 +1005,7 @@ function ListingDetailContent({
                                     {offer.title}
                                   </Text>
                                   <HtmlViewer
-                                    html={offer.subtitle}
+                                    html={truncateOfferDescription(offer.subtitle)}
                                     className="mt-2"
                                     textClassName={`text-sm leading-6 ${theme.copyClass}`}
                                   />
