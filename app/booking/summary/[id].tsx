@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView as TabSafeAreaView } from '@/components/tab-safe-area-view';
-import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView as BaseSafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import {
@@ -142,6 +142,7 @@ const getRewardTag = (reward: BookingReward) => {
 };
 
 export default function BookingSummaryScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
     id: idParam,
@@ -263,6 +264,7 @@ export default function BookingSummaryScreen() {
 
   const paystackReference = bookingReference;
   const paystackAmount = Math.max(Math.round(total * 100), 0);
+  const paystackModalTopInset = Math.max(insets.top, 24);
   const bookingMode = offerCampaign ? 'offer' : 'standard';
   const bookingValueBucket = getBookingValueBucket(total);
 
@@ -573,10 +575,19 @@ export default function BookingSummaryScreen() {
       <!doctype html>
       <html>
         <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
           <script src="https://js.paystack.co/v1/inline.js"></script>
           <style>
-            html, body { margin: 0; padding: 0; background: #ffffff; }
+            html, body {
+              margin: 0;
+              padding: 0;
+              min-height: 100%;
+              background: #ffffff;
+            }
+            body {
+              box-sizing: border-box;
+              padding-top: max(12px, env(safe-area-inset-top));
+            }
           </style>
         </head>
         <body>
@@ -1520,10 +1531,11 @@ export default function BookingSummaryScreen() {
       <Modal
         visible={paystackVisible}
         animationType="slide"
+        presentationStyle="fullScreen"
         onRequestClose={() => setPaystackVisible(false)}>
         <BaseSafeAreaView
-          edges={['top', 'left', 'right', 'bottom']}
-          style={{ flex: 1, backgroundColor: '#fff' }}>
+          edges={['left', 'right', 'bottom']}
+          style={{ flex: 1, backgroundColor: '#fff', paddingTop: paystackModalTopInset }}>
           <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
             <Text className="text-base font-semibold text-slate-900">Pay with Paystack</Text>
             <Pressable

@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView as TabSafeAreaView } from '@/components/tab-safe-area-view';
-import { SafeAreaView as BaseSafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView as BaseSafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { BlankSlate } from '@/components/BlankSlate';
@@ -92,6 +92,7 @@ type WalletTopupVariables = {
 };
 
 export default function WalletScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>(
     'checking'
@@ -181,6 +182,7 @@ export default function WalletScreen() {
 
   const paystackReference = paystackConfig?.reference ?? '';
   const paystackAmount = paystackConfig?.amount ?? 0;
+  const paystackModalTopInset = Math.max(insets.top, 24);
   const paystackBridgeScript = `
     (function() {
       function postClipboardText(text) {
@@ -404,10 +406,19 @@ export default function WalletScreen() {
       <!doctype html>
       <html>
         <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
           <script src="https://js.paystack.co/v1/inline.js"></script>
           <style>
-            html, body { margin: 0; padding: 0; background: #ffffff; }
+            html, body {
+              margin: 0;
+              padding: 0;
+              min-height: 100%;
+              background: #ffffff;
+            }
+            body {
+              box-sizing: border-box;
+              padding-top: max(12px, env(safe-area-inset-top));
+            }
           </style>
         </head>
         <body>
@@ -733,11 +744,12 @@ export default function WalletScreen() {
       <Modal
         visible={paystackVisible}
         animationType="slide"
+        presentationStyle="fullScreen"
         onRequestClose={() => setPaystackVisible(false)}>
         <BaseSafeAreaView
-          edges={['top', 'left', 'right', 'bottom']}
-          style={{ flex: 1, backgroundColor: '#fff' }}>
-          <View className="flex-row items-center justify-between border-b border-slate-200 px-6 pb-4 pt-16">
+          edges={['left', 'right', 'bottom']}
+          style={{ flex: 1, backgroundColor: '#fff', paddingTop: paystackModalTopInset }}>
+          <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
             <Text className="text-base font-semibold text-slate-900">Pay with Paystack</Text>
             <Pressable
               className="rounded-full border border-slate-200 px-3 py-1.5"
