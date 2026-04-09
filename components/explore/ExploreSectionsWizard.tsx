@@ -21,6 +21,7 @@ type ExploreSectionsWizardProps = {
   toggleFrame: WizardFrame | null;
   cardsFrame: WizardFrame | null;
   onBack: () => void;
+  onDoNotShowAgain: () => void;
   onSkip: () => void;
   onNext: () => void;
 };
@@ -47,6 +48,7 @@ export function ExploreSectionsWizard({
   toggleFrame,
   cardsFrame,
   onBack,
+  onDoNotShowAgain,
   onSkip,
   onNext,
 }: ExploreSectionsWizardProps) {
@@ -347,7 +349,13 @@ export function ExploreSectionsWizard({
               </View>
             ) : null}
 
-            <View className="mt-6 flex-row items-center gap-3">
+            <Pressable
+              className="mt-6 items-center justify-center rounded-2xl border border-slate-200 px-4 py-3.5"
+              onPress={onDoNotShowAgain}>
+              <Text className="text-sm font-semibold text-slate-600">Do not show again</Text>
+            </Pressable>
+
+            <View className="mt-3 flex-row items-center gap-3">
               {step !== 'welcome' ? (
                 <Pressable
                   className="flex-1 items-center justify-center rounded-2xl border border-slate-200 px-4 py-3.5"

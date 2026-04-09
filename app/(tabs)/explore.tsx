@@ -1,8 +1,40 @@
+import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
+import {
+  ExploreSectionsWizard,
+  ExploreWizardStep,
+  WizardFrame,
+} from '@/components/explore/ExploreSectionsWizard';
+import { SafeAreaView } from '@/components/tab-safe-area-view';
+import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
+import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
+import {
+  ANALYTICS_EVENTS,
+  buildListingAnalyticsItem,
+  toFlag,
+} from '@/lib/analytics.schema';
+import {
+  buildExploreFilterInput,
+  createInitialFilters,
+  ExploreFilterInput,
+  ExploreListing,
+  ExploreSection,
+  FilterState,
+  flattenPreviewListings,
+  formatCurrencyInput,
+  mapExploreSection,
+  parseCurrencyInput,
+  RemoteExploreSection,
+  serializeExploreFilterInput,
+  sortExploreSections,
+} from '@/lib/explore';
+import { AVAILABLE_LOCATIONS_QUERY } from '@/queries/availableLocations';
+import { EXPLORE_SECTIONS } from '@/queries/exploreSections';
+import { PROFILE_QUERY } from '@/queries/profile';
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,38 +54,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  ExploreSectionsWizard,
-  ExploreWizardStep,
-  WizardFrame,
-} from '@/components/explore/ExploreSectionsWizard';
-import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
-import { SafeAreaView } from '@/components/tab-safe-area-view';
-import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
-import { useListingWishlistToggle } from '@/hooks/use-listing-wishlist';
-import {
-  ANALYTICS_EVENTS,
-  buildListingAnalyticsItem,
-  toFlag,
-} from '@/lib/analytics.schema';
-import {
-  ExploreFilterInput,
-  ExploreSection,
-  ExploreListing,
-  FilterState,
-  RemoteExploreSection,
-  buildExploreFilterInput,
-  createInitialFilters,
-  flattenPreviewListings,
-  formatCurrencyInput,
-  mapExploreSection,
-  parseCurrencyInput,
-  serializeExploreFilterInput,
-  sortExploreSections,
-} from '@/lib/explore';
-import { AVAILABLE_LOCATIONS_QUERY } from '@/queries/availableLocations';
-import { PROFILE_QUERY } from '@/queries/profile';
-import { EXPLORE_SECTIONS } from '@/queries/exploreSections';
 
 const TYPES = ['Single shared', 'Studio', '1 bed', '2 bed', '3 bed', '4 bed', '5 bed'];
 
@@ -76,7 +76,7 @@ const BUDGET_MIN_VALUE = 20000;
 const BUDGET_MAX_VALUE = 1000000;
 const BUDGET_STEP = 5000;
 const BUDGET_THUMB_SIZE = 24;
-const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV1';
+const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV2';
 
 type CalendarDay = {
   date: Date;
@@ -818,6 +818,10 @@ export default function ExploreScreen() {
   }, [captureWizardFrames, isDiscoverExpanded, sectionCount, showCompactSections, wizardStep]);
 
   const dismissWizard = useCallback(() => {
+    setWizardStep(null);
+  }, []);
+
+  const disableWizard = useCallback(() => {
     setWizardSeen(true);
     setWizardStep(null);
     void SecureStore.setItemAsync(EXPLORE_SECTIONS_WIZARD_KEY, 'true').catch(() => undefined);
@@ -1648,6 +1652,7 @@ export default function ExploreScreen() {
           toggleFrame={wizardFrames.toggle}
           cardsFrame={wizardFrames.cards}
           onBack={handleWizardBack}
+          onDoNotShowAgain={disableWizard}
           onSkip={dismissWizard}
           onNext={wizardStep === 'openCard' ? dismissWizard : handleWizardNext}
         />
