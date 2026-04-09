@@ -994,15 +994,21 @@ export default function OfferBookingSummaryScreen() {
           <BackButton onPress={() => router.back()} />
           <View className="mt-4">
             <Text className="text-3xl font-bold text-slate-900">Booking summary</Text>
-            <View className="mt-3 flex-row items-center gap-2">
-              <View className="rounded-full bg-blue-100 px-3 py-1">
-                <Text className="text-xs font-semibold text-blue-700">
+            <View className="mt-3 flex-row flex-wrap items-center gap-2">
+              <View className="rounded-full bg-white px-3 py-1">
+                <Text className="text-xs font-semibold text-slate-800">
                   Booking #{bookingLabel}
                 </Text>
               </View>
-              <View className="flex-row items-center gap-1 rounded-full bg-white px-3 py-1 shadow-sm shadow-slate-100">
+              <View className="flex-row items-center gap-1 rounded-full bg-blue-100 px-3 py-1">
                 <Feather name="shield" size={12} color="#1d4ed8" />
-                <Text className="text-xs font-semibold text-slate-500">Secure checkout</Text>
+                <Text className="text-xs font-semibold text-blue-700">Secure checkout</Text>
+              </View>
+              <View className="flex-row items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+                <Feather name="check-circle" size={12} color="#047857" />
+                <Text className="text-xs font-semibold text-emerald-700">
+                  Check-in refund protection
+                </Text>
               </View>
             </View>
             {hasOfferLock ? (
