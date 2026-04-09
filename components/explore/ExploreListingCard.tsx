@@ -34,7 +34,7 @@ export function ExploreListingCard({
   onPress,
   onToggleWishlist,
 }: ExploreListingCardProps) {
-  const visiblePromoTags = item.promoTags.filter((tag) => tag.trim().length > 0).slice(0, 2);
+  const visiblePromoTags = item.promoTags.filter((tag) => tag.trim().length > 0).slice(0, 4);
 
   return (
     <Pressable
@@ -80,19 +80,23 @@ export function ExploreListingCard({
           <Feather name="map-pin" size={14} color="#94a3b8" />
           <Text className="text-sm text-slate-500">{item.area}</Text>
         </View>
-        <View className="mt-3 min-h-[34px] flex-row flex-wrap gap-2">
-          {visiblePromoTags.map((tag, index) => {
-            const tone = PROMO_TAG_TONES[index % PROMO_TAG_TONES.length];
-            return (
-              <View
-                key={`${item.id}-${tag}`}
-                className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${tone.containerClass}`}>
-                <Feather name="tag" size={11} color={tone.iconColor} />
-                <Text className={`text-[11px] font-semibold ${tone.textClass}`}>{tag}</Text>
-              </View>
-            );
-          })}
-        </View>
+        {
+          visiblePromoTags.length > 0 &&
+          <View className="mt-3 min-h-[34px] flex-row flex-wrap gap-2">
+            {visiblePromoTags.map((tag, index) => {
+              const tone = PROMO_TAG_TONES[index % PROMO_TAG_TONES.length];
+              return (
+                <View
+                  key={`${item.id}-${tag}`}
+                  className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${tone.containerClass}`}>
+                  <Feather name="tag" size={11} color={tone.iconColor} />
+                  <Text className={`text-[11px] font-semibold ${tone.textClass}`}>{tag}</Text>
+                </View>
+              );
+            })}
+          </View>
+        }
+
         <Text className="text-sm text-slate-500" numberOfLines={2} ellipsizeMode="tail">
           {item.description}
         </Text>
