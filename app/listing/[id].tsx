@@ -486,6 +486,7 @@ function ListingDetailSkeleton({ onBack }: { onBack: () => void }) {
         <SkeletonBar pulse={pulse} className="h-3 w-24 rounded-full" />
         <SkeletonBar pulse={pulse} className="mt-4 h-7 w-3/4 rounded-2xl" />
         <SkeletonBar pulse={pulse} className="mt-2 h-4 w-1/2 rounded-xl" />
+        <SkeletonBar pulse={pulse} className="mt-3 h-5 w-32 rounded-full" />
 
         <View className="mt-6">
           <SkeletonBar pulse={pulse} className="h-3 w-32 rounded-full" />
@@ -883,6 +884,15 @@ function ListingDetailContent({
               </Text>
               <Text className="mt-2 text-3xl font-bold text-slate-900">{listing.name}</Text>
               <Text className="mt-1 text-base text-slate-500">{listing.area}</Text>
+              <View className="mt-3 flex-row items-center gap-1.5">
+                <Feather name="star" size={15} color="#f59e0b" />
+                <Text className="text-sm font-semibold text-slate-700">
+                  {listing.rating > 0 ? listing.rating.toFixed(1) : 'New'}
+                </Text>
+                <Text className="text-sm text-slate-400">
+                  {listing.rating > 0 ? 'guest rating' : 'listing'}
+                </Text>
+              </View>
               <View className="mt-4 self-start">
                 <WishlistToggleButton
                   active={isWishlisted}

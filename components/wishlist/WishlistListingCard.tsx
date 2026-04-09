@@ -39,11 +39,6 @@ export function WishlistListingCard({
             <View className="rounded-full border border-white/40 bg-white/90 px-3 py-1">
               <Text className="text-xs font-semibold text-slate-800">{item.apartmentType}</Text>
             </View>
-            <View className="rounded-full bg-slate-900/70 px-3 py-1">
-              <Text className="text-xs font-semibold text-white">
-                {item.rating > 0 ? item.rating.toFixed(1) : 'New'}
-              </Text>
-            </View>
           </View>
 
           <View className="self-start rounded-full border border-white/35 bg-slate-900/60 px-3 py-1.5">
@@ -58,6 +53,15 @@ export function WishlistListingCard({
             <Text className="text-xl font-semibold text-slate-900" numberOfLines={2}>
               {item.name}
             </Text>
+            <View className="mt-2 flex-row items-center gap-1.5">
+              <Feather name="star" size={14} color="#f59e0b" />
+              <Text className="text-sm font-semibold text-slate-700">
+                {item.rating > 0 ? item.rating.toFixed(1) : 'New'}
+              </Text>
+              <Text className="text-sm text-slate-400">
+                {item.rating > 0 ? 'guest rating' : 'listing'}
+              </Text>
+            </View>
             <View className="mt-2 flex-row items-center gap-2">
               <Feather name="map-pin" size={14} color="#94a3b8" />
               <Text className="text-sm text-slate-500">{item.area}</Text>
