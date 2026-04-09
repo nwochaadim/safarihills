@@ -1,6 +1,10 @@
 import { BackButton } from '@/components/BackButton';
 import { BlankSlate } from '@/components/BlankSlate';
 import { LoadingImage } from '@/components/LoadingImage';
+import {
+  formatListingOfferClaimDeadline,
+  formatListingOfferClaimWindow,
+} from '@/data/listingOffers';
 import { AuthStatus } from '@/lib/authStatus';
 import { CREATE_OFFER_BOOKING } from '@/mutations/createOfferBooking';
 import { NEW_BOOKING_DETAILS_FOR_OFFER } from '@/queries/newBookingDetailsForOffer';
@@ -520,6 +524,7 @@ export default function OfferBookingScreen() {
     source_section: sourceSectionParam,
     item_list_id: itemListIdParam,
     item_list_name: itemListNameParam,
+    claim_hold_expires_at: claimHoldExpiresAtParam,
   } = useLocalSearchParams<{
     categoryId?: string | string[];
     offerId?: string | string[];
@@ -530,6 +535,7 @@ export default function OfferBookingScreen() {
     source_section?: string | string[];
     item_list_id?: string | string[];
     item_list_name?: string | string[];
+    claim_hold_expires_at?: string | string[];
   }>();
   const categoryId = Array.isArray(categoryParam) ? categoryParam[0] : categoryParam;
   const offerId = Array.isArray(offerParam) ? offerParam[0] : offerParam;
@@ -546,6 +552,9 @@ export default function OfferBookingScreen() {
   const itemListName = Array.isArray(itemListNameParam)
     ? itemListNameParam[0]
     : itemListNameParam;
+  const claimHoldExpiresAt = Array.isArray(claimHoldExpiresAtParam)
+    ? claimHoldExpiresAtParam[0]
+    : claimHoldExpiresAtParam;
   const handleBack = useCallback(() => {
     if (categoryId === 'listing-offers' && listingId) {
       router.dismissTo({
@@ -626,6 +635,7 @@ export default function OfferBookingScreen() {
   const [guestError, setGuestError] = useState<string | null>(null);
   const [purpose, setPurpose] = useState('');
   const [purposeModalVisible, setPurposeModalVisible] = useState(false);
+  const [lockNow, setLockNow] = useState(() => Date.now());
   const [galleryRoom, setGalleryRoom] = useState<BookingListable | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -814,6 +824,29 @@ export default function OfferBookingScreen() {
     return missing;
   }, [acceptedTerms, hasPrice, hasPurpose, hasStaySelection, hasTimeSlots, isTimeBased]);
   const rateUnitLabel = isTimeBased ? ' / stay' : ' / night';
+  const lockExpiresAtTimestamp = claimHoldExpiresAt
+    ? new Date(claimHoldExpiresAt).getTime()
+    : Number.NaN;
+  const hasOfferLock = Number.isFinite(lockExpiresAtTimestamp);
+  const isOfferLockActive = hasOfferLock && lockExpiresAtTimestamp > lockNow;
+  const offerLockLabel =
+    hasOfferLock && claimHoldExpiresAt
+      ? formatListingOfferClaimWindow(claimHoldExpiresAt, lockNow)
+      : null;
+  const offerLockDeadlineLabel =
+    hasOfferLock && claimHoldExpiresAt
+      ? formatListingOfferClaimDeadline(claimHoldExpiresAt)
+      : null;
+
+  useEffect(() => {
+    if (!hasOfferLock || !isOfferLockActive) return undefined;
+
+    const interval = setInterval(() => {
+      setLockNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [hasOfferLock, isOfferLockActive]);
 
   useEffect(() => {
     progressSnapshotRef.current = {
@@ -983,6 +1016,7 @@ export default function OfferBookingScreen() {
             id: bookingId,
             offerId,
             listingId,
+            claim_hold_expires_at: claimHoldExpiresAt ?? undefined,
             source_screen: sourceScreen ?? 'offer_detail',
             source_surface: sourceSurface,
             source_section: sourceSection,
@@ -1144,6 +1178,29 @@ export default function OfferBookingScreen() {
             </Text>
             <Text className="mt-1 text-lg font-semibold text-slate-900">{offerName}</Text>
           </View>
+          {hasOfferLock ? (
+            <View
+              className={`mt-4 rounded-2xl border px-4 py-3 ${
+                isOfferLockActive
+                  ? 'border-blue-100 bg-blue-50/70'
+                  : 'border-rose-200 bg-rose-50/70'
+              }`}>
+              <Text
+                className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                  isOfferLockActive ? 'text-blue-600' : 'text-rose-600'
+                }`}>
+                {isOfferLockActive ? 'Offer lock timer' : 'Offer lock expired'}
+              </Text>
+              <Text className="mt-1 text-lg font-semibold text-slate-900">
+                {isOfferLockActive ? offerLockLabel : 'Your offer lock has expired'}
+              </Text>
+              <Text className="mt-1 text-sm text-slate-600">
+                {isOfferLockActive && offerLockDeadlineLabel
+                  ? `${offerLockDeadlineLabel}. Finish your booking before the timer runs out.`
+                  : 'This private hold is no longer active for this offer.'}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View className="mt-6 px-6">

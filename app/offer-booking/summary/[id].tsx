@@ -1,5 +1,9 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import {
+  formatListingOfferClaimDeadline,
+  formatListingOfferClaimWindow,
+} from '@/data/listingOffers';
 import { CREATE_WALLET_PAYMENT_FOR_BOOKING } from '@/mutations/createWalletPaymentForBooking';
 import { FIND_USER_AND_OFFER_BOOKING_SUMMARY_DETAILS } from '@/queries/findUserAndOfferBookingSummaryDetails';
 import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
@@ -148,6 +152,7 @@ export default function OfferBookingSummaryScreen() {
     source_section: sourceSectionParam,
     listingId: listingIdParam,
     offerId: offerIdParam,
+    claim_hold_expires_at: claimHoldExpiresAtParam,
   } = useLocalSearchParams<{
     id?: string;
     source_screen?: string;
@@ -155,6 +160,7 @@ export default function OfferBookingSummaryScreen() {
     source_section?: string;
     listingId?: string;
     offerId?: string;
+    claim_hold_expires_at?: string;
   }>();
   const bookingId = Array.isArray(idParam) ? idParam[0] : idParam;
   const sourceScreen = Array.isArray(sourceScreenParam) ? sourceScreenParam[0] : sourceScreenParam;
@@ -166,6 +172,9 @@ export default function OfferBookingSummaryScreen() {
     : sourceSectionParam;
   const listingId = Array.isArray(listingIdParam) ? listingIdParam[0] : listingIdParam;
   const offerId = Array.isArray(offerIdParam) ? offerIdParam[0] : offerIdParam;
+  const claimHoldExpiresAt = Array.isArray(claimHoldExpiresAtParam)
+    ? claimHoldExpiresAtParam[0]
+    : claimHoldExpiresAtParam;
   const { data, loading, refetch, error } = useQuery<
     BookingSummaryResponse,
     BookingSummaryVariables
@@ -246,6 +255,7 @@ export default function OfferBookingSummaryScreen() {
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
   const [paystackVisible, setPaystackVisible] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [lockNow, setLockNow] = useState(() => Date.now());
   const hasTrackedSummaryViewRef = useRef(false);
   const hasCompletedPurchaseRef = useRef(false);
 
@@ -257,6 +267,30 @@ export default function OfferBookingSummaryScreen() {
   const paystackAmount = Math.max(Math.round(total * 100), 0);
   const paystackReference = bookingReference || 'booking-reference';
   const bookingValueBucket = getBookingValueBucket(total);
+  const lockExpiresAtTimestamp = claimHoldExpiresAt
+    ? new Date(claimHoldExpiresAt).getTime()
+    : Number.NaN;
+  const hasOfferLock = Number.isFinite(lockExpiresAtTimestamp);
+  const isOfferLockActive = hasOfferLock && lockExpiresAtTimestamp > lockNow;
+  const offerLockLabel =
+    hasOfferLock && claimHoldExpiresAt
+      ? formatListingOfferClaimWindow(claimHoldExpiresAt, lockNow)
+      : null;
+  const offerLockCountdownLabel = offerLockLabel?.replace(/^Locked for\s+/, '') ?? null;
+  const offerLockDeadlineLabel =
+    hasOfferLock && claimHoldExpiresAt
+      ? formatListingOfferClaimDeadline(claimHoldExpiresAt)
+      : null;
+
+  useEffect(() => {
+    if (!hasOfferLock || !isOfferLockActive) return undefined;
+
+    const interval = setInterval(() => {
+      setLockNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [hasOfferLock, isOfferLockActive]);
 
   useEffect(() => {
     if (!booking || hasTrackedSummaryViewRef.current) {
@@ -960,6 +994,29 @@ export default function OfferBookingSummaryScreen() {
                 <Text className="text-xs font-semibold text-slate-500">Secure checkout</Text>
               </View>
             </View>
+            {hasOfferLock ? (
+              <View
+                className={`mt-4 rounded-2xl border px-4 py-3 ${
+                  isOfferLockActive
+                    ? 'border-blue-100 bg-blue-50/70'
+                    : 'border-rose-200 bg-rose-50/70'
+                }`}>
+                <Text
+                  className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                    isOfferLockActive ? 'text-blue-600' : 'text-rose-600'
+                  }`}>
+                  {isOfferLockActive ? 'Offer lock timer' : 'Offer lock expired'}
+                </Text>
+                <Text className="mt-1 text-lg font-semibold text-slate-900">
+                  {isOfferLockActive ? offerLockLabel : 'Your offer lock has expired'}
+                </Text>
+                <Text className="mt-1 text-sm text-slate-600">
+                  {isOfferLockActive && offerLockDeadlineLabel
+                    ? `${offerLockDeadlineLabel}. Complete payment before the timer runs out.`
+                    : 'This private hold is no longer active for this offer.'}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -1260,17 +1317,29 @@ export default function OfferBookingSummaryScreen() {
                     void handleWalletPayment();
                   }}>
                   <View className="items-center">
-                    <Text
-                      className={`text-base font-semibold ${
-                        canPay ? 'text-white' : 'text-slate-500'
-                      }`}>
-                      Pay Now · {formatCurrency(total)}
-                    </Text>
+                    <View className="flex-row items-center gap-2">
+                      <Text
+                        className={`text-base font-semibold ${
+                          canPay ? 'text-white' : 'text-slate-500'
+                        }`}>
+                        Pay Now .
+                      </Text>
+                      <Text
+                        className={`text-base font-semibold ${
+                          canPay ? 'text-white' : 'text-slate-500'
+                        }`}>
+                        {isOfferLockActive && offerLockCountdownLabel
+                          ? offerLockCountdownLabel
+                          : isProcessingPayment
+                            ? 'Processing payment'
+                            : 'Ready to pay'}
+                      </Text>
+                    </View>
                     <Text
                       className={`text-xs font-semibold ${
                         canPay ? 'text-blue-100' : 'text-slate-400'
                       }`}>
-                      {isProcessingPayment ? 'Processing payment' : 'Final total'}
+                      Final Total: {formatCurrency(total)}
                     </Text>
                   </View>
                 </Pressable>

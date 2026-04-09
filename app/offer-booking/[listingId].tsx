@@ -337,6 +337,44 @@ export default function LocalOfferBookingScreen() {
   const canLockOffer = publicStatus === 'live' && !claim;
   const canContinueWithOffer = Boolean(claim);
 
+  const proceedToOfferBooking = ({
+    holdExpiresAt,
+    surfaceFallback,
+  }: {
+    holdExpiresAt?: string | null;
+    surfaceFallback: string;
+  }) => {
+    void trackEvent(ANALYTICS_EVENTS.BeginBooking, {
+      booking_mode: 'offer',
+      source_screen: sourceScreen ?? 'listing_offer_review',
+      source_surface: sourceSurface ?? surfaceFallback,
+      source_section: sourceSection,
+      listing_id: resolvedListing.id,
+      listing_name: resolvedListing.name,
+      city: resolvedListing.area,
+      offer_id: selectedOffer.id,
+      offer_name: selectedOffer.title,
+      offer_selected: 1,
+      value: resolvedListing.minimumPrice,
+      currency: 'NGN',
+    });
+
+    router.push({
+      pathname: '/(tabs)/offers/[categoryId]/[offerId]/book',
+      params: {
+        categoryId: 'listing-offers',
+        offerId: selectedOffer.id,
+        listingId: resolvedListing.id,
+        claim_hold_expires_at: holdExpiresAt ?? undefined,
+        source_screen: sourceScreen ?? 'listing_offer_review',
+        source_surface: sourceSurface ?? surfaceFallback,
+        source_section: sourceSection,
+        item_list_id: itemListId,
+        item_list_name: itemListName,
+      },
+    });
+  };
+
   const handleLockOffer = async () => {
     if (!canLockOffer || isLocking) return;
     if (authStatus !== 'signed-in') {
@@ -389,7 +427,11 @@ export default function LocalOfferBookingScreen() {
         holdExpiresAt: payload.claim.holdExpiresAt,
       });
       setNow(Date.now());
-      await refetch({ listingId: resolvedListing.id });
+      proceedToOfferBooking({
+        holdExpiresAt: payload.claim.holdExpiresAt,
+        surfaceFallback: 'lock_offer_cta',
+      });
+      void refetch({ listingId: resolvedListing.id });
     } finally {
       setIsLocking(false);
     }
@@ -397,34 +439,9 @@ export default function LocalOfferBookingScreen() {
 
   const handleContinueWithOffer = () => {
     if (!claim) return;
-
-    void trackEvent(ANALYTICS_EVENTS.BeginBooking, {
-      booking_mode: 'offer',
-      source_screen: sourceScreen ?? 'listing_offer_review',
-      source_surface: sourceSurface ?? 'locked_offer_cta',
-      source_section: sourceSection,
-      listing_id: resolvedListing.id,
-      listing_name: resolvedListing.name,
-      city: resolvedListing.area,
-      offer_id: selectedOffer.id,
-      offer_name: selectedOffer.title,
-      offer_selected: 1,
-      value: resolvedListing.minimumPrice,
-      currency: 'NGN',
-    });
-
-    router.push({
-      pathname: '/(tabs)/offers/[categoryId]/[offerId]/book',
-      params: {
-        categoryId: 'listing-offers',
-        offerId: selectedOffer.id,
-        listingId: resolvedListing.id,
-        source_screen: sourceScreen ?? 'listing_offer_review',
-        source_surface: sourceSurface ?? 'locked_offer_cta',
-        source_section: sourceSection,
-        item_list_id: itemListId,
-        item_list_name: itemListName,
-      },
+    proceedToOfferBooking({
+      holdExpiresAt: claim.holdExpiresAt,
+      surfaceFallback: 'locked_offer_cta',
     });
   };
 
@@ -476,7 +493,7 @@ export default function LocalOfferBookingScreen() {
 
                   <View className="rounded-2xl border border-white/20 bg-black/20 px-4 py-3">
                     <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
-                      Public window
+                      Active window
                     </Text>
                     <Text className="mt-1 text-base font-semibold text-white">
                       {publicWindowLabel}
@@ -654,7 +671,7 @@ export default function LocalOfferBookingScreen() {
             </Pressable>
           ) : (
             <Pressable
-              className={`items-center justify-center rounded-full py-4 ${theme.actionClass}`}
+              className="items-center justify-center rounded-full bg-blue-600 py-4"
               disabled={!canContinueWithOffer}
               onPress={handleContinueWithOffer}>
               <Text className="text-base font-semibold text-white">Continue with locked offer</Text>
