@@ -39,6 +39,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   GestureResponderEvent,
   LayoutAnimation,
   Modal,
@@ -80,6 +81,8 @@ const DISCOVER_TOP_THRESHOLD = 1;
 const DISCOVER_CARDS_Z_INDEX = 30;
 const FILTER_CONTROLS_Z_INDEX = 60;
 const FILTER_SHEET_Z_INDEX = 70;
+const DISCOVER_CARD_SWAP_DURATION = 220;
+const LARGE_DISCOVER_CARDS_FALLBACK_HEIGHT = 224;
 const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV2';
 
 type CalendarDay = {
@@ -423,6 +426,7 @@ export default function ExploreScreen() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [filterAnchor, setFilterAnchor] = useState({ y: 0, height: 0 });
   const [discoverSummaryAnchor, setDiscoverSummaryAnchor] = useState({ y: 0, height: 0 });
+  const [discoverCardsHeight, setDiscoverCardsHeight] = useState(0);
   const [topHeaderHeight, setTopHeaderHeight] = useState(0);
   const [isExploreListAtTop, setIsExploreListAtTop] = useState(true);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
@@ -443,6 +447,7 @@ export default function ExploreScreen() {
     cards: null,
   });
   const scrollY = useState(() => new Animated.Value(0))[0];
+  const discoverCardsMode = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -589,11 +594,6 @@ export default function ExploreScreen() {
 
       setIsExploreListAtTop((current) => {
         if (current === nextIsExploreListAtTop) return current;
-
-        if (isDiscoverExpanded) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        }
-
         return nextIsExploreListAtTop;
       });
     });
@@ -601,7 +601,25 @@ export default function ExploreScreen() {
     return () => {
       scrollY.removeListener(listener);
     };
-  }, [isDiscoverExpanded, scrollY]);
+  }, [scrollY]);
+
+  useEffect(() => {
+    const nextMode = isExploreListAtTop ? 0 : 1;
+
+    discoverCardsMode.stopAnimation();
+
+    if (!isDiscoverExpanded) {
+      discoverCardsMode.setValue(nextMode);
+      return;
+    }
+
+    Animated.timing(discoverCardsMode, {
+      toValue: nextMode,
+      duration: DISCOVER_CARD_SWAP_DURATION,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [discoverCardsMode, isDiscoverExpanded, isExploreListAtTop]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -781,8 +799,48 @@ export default function ExploreScreen() {
       : filterAnchor.y > 0
         ? filterAnchor.y + filterAnchor.height + 36
         : topHeaderHeight + 46;
-  const shouldShowCompactSections = isDiscoverExpanded && !isExploreListAtTop;
-  const shouldShowLargeSections = isDiscoverExpanded && isExploreListAtTop;
+  const expandedDiscoverCardsHeight = Math.max(
+    discoverCardsHeight,
+    LARGE_DISCOVER_CARDS_FALLBACK_HEIGHT
+  );
+  const compactSectionsOpacity = discoverCardsMode.interpolate({
+    inputRange: [0, 0.55, 1],
+    outputRange: [0, 0.08, 1],
+    extrapolate: 'clamp',
+  });
+  const compactSectionsTranslateY = discoverCardsMode.interpolate({
+    inputRange: [0, 1],
+    outputRange: [10, 0],
+    extrapolate: 'clamp',
+  });
+  const compactSectionsScale = discoverCardsMode.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.98, 1],
+    extrapolate: 'clamp',
+  });
+  const largeSectionsOpacity = discoverCardsMode.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [1, 0.24, 0],
+    extrapolate: 'clamp',
+  });
+  const largeSectionsTranslateY = discoverCardsMode.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -16],
+    extrapolate: 'clamp',
+  });
+  const largeSectionsScale = discoverCardsMode.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.985],
+    extrapolate: 'clamp',
+  });
+  const largeSectionsHeight = discoverCardsMode.interpolate({
+    inputRange: [0, 1],
+    outputRange: [expandedDiscoverCardsHeight, 0],
+    extrapolate: 'clamp',
+  });
+  const shouldRenderDiscoverCards = isDiscoverExpanded;
+  const shouldEnableCompactInteractions = isDiscoverExpanded && !isExploreListAtTop;
+  const shouldEnableLargeInteractions = isDiscoverExpanded && isExploreListAtTop;
 
   const handleDiscoverToggle = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -817,7 +875,7 @@ export default function ExploreScreen() {
     }, 80);
 
     return () => clearTimeout(timeoutId);
-  }, [captureWizardFrames, isDiscoverExpanded, sectionCount, shouldShowCompactSections, wizardStep]);
+  }, [captureWizardFrames, isDiscoverExpanded, isExploreListAtTop, sectionCount, wizardStep]);
 
   const dismissWizard = useCallback(() => {
     setWizardStep(null);
@@ -871,8 +929,9 @@ export default function ExploreScreen() {
         </Pressable>
       </View>
 
-      {shouldShowCompactSections ? (
-        <View
+      {shouldRenderDiscoverCards ? (
+        <Animated.View
+          pointerEvents={shouldEnableCompactInteractions ? 'auto' : 'none'}
           style={{
             position: 'absolute',
             top: compactSectionTop,
@@ -880,6 +939,8 @@ export default function ExploreScreen() {
             right: 0,
             zIndex: DISCOVER_CARDS_Z_INDEX,
             elevation: DISCOVER_CARDS_Z_INDEX,
+            opacity: compactSectionsOpacity,
+            transform: [{ translateY: compactSectionsTranslateY }, { scale: compactSectionsScale }],
           }}>
           <ScrollView
             horizontal
@@ -932,7 +993,7 @@ export default function ExploreScreen() {
               ))}
             </View>
           </ScrollView>
-        </View>
+        </Animated.View>
       ) : null}
 
       <View
@@ -1014,66 +1075,85 @@ export default function ExploreScreen() {
           </View>
         </View>
 
-        {shouldShowLargeSections ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ zIndex: DISCOVER_CARDS_Z_INDEX }}
-            contentContainerStyle={{ paddingTop: 12, paddingBottom: 2 }}>
-            <View ref={discoverCardsRef} className="flex-row gap-3 pr-6">
-              {sections.map((section) => (
-                <Pressable
-                  key={section.slug}
-                  className="w-[184px] rounded-[24px] border px-4 py-4"
-                  style={{
-                    backgroundColor: section.backgroundColor,
-                    borderColor: section.borderColor,
-                  }}
-                  onPress={() => openSection(section, 'discover_section_card')}>
-                  <View className="flex-row items-start justify-between gap-3">
-                    <View className="flex-1">
-                      <Text
-                        className="text-[10px] font-semibold uppercase tracking-[0.22em]"
-                        style={{ color: section.textColor, opacity: 0.72 }}>
-                        {section.eyebrow}
-                      </Text>
-                      <Text
-                        className="mt-2 text-[16px] font-bold leading-5"
-                        style={{ color: section.textColor }}
-                        numberOfLines={2}>
-                        {section.title}
-                      </Text>
-                    </View>
-                    <View
-                      className="rounded-2xl border px-2.5 py-2.5"
+        {shouldRenderDiscoverCards ? (
+          <Animated.View
+            pointerEvents={shouldEnableLargeInteractions ? 'auto' : 'none'}
+            style={{
+              zIndex: DISCOVER_CARDS_Z_INDEX,
+              overflow: 'hidden',
+              height: largeSectionsHeight,
+              opacity: largeSectionsOpacity,
+              transform: [{ translateY: largeSectionsTranslateY }, { scale: largeSectionsScale }],
+            }}>
+            <View
+              ref={discoverCardsRef}
+              onLayout={(event) => {
+                const nextHeight = event.nativeEvent.layout.height;
+                if (!nextHeight) return;
+                setDiscoverCardsHeight((current) =>
+                  Math.abs(current - nextHeight) < 1 ? current : nextHeight
+                );
+              }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingTop: 12, paddingBottom: 2 }}>
+                <View className="flex-row gap-3 pr-6">
+                  {sections.map((section) => (
+                    <Pressable
+                      key={section.slug}
+                      className="w-[184px] rounded-[24px] border px-4 py-4"
                       style={{
+                        backgroundColor: section.backgroundColor,
                         borderColor: section.borderColor,
-                        backgroundColor: rgbaFromHex(section.textColor, '18'),
-                      }}>
-                      <Feather name={section.iconName} size={16} color={section.textColor} />
-                    </View>
-                  </View>
+                      }}
+                      onPress={() => openSection(section, 'discover_section_card')}>
+                      <View className="flex-row items-start justify-between gap-3">
+                        <View className="flex-1">
+                          <Text
+                            className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+                            style={{ color: section.textColor, opacity: 0.72 }}>
+                            {section.eyebrow}
+                          </Text>
+                          <Text
+                            className="mt-2 text-[16px] font-bold leading-5"
+                            style={{ color: section.textColor }}
+                            numberOfLines={2}>
+                            {section.title}
+                          </Text>
+                        </View>
+                        <View
+                          className="rounded-2xl border px-2.5 py-2.5"
+                          style={{
+                            borderColor: section.borderColor,
+                            backgroundColor: rgbaFromHex(section.textColor, '18'),
+                          }}>
+                          <Feather name={section.iconName} size={16} color={section.textColor} />
+                        </View>
+                      </View>
 
-                  <Text
-                    className="mt-3 text-[12px] leading-5"
-                    style={{ color: section.textColor, opacity: 0.88 }}
-                    numberOfLines={3}>
-                    {section.subtitle}
-                  </Text>
+                      <Text
+                        className="mt-3 text-[12px] leading-5"
+                        style={{ color: section.textColor, opacity: 0.88 }}
+                        numberOfLines={3}>
+                        {section.subtitle}
+                      </Text>
 
-                  <View className="mt-4 flex-row items-center justify-between">
-                    <Text className="text-[11px] font-medium" style={{ color: section.textColor }}>
-                      {section.matchingCount} {section.matchingCount === 1 ? 'stay' : 'stays'}
-                    </Text>
-                    <View className="flex-row items-center gap-1 rounded-full bg-white/85 px-2.5 py-1">
-                      <Text className="text-[11px] font-semibold text-slate-900">Open</Text>
-                      <Feather name="arrow-right" size={12} color="#0f172a" />
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
+                      <View className="mt-4 flex-row items-center justify-between">
+                        <Text className="text-[11px] font-medium" style={{ color: section.textColor }}>
+                          {section.matchingCount} {section.matchingCount === 1 ? 'stay' : 'stays'}
+                        </Text>
+                        <View className="flex-row items-center gap-1 rounded-full bg-white/85 px-2.5 py-1">
+                          <Text className="text-[11px] font-semibold text-slate-900">Open</Text>
+                          <Feather name="arrow-right" size={12} color="#0f172a" />
+                        </View>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
-          </ScrollView>
+          </Animated.View>
         ) : null}
       </View>
 
