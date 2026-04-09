@@ -58,12 +58,52 @@
             {
               "scheme": "https",
               "host": "safarihills.app",
-              "pathPrefix": "/"
+              "pathPrefix": "/explore/"
             },
             {
               "scheme": "https",
               "host": "www.safarihills.app",
-              "pathPrefix": "/"
+              "pathPrefix": "/explore/"
+            },
+            {
+              "scheme": "https",
+              "host": "safarihills.app",
+              "pathPrefix": "/listing/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.safarihills.app",
+              "pathPrefix": "/listing/"
+            },
+            {
+              "scheme": "https",
+              "host": "safarihills.app",
+              "pathPrefix": "/offer-booking/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.safarihills.app",
+              "pathPrefix": "/offer-booking/"
+            },
+            {
+              "scheme": "https",
+              "host": "safarihills.app",
+              "pathPrefix": "/booking/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.safarihills.app",
+              "pathPrefix": "/booking/"
+            },
+            {
+              "scheme": "https",
+              "host": "safarihills.app",
+              "path": "/profile"
+            },
+            {
+              "scheme": "https",
+              "host": "www.safarihills.app",
+              "path": "/profile"
             }
           ],
           "category": [
