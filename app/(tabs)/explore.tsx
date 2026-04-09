@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -21,6 +22,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  ExploreSectionsWizard,
+  ExploreWizardStep,
+  WizardFrame,
+} from '@/components/explore/ExploreSectionsWizard';
 import { ExploreListingCard } from '@/components/explore/ExploreListingCard';
 import { SafeAreaView } from '@/components/tab-safe-area-view';
 import { useAnalyticsTracker } from '@/hooks/use-analytics-tracker';
@@ -70,6 +76,7 @@ const BUDGET_MIN_VALUE = 20000;
 const BUDGET_MAX_VALUE = 1000000;
 const BUDGET_STEP = 5000;
 const BUDGET_THUMB_SIZE = 24;
+const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV1';
 
 type CalendarDay = {
   date: Date;
@@ -103,6 +110,29 @@ type AvailableLocation = {
 type AvailableLocationsResponse = {
   locations?: AvailableLocation[] | null;
 };
+
+type MeasurableNode = {
+  measureInWindow?: (
+    callback: (x: number, y: number, width: number, height: number) => void
+  ) => void;
+} | null;
+
+const measureFrame = (node: MeasurableNode) =>
+  new Promise<WizardFrame | null>((resolve) => {
+    if (!node?.measureInWindow) {
+      resolve(null);
+      return;
+    }
+
+    node.measureInWindow((x, y, width, height) => {
+      if (width <= 0 || height <= 0) {
+        resolve(null);
+        return;
+      }
+
+      resolve({ x, y, width, height });
+    });
+  });
 
 const startOfDay = (date: Date) => {
   const next = new Date(date);
@@ -379,6 +409,10 @@ export default function ExploreScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { toggleListingWishlist } = useListingWishlistToggle();
   const { height: windowHeight } = useWindowDimensions();
+  const discoverSectionRef = useRef<View | null>(null);
+  const discoverToggleRef = useRef<View | null>(null);
+  const discoverCardsRef = useRef<View | null>(null);
+  const wizardOpenedRef = useRef(false);
   const [filters, setFilters] = useState<FilterState>(createInitialFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(createInitialFilters);
   const [isDiscoverExpanded, setIsDiscoverExpanded] = useState(false);
@@ -392,11 +426,39 @@ export default function ExploreScreen() {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
+  const [wizardSeen, setWizardSeen] = useState<boolean | null>(null);
+  const [wizardStep, setWizardStep] = useState<ExploreWizardStep | null>(null);
+  const [wizardFrames, setWizardFrames] = useState<{
+    discover: WizardFrame | null;
+    toggle: WizardFrame | null;
+    cards: WizardFrame | null;
+  }>({
+    discover: null,
+    toggle: null,
+    cards: null,
+  });
   const scrollY = useState(() => new Animated.Value(0))[0];
+
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadWizardStatus = async () => {
+      const stored = await SecureStore.getItemAsync(EXPLORE_SECTIONS_WIZARD_KEY);
+      if (!isMounted) return;
+      setWizardSeen(stored === 'true');
+    };
+
+    void loadWizardStatus();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const appliedExploreFilters = useMemo(
@@ -725,6 +787,66 @@ export default function ExploreScreen() {
     extrapolate: 'clamp',
   });
 
+  const captureWizardFrames = useCallback(() => {
+    requestAnimationFrame(() => {
+      void Promise.all([
+        measureFrame(discoverSectionRef.current),
+        measureFrame(discoverToggleRef.current),
+        measureFrame(discoverCardsRef.current),
+      ]).then(([discover, toggle, cards]) => {
+        setWizardFrames({ discover, toggle, cards });
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (wizardSeen !== false || wizardStep || wizardOpenedRef.current) return;
+    if (loading || error || sectionCount === 0) return;
+
+    wizardOpenedRef.current = true;
+    setWizardStep('welcome');
+  }, [error, loading, sectionCount, wizardSeen, wizardStep]);
+
+  useEffect(() => {
+    if (!wizardStep) return;
+
+    const timeoutId = setTimeout(() => {
+      captureWizardFrames();
+    }, 80);
+
+    return () => clearTimeout(timeoutId);
+  }, [captureWizardFrames, isDiscoverExpanded, sectionCount, showCompactSections, wizardStep]);
+
+  const dismissWizard = useCallback(() => {
+    setWizardSeen(true);
+    setWizardStep(null);
+    void SecureStore.setItemAsync(EXPLORE_SECTIONS_WIZARD_KEY, 'true').catch(() => undefined);
+  }, []);
+
+  const handleWizardBack = useCallback(() => {
+    setWizardStep((current) => {
+      if (current === 'openCard') {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setIsDiscoverExpanded(false);
+        return 'expand';
+      }
+      if (current === 'expand') return 'welcome';
+      return current;
+    });
+  }, []);
+
+  const handleWizardNext = useCallback(() => {
+    setWizardStep((current) => {
+      if (current === 'welcome') return 'expand';
+      if (current === 'expand') {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setIsDiscoverExpanded(true);
+        return 'openCard';
+      }
+      return current;
+    });
+  }, []);
+
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
       <View
@@ -808,6 +930,7 @@ export default function ExploreScreen() {
       </Animated.View>
 
       <View
+        ref={discoverSectionRef}
         className="mt-5 px-6"
         onLayout={(event) => {
           const { y } = event.nativeEvent.layout;
@@ -855,6 +978,7 @@ export default function ExploreScreen() {
             </View>
 
             <Pressable
+              ref={discoverToggleRef}
               className="h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white"
               onPress={() => setIsDiscoverExpanded((prev) => !prev)}>
               <Feather
@@ -881,7 +1005,7 @@ export default function ExploreScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 2 }}>
-            <View className="flex-row gap-3 pr-6">
+            <View ref={discoverCardsRef} className="flex-row gap-3 pr-6">
               {sections.map((section) => (
                 <Pressable
                   key={section.slug}
@@ -1514,6 +1638,20 @@ export default function ExploreScreen() {
           </View>
         </View>
       </Modal>
+
+      {wizardStep ? (
+        <ExploreSectionsWizard
+          visible
+          step={wizardStep}
+          sections={sections}
+          discoverFrame={wizardFrames.discover}
+          toggleFrame={wizardFrames.toggle}
+          cardsFrame={wizardFrames.cards}
+          onBack={handleWizardBack}
+          onSkip={dismissWizard}
+          onNext={wizardStep === 'openCard' ? dismissWizard : handleWizardNext}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
