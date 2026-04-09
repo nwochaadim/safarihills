@@ -22,6 +22,7 @@ import {
   flattenPreviewListings,
   formatCurrencyInput,
   mapExploreSection,
+  mergeRemoteExploreSections,
   parseCurrencyInput,
   RemoteExploreSection,
   serializeExploreFilterInput,
@@ -84,6 +85,7 @@ const FILTER_SHEET_Z_INDEX = 70;
 const DISCOVER_CARD_SWAP_DURATION = 220;
 const LARGE_DISCOVER_CARDS_FALLBACK_HEIGHT = 224;
 const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV2';
+const EXPLORE_PAGE_SIZE = 15;
 
 type CalendarDay = {
   date: Date;
@@ -100,6 +102,8 @@ type ExploreSectionsResponse = {
 
 type ExploreSectionsVariables = {
   filters?: ExploreFilterInput;
+  limit?: number;
+  offset?: number;
 };
 
 type ExploreProfileResponse = {
@@ -435,6 +439,9 @@ export default function ExploreScreen() {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(EXPLORE_PAGE_SIZE);
+  const [remoteHasMore, setRemoteHasMore] = useState(true);
   const [wizardSeen, setWizardSeen] = useState<boolean | null>(null);
   const [wizardStep, setWizardStep] = useState<ExploreWizardStep | null>(null);
   const [wizardFrames, setWizardFrames] = useState<{
@@ -475,14 +482,22 @@ export default function ExploreScreen() {
     () => buildExploreFilterInput(appliedFilters),
     [appliedFilters]
   );
+  const exploreSectionsVariables = useMemo<ExploreSectionsVariables>(
+    () => ({
+      filters: appliedExploreFilters,
+      limit: EXPLORE_PAGE_SIZE,
+      offset: 0,
+    }),
+    [appliedExploreFilters]
+  );
 
-  const { data, error, refetch, loading } = useQuery<
+  const { data, error, fetchMore, refetch, loading } = useQuery<
     ExploreSectionsResponse,
     ExploreSectionsVariables
   >(
     EXPLORE_SECTIONS,
     {
-      variables: { filters: appliedExploreFilters },
+      variables: exploreSectionsVariables,
       notifyOnNetworkStatusChange: true,
     }
   );
@@ -507,6 +522,7 @@ export default function ExploreScreen() {
   );
   const previewListings = useMemo(() => flattenPreviewListings(sections), [sections]);
   const sectionCount = sections.length;
+  const hasMore = !error && remoteHasMore && previewListings.length > 0;
   const isNetworkError = Boolean(error?.networkError);
   const availableLocationNames = useMemo(() => {
     const names = new Set<string>();
@@ -589,6 +605,20 @@ export default function ExploreScreen() {
   const listViewSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
+    setLoadingMore(false);
+    setNextOffset(EXPLORE_PAGE_SIZE);
+    setRemoteHasMore(true);
+  }, [appliedExploreFilters]);
+
+  useEffect(() => {
+    if (loading || error) return;
+
+    if (sectionCount === 0 || previewListings.length < EXPLORE_PAGE_SIZE) {
+      setRemoteHasMore(false);
+    }
+  }, [error, loading, previewListings.length, sectionCount]);
+
+  useEffect(() => {
     const listener = scrollY.addListener(({ value }) => {
       const nextIsExploreListAtTop = value <= DISCOVER_TOP_THRESHOLD;
 
@@ -623,9 +653,12 @@ export default function ExploreScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setLoadingMore(false);
+    setNextOffset(EXPLORE_PAGE_SIZE);
+    setRemoteHasMore(true);
     try {
       await Promise.all([
-        refetch({ filters: appliedExploreFilters }),
+        refetch(exploreSectionsVariables),
         refetchProfile(),
       ]);
     } finally {
@@ -719,7 +752,50 @@ export default function ExploreScreen() {
   };
 
   const handleRetry = () => {
-    refetch({ filters: appliedExploreFilters }).catch(() => undefined);
+    refetch(exploreSectionsVariables).catch(() => undefined);
+  };
+
+  const handleLoadMore = async () => {
+    if (!hasMore || loading || loadingMore || refreshing) return;
+
+    setLoadingMore(true);
+
+    try {
+      const result = await fetchMore({
+        variables: {
+          filters: appliedExploreFilters,
+          limit: EXPLORE_PAGE_SIZE,
+          offset: nextOffset,
+        },
+        updateQuery: (previous, { fetchMoreResult }) => {
+          const previousSections = previous?.exploreSections ?? [];
+          const incomingSections = fetchMoreResult?.exploreSections ?? [];
+
+          if (incomingSections.length === 0) {
+            return previous;
+          }
+
+          return {
+            exploreSections: mergeRemoteExploreSections(previousSections, incomingSections),
+          };
+        },
+      });
+
+      const nextPageSections = sortExploreSections(
+        (result.data?.exploreSections ?? []).map(mapExploreSection)
+      );
+      const nextPageListingsCount = flattenPreviewListings(nextPageSections).length;
+
+      if (nextPageListingsCount === 0 || nextPageListingsCount < EXPLORE_PAGE_SIZE) {
+        setRemoteHasMore(false);
+      }
+
+      if (nextPageListingsCount > 0) {
+        setNextOffset((current) => current + EXPLORE_PAGE_SIZE);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const handleToggleWishlist = useCallback(
@@ -1565,6 +1641,8 @@ export default function ExploreScreen() {
         }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.35}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: true,
         })}
@@ -1623,6 +1701,13 @@ export default function ExploreScreen() {
               </View>
             )}
           </View>
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View className="pb-4 pt-2">
+              <ActivityIndicator color="#1d4ed8" size="small" />
+            </View>
+          ) : null
         }
       />
 

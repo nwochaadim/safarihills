@@ -1,8 +1,8 @@
 import { gql } from '@apollo/client';
 
 export const EXPLORE_SECTIONS = gql`
-  query ExploreSections($filters: ExploreFilterInput) {
-    exploreSections(filters: $filters) {
+  query ExploreSections($filters: ExploreFilterInput, $limit: Int, $offset: Int) {
+    exploreSections(filters: $filters, limit: $limit, offset: $offset) {
       id
       slug
       title

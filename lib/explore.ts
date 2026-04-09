@@ -267,6 +267,100 @@ export const deserializeExploreFilterInput = (
   }
 };
 
+const getRemoteExploreListingKey = (listing: RemoteExploreListing, index: number) => {
+  const baseKey =
+    cleanString(listing.id) ||
+    [cleanString(listing.name), cleanString(listing.area), `${listing.minimumPrice ?? ''}`]
+      .filter(Boolean)
+      .join('::');
+
+  return baseKey || `explore-listing-${index + 1}`;
+};
+
+const mergeRemoteExploreListings = (
+  current: RemoteExploreListing[],
+  incoming: RemoteExploreListing[]
+) => {
+  const merged = [...current];
+  const indexByKey = new Map<string, number>();
+
+  current.forEach((listing, index) => {
+    indexByKey.set(getRemoteExploreListingKey(listing, index), index);
+  });
+
+  incoming.forEach((listing, index) => {
+    const key = getRemoteExploreListingKey(listing, index);
+    const existingIndex = indexByKey.get(key);
+
+    if (typeof existingIndex === 'number') {
+      merged[existingIndex] = {
+        ...merged[existingIndex],
+        ...listing,
+      };
+      return;
+    }
+
+    indexByKey.set(key, merged.length);
+    merged.push(listing);
+  });
+
+  return merged;
+};
+
+const getRemoteExploreSectionKey = (section: RemoteExploreSection, index: number) => {
+  const baseKey =
+    cleanString(section.slug) ||
+    cleanString(section.id) ||
+    [
+      cleanString(section.title),
+      cleanString(section.sectionType),
+      `${section.position ?? ''}`,
+      cleanString(section.location?.id),
+      cleanString(section.location?.name),
+    ]
+      .filter(Boolean)
+      .join('::');
+
+  return baseKey || `explore-section-${index + 1}`;
+};
+
+export const mergeRemoteExploreSections = (
+  current: RemoteExploreSection[],
+  incoming: RemoteExploreSection[]
+) => {
+  const merged = [...current];
+  const indexByKey = new Map<string, number>();
+
+  current.forEach((section, index) => {
+    indexByKey.set(getRemoteExploreSectionKey(section, index), index);
+  });
+
+  incoming.forEach((section, index) => {
+    const key = getRemoteExploreSectionKey(section, index);
+    const existingIndex = indexByKey.get(key);
+
+    if (typeof existingIndex === 'number') {
+      const existing = merged[existingIndex];
+      merged[existingIndex] = {
+        ...existing,
+        ...section,
+        matchingCount: Math.max(
+          typeof existing.matchingCount === 'number' ? existing.matchingCount : 0,
+          typeof section.matchingCount === 'number' ? section.matchingCount : 0
+        ),
+        location: section.location ?? existing.location,
+        listings: mergeRemoteExploreListings(existing.listings ?? [], section.listings ?? []),
+      };
+      return;
+    }
+
+    indexByKey.set(key, merged.length);
+    merged.push(section);
+  });
+
+  return merged;
+};
+
 const mapBookableOptions = (options: (string | null)[] | null | undefined): BookingOption[] => {
   const mapped: BookingOption[] = [];
   if (options?.includes('single_room')) mapped.push('room');
