@@ -12,6 +12,7 @@ import {
   mapRemoteListingOffers,
   parseListingOfferParam,
   type ListingOffer,
+  type ListingOfferReward,
 } from '@/data/listingOffers';
 import { findListingById } from '@/data/listings';
 import { AuthStatus } from '@/lib/authStatus';
@@ -24,8 +25,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
 import { trackEvent } from '@/lib/analytics';
+import { ANALYTICS_EVENTS } from '@/lib/analytics.schema';
 
 const getOfferThemeMeta = (theme: ListingOffer['theme']) => {
   if (theme === 'emerald') {
@@ -72,6 +73,41 @@ const parseNumberParam = (value: string | string[] | undefined) => {
 
 const formatCurrency = (value: number) =>
   `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+
+const normalizePercentage = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 100);
+};
+
+const getRewardIcon = (rewardType: string | null) => {
+  if (rewardType?.includes('Discount')) return 'percent';
+  if (rewardType?.includes('Perk')) return 'gift';
+  return 'award';
+};
+
+const getRewardTag = (reward: ListingOfferReward) => {
+  if (reward.rewardType?.includes('Discount')) return 'Discount';
+  if (reward.rewardType?.includes('Perk')) return 'Perk';
+  return 'Reward';
+};
+
+const getRewardTitle = (reward: ListingOfferReward) => {
+  if (reward.name?.trim()) return reward.name.trim();
+  if (reward.rewardType?.includes('Discount')) return 'Discounted rate';
+  if (reward.rewardType?.includes('Perk')) return 'Included perk';
+  return 'Offer reward';
+};
+
+const getRewardDescription = (reward: ListingOfferReward) => {
+  if (reward.description?.trim()) return reward.description.trim();
+  if (reward.rewardType?.includes('Perk') && reward.name?.trim()) {
+    return reward.name.trim();
+  }
+  return null;
+};
+
+const getDiscountedPrice = (basePrice: number, percentDiscount: number) =>
+  Math.round(basePrice * (1 - percentDiscount / 100));
 
 type ClaimListingOfferResponse = {
   claimListingOffer: {
@@ -297,6 +333,7 @@ export default function LocalOfferBookingScreen() {
   const publicWindowLabel = formatListingOfferPublicWindow(selectedOffer, now);
   const claimWindowLabel = claim ? formatListingOfferClaimWindow(claim.holdExpiresAt, now) : null;
   const claimDeadlineLabel = claim ? formatListingOfferClaimDeadline(claim.holdExpiresAt) : null;
+  const offerRewards = selectedOffer.rewards ?? [];
   const canLockOffer = publicStatus === 'live' && !claim;
   const canContinueWithOffer = Boolean(claim);
 
@@ -403,10 +440,6 @@ export default function LocalOfferBookingScreen() {
             Offer booking
           </Text>
           <Text className="mt-2 text-3xl font-bold text-slate-900">Review this offer</Text>
-          <Text className="mt-2 text-base leading-6 text-slate-500">
-            Public windows stay shared across guests. Your private countdown only begins after you
-            lock the offer.
-          </Text>
         </View>
 
         <View className="mt-6 px-6">
@@ -483,9 +516,7 @@ export default function LocalOfferBookingScreen() {
 
         <View className="mt-6 px-6">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Stay snapshot
-            </Text>
+  
             <Text className="mt-3 text-xl font-semibold text-slate-900">{resolvedListing.name}</Text>
             <Text className="mt-1 text-sm text-slate-500">
               {resolvedListing.area} · From {formatCurrency(resolvedListing.minimumPrice)} per
@@ -507,35 +538,9 @@ export default function LocalOfferBookingScreen() {
         </View>
 
         <View className="mt-6 px-6">
-          <View className="rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
-            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              How this works
-            </Text>
-            <View className="mt-4 gap-3">
-              {[
-                `The public window is ${publicStatus === 'live' ? 'open now' : 'shared for everyone viewing this listing'}.`,
-                `Locking the offer starts your own ${selectedOffer.claimHoldMinutes}-minute private timer.`,
-                'If this faster window closes, softer listing offers can still stay available.',
-              ].map((step) => (
-                <View
-                  key={step}
-                  className="flex-row items-start gap-3 rounded-2xl border border-white bg-white px-4 py-3">
-                  <View
-                    className="mt-0.5 h-8 w-8 items-center justify-center rounded-full bg-white"
-                    style={{ borderWidth: 1, borderColor: `${theme.iconColor}33` }}>
-                    <Feather name="check" size={14} color={theme.iconColor} />
-                  </View>
-                  <Text className="flex-1 text-sm leading-6 text-slate-600">{step}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        <View className="mt-6 px-6">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100">
             <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Offer terms
+              Offer description
             </Text>
             <HtmlViewer
               html={selectedOffer.terms}
@@ -550,11 +555,87 @@ export default function LocalOfferBookingScreen() {
           </View>
         </View>
 
+        <View className="mt-6 px-6">
+          <View className="rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
+            <Text className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              What you get
+            </Text>
+            {offerRewards.length > 0 ? (
+              <View className="mt-4 gap-3">
+                {offerRewards.map((reward) => {
+                  const percentDiscount = normalizePercentage(reward.percentDiscount);
+                  const isDiscountReward =
+                    reward.rewardType?.includes('Discount') && percentDiscount > 0;
+                  const rewardDescription = getRewardDescription(reward);
+
+                  return (
+                    <View
+                      key={reward.id}
+                      className="rounded-2xl border border-white bg-white px-4 py-4">
+                      <View className="flex-row items-start justify-between gap-3">
+                        <View className="flex-1">
+                          <Text className="text-base font-semibold text-slate-900">
+                            {getRewardTitle(reward)}
+                          </Text>
+                          {rewardDescription ? (
+                            <Text className="mt-1 text-sm leading-6 text-slate-600">
+                              {rewardDescription}
+                            </Text>
+                          ) : null}
+                        </View>
+
+                        <View className="flex-row items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                          <Feather
+                            name={getRewardIcon(reward.rewardType)}
+                            size={12}
+                            color={theme.iconColor}
+                          />
+                          <Text className="text-xs font-semibold text-slate-700">
+                            {getRewardTag(reward)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {isDiscountReward ? (
+                        <View className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+                          <Text className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                            Discounted listing price
+                          </Text>
+                          <View className="mt-2 flex-row items-center gap-3">
+                            <Text
+                              className="text-base font-medium text-slate-400"
+                              style={{ textDecorationLine: 'line-through' }}>
+                              {formatCurrency(resolvedListing.minimumPrice)}
+                            </Text>
+                            <Text className="text-xl font-bold text-emerald-700">
+                              {formatCurrency(
+                                getDiscountedPrice(resolvedListing.minimumPrice, percentDiscount)
+                              )}
+                            </Text>
+                            <Text className="text-sm font-semibold text-emerald-700">
+                              {percentDiscount}% off
+                            </Text>
+                          </View>
+                          <Text className="mt-1 text-sm text-emerald-700">per night</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text className="mt-3 text-sm leading-6 text-slate-600">
+                No rewards have been listed for this offer yet.
+              </Text>
+            )}
+          </View>
+        </View>
+
         <View className="mt-8 px-6">
           {!claim ? (
             <Pressable
               className={`items-center justify-center rounded-full py-4 ${
-                canLockOffer && !isLocking ? theme.actionClass : 'bg-slate-200'
+                canLockOffer && !isLocking ? 'bg-blue-600' : 'bg-slate-200'
               }`}
               disabled={!canLockOffer || isLocking}
               onPress={handleLockOffer}>
@@ -567,7 +648,7 @@ export default function LocalOfferBookingScreen() {
                     ? 'Sign in to lock this offer'
                     : isLocking
                       ? 'Locking your offer...'
-                      : `Lock this offer for ${selectedOffer.claimHoldMinutes} min`
+                      : `Book this offer - Locked for ${selectedOffer.claimHoldMinutes}mins`
                   : 'Offer not live yet'}
               </Text>
             </Pressable>

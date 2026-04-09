@@ -12,6 +12,7 @@ export type ListingOffer = {
   savingsLabel: string;
   ctaLabel: string;
   terms: string;
+  rewards?: ListingOfferReward[];
   highlights: string[];
   theme: ListingOfferTheme;
   urgencyMode: ListingOfferUrgencyMode;
@@ -19,6 +20,15 @@ export type ListingOffer = {
   publicExpiresAt: string;
   claimHoldMinutes: number;
   lockHint: string;
+};
+
+export type ListingOfferReward = {
+  id: string;
+  rewardType: string | null;
+  name: string | null;
+  description: string | null;
+  numberOfNightsToApply: number | null;
+  percentDiscount: number | null;
 };
 
 export type ListingOfferClaimSnapshot = {
@@ -280,6 +290,25 @@ const resolveTerms = (offer: RemoteListingOffer) => {
   return 'Claim this offer to lock your rate for a short private hold while you book.';
 };
 
+const mapListingOfferRewards = (
+  rewards: RemoteListingOfferReward[] | null | undefined
+): ListingOfferReward[] =>
+  (rewards ?? []).map((reward, index) => ({
+    id: reward.id?.trim() || `reward-${index}`,
+    rewardType: reward.rewardType?.trim() || null,
+    name: reward.name?.trim() || null,
+    description: reward.description?.trim() || null,
+    numberOfNightsToApply:
+      typeof reward.numberOfNightsToApply === 'number' &&
+      Number.isFinite(reward.numberOfNightsToApply)
+        ? reward.numberOfNightsToApply
+        : null,
+    percentDiscount:
+      typeof reward.percentDiscount === 'number' && Number.isFinite(reward.percentDiscount)
+        ? reward.percentDiscount
+        : null,
+  }));
+
 const buildRemoteOfferHighlights = (
   listing: ListingOfferSeedInput,
   offer: RemoteListingOffer
@@ -456,6 +485,7 @@ export const mapRemoteListingOffer = (
     savingsLabel: resolveSavingsLabel(offer),
     ctaLabel: offer.ctaLabel?.trim() || 'Review & claim',
     terms: resolveTerms(offer),
+    rewards: mapListingOfferRewards(offer.rewards),
     highlights: buildRemoteOfferHighlights(listing, offer),
     theme: resolveTheme(offer.themeKey, offer.iconKey),
     urgencyMode: resolveUrgencyMode(publicStartsAt, publicExpiresAt),
@@ -587,6 +617,7 @@ const isListingOffer = (value: unknown): value is ListingOffer => {
     typeof candidate.savingsLabel === 'string' &&
     typeof candidate.ctaLabel === 'string' &&
     typeof candidate.terms === 'string' &&
+    (candidate.rewards === undefined || Array.isArray(candidate.rewards)) &&
     typeof candidate.theme === 'string' &&
     typeof candidate.urgencyMode === 'string' &&
     typeof candidate.publicStartsAt === 'string' &&
