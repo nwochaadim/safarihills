@@ -3,10 +3,16 @@
     "name": "Safarihills",
     "slug": "safarihill",
     "version": "2.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/SafariLogo.png",
     "scheme": "safarihills",
     "userInterfaceStyle": "automatic",
+    "updates": {
+      "url": "https://u.expo.dev/8b4ca1cb-15af-4f50-9746-463ed43190e9"
+    },
     "splash": {
       "image": "./assets/images/safarihills-splash-4.png",
       "resizeMode": "contain",
