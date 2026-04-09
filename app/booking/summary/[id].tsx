@@ -1,4 +1,5 @@
 import { BackButton } from '@/components/BackButton';
+import { BookingGuaranteeModal } from '@/components/BookingGuaranteeModal';
 import { APPLY_COUPON_TO_BOOKING } from '@/mutations/applyCouponToBooking';
 import { CREATE_WALLET_PAYMENT_FOR_BOOKING } from '@/mutations/createWalletPaymentForBooking';
 import { VALIDATE_BOOKING } from '@/mutations/validateBooking';
@@ -251,6 +252,7 @@ export default function BookingSummaryScreen() {
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
   const hasTrackedSummaryViewRef = useRef(false);
   const hasCompletedPurchaseRef = useRef(false);
+  const hasShownGuaranteeModalRef = useRef(false);
 
   const effectiveCouponAmount = serverCouponAmount > 0 ? serverCouponAmount : appliedAmount;
   const discount = Math.min(effectiveCouponAmount, baseTotal);
@@ -260,6 +262,7 @@ export default function BookingSummaryScreen() {
   const canPay = paymentMethod === 'paystack' || walletHasFunds;
   const isProcessingPayment = isValidating || isPayingWithWallet;
   const [paystackVisible, setPaystackVisible] = useState(false);
+  const [guaranteeModalVisible, setGuaranteeModalVisible] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const paystackReference = bookingReference;
@@ -267,6 +270,20 @@ export default function BookingSummaryScreen() {
   const paystackModalTopInset = Math.max(insets.top, 24);
   const bookingMode = offerCampaign ? 'offer' : 'standard';
   const bookingValueBucket = getBookingValueBucket(total);
+
+  useEffect(() => {
+    hasShownGuaranteeModalRef.current = false;
+    setGuaranteeModalVisible(false);
+  }, [bookingId]);
+
+  useEffect(() => {
+    if (!booking || loading || !showPaymentSections || hasShownGuaranteeModalRef.current) {
+      return;
+    }
+
+    hasShownGuaranteeModalRef.current = true;
+    setGuaranteeModalVisible(true);
+  }, [booking, loading, showPaymentSections]);
 
   useEffect(() => {
     if (!booking || hasTrackedSummaryViewRef.current) {
@@ -1118,16 +1135,20 @@ export default function BookingSummaryScreen() {
                   Booking #{bookingLabel}
                 </Text>
               </View>
-              <View className="flex-row items-center gap-1 rounded-full bg-blue-100 px-3 py-1">
+              <Pressable
+                className="flex-row items-center gap-1 rounded-full bg-blue-100 px-3 py-1"
+                onPress={() => setGuaranteeModalVisible(true)}>
                 <Feather name="shield" size={12} color="#1d4ed8" />
                 <Text className="text-xs font-semibold text-blue-700">Secure checkout</Text>
-              </View>
-              <View className="flex-row items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+              </Pressable>
+              <Pressable
+                className="flex-row items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1"
+                onPress={() => setGuaranteeModalVisible(true)}>
                 <Feather name="check-circle" size={12} color="#047857" />
                 <Text className="text-xs font-semibold text-emerald-700">
                   Check-in refund protection
                 </Text>
-              </View>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -1562,6 +1583,10 @@ export default function BookingSummaryScreen() {
           />
         </BaseSafeAreaView>
       </Modal>
+      <BookingGuaranteeModal
+        visible={guaranteeModalVisible}
+        onClose={() => setGuaranteeModalVisible(false)}
+      />
     </TabSafeAreaView>
   );
 }

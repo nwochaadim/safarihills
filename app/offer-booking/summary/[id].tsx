@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { BackButton } from '@/components/BackButton';
+import { BookingGuaranteeModal } from '@/components/BookingGuaranteeModal';
 import {
   formatListingOfferClaimDeadline,
   formatListingOfferClaimWindow,
@@ -259,6 +260,8 @@ export default function OfferBookingSummaryScreen() {
   const [lockNow, setLockNow] = useState(() => Date.now());
   const hasTrackedSummaryViewRef = useRef(false);
   const hasCompletedPurchaseRef = useRef(false);
+  const hasShownGuaranteeModalRef = useRef(false);
+  const [guaranteeModalVisible, setGuaranteeModalVisible] = useState(false);
 
   const total = bookingTotal;
   const walletBalance = user?.walletBalance ?? 0;
@@ -278,6 +281,20 @@ export default function OfferBookingSummaryScreen() {
     hasOfferLock && claimHoldExpiresAt
       ? formatListingOfferClaimWindow(claimHoldExpiresAt, lockNow)
       : null;
+
+  useEffect(() => {
+    hasShownGuaranteeModalRef.current = false;
+    setGuaranteeModalVisible(false);
+  }, [bookingId]);
+
+  useEffect(() => {
+    if (!booking || loading || !showPaymentSections || hasShownGuaranteeModalRef.current) {
+      return;
+    }
+
+    hasShownGuaranteeModalRef.current = true;
+    setGuaranteeModalVisible(true);
+  }, [booking, loading, showPaymentSections]);
   const offerLockCountdownLabel = offerLockLabel?.replace(/^Locked for\s+/, '') ?? null;
   const offerLockDeadlineLabel =
     hasOfferLock && claimHoldExpiresAt
@@ -1000,16 +1017,20 @@ export default function OfferBookingSummaryScreen() {
                   Booking #{bookingLabel}
                 </Text>
               </View>
-              <View className="flex-row items-center gap-1 rounded-full bg-blue-100 px-3 py-1">
+              <Pressable
+                className="flex-row items-center gap-1 rounded-full bg-blue-100 px-3 py-1"
+                onPress={() => setGuaranteeModalVisible(true)}>
                 <Feather name="shield" size={12} color="#1d4ed8" />
                 <Text className="text-xs font-semibold text-blue-700">Secure checkout</Text>
-              </View>
-              <View className="flex-row items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+              </Pressable>
+              <Pressable
+                className="flex-row items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1"
+                onPress={() => setGuaranteeModalVisible(true)}>
                 <Feather name="check-circle" size={12} color="#047857" />
                 <Text className="text-xs font-semibold text-emerald-700">
                   Check-in refund protection
                 </Text>
-              </View>
+              </Pressable>
             </View>
             {hasOfferLock ? (
               <View
@@ -1409,6 +1430,10 @@ export default function OfferBookingSummaryScreen() {
           />
         </BaseSafeAreaView>
       </Modal>
+      <BookingGuaranteeModal
+        visible={guaranteeModalVisible}
+        onClose={() => setGuaranteeModalVisible(false)}
+      />
     </TabSafeAreaView>
   );
 }
