@@ -26,7 +26,7 @@
         "applinks:safarihills.app",
         "applinks:www.safarihills.app"
       ],
-      "buildNumber": "1",
+      "buildNumber": "2",
       "icon": "./assets/images/SafariLogo.png",
       "googleServicesFile": "./GoogleService-Info.plist",
       "notification": {
