@@ -34,6 +34,7 @@ import { PROFILE_QUERY } from '@/queries/profile';
 import { useQuery } from '@apollo/client';
 import { Feather } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import * as Device from 'expo-device';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -86,6 +87,7 @@ const DISCOVER_CARD_SWAP_DURATION = 220;
 const LARGE_DISCOVER_CARDS_FALLBACK_HEIGHT = 224;
 const EXPLORE_SECTIONS_WIZARD_KEY = 'exploreSectionsWizardSeenV2';
 const EXPLORE_PAGE_SIZE = 15;
+const ANDROID_PHONE_SMALLEST_SIDE_MAX = 600;
 
 type CalendarDay = {
   date: Date;
@@ -419,7 +421,13 @@ export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const { toggleListingWishlist } = useListingWishlistToggle();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const shortestWindowSide = Math.min(windowWidth, windowHeight);
+  const isAndroidPhone =
+    Platform.OS === 'android' &&
+    (Device.deviceType === Device.DeviceType.PHONE ||
+      ((Device.deviceType === null || Device.deviceType === Device.DeviceType.UNKNOWN) &&
+        shortestWindowSide < ANDROID_PHONE_SMALLEST_SIDE_MAX));
   const discoverSectionRef = useRef<View | null>(null);
   const discoverToggleRef = useRef<View | null>(null);
   const discoverCardsRef = useRef<View | null>(null);
@@ -466,6 +474,11 @@ export default function ExploreScreen() {
     let isMounted = true;
 
     const loadWizardStatus = async () => {
+      if (isAndroidPhone) {
+        setWizardSeen(true);
+        return;
+      }
+
       const stored = await SecureStore.getItemAsync(EXPLORE_SECTIONS_WIZARD_KEY);
       if (!isMounted) return;
       setWizardSeen(stored === 'true');
@@ -476,7 +489,7 @@ export default function ExploreScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isAndroidPhone]);
 
   const appliedExploreFilters = useMemo(
     () => buildExploreFilterInput(appliedFilters),
@@ -936,12 +949,18 @@ export default function ExploreScreen() {
   }, []);
 
   useEffect(() => {
+    if (isAndroidPhone) {
+      setWizardSeen(true);
+      setWizardStep(null);
+      return;
+    }
+
     if (wizardSeen !== false || wizardStep || wizardOpenedRef.current) return;
     if (loading || error || sectionCount === 0) return;
 
     wizardOpenedRef.current = true;
     setWizardStep('welcome');
-  }, [error, loading, sectionCount, wizardSeen, wizardStep]);
+  }, [error, isAndroidPhone, loading, sectionCount, wizardSeen, wizardStep]);
 
   useEffect(() => {
     if (!wizardStep) return;
